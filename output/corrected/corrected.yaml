@@ -1,0 +1,9 @@
+- "left reads":
+  - "/Users/luorunpeng/Desktop/SPAdes_HapConstruction/output/corrected/out2.read1.00.0_0.cor.fastq.gz"
+  "number": !!int "1"
+  "orientation": "fr"
+  "right reads":
+  - "/Users/luorunpeng/Desktop/SPAdes_HapConstruction/output/corrected/out2.read2.00.0_0.cor.fastq.gz"
+  "single reads":
+  - "/Users/luorunpeng/Desktop/SPAdes_HapConstruction/output/corrected/out2.read_unpaired.00.0_0.cor.fastq.gz"
+  "type": "paired-end"

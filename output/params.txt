@@ -1,0 +1,37 @@
+Command line: /Users/luorunpeng/Desktop/spades/bin/spades.py	--metaviral	-1	/Users/luorunpeng/Desktop/read_sim/out2.read1.fq	-2	/Users/luorunpeng/Desktop/read_sim/out2.read2.fq	-o	/Users/luorunpeng/Desktop/SPAdes_HapConstruction/output	
+
+System information:
+  SPAdes version: 3.15.3
+  Python version: 3.8.12
+  OS: macOS-10.16-x86_64-i386-64bit
+
+Output dir: /Users/luorunpeng/Desktop/SPAdes_HapConstruction/output
+Mode: read error correction and assembling
+Debug mode is turned OFF
+
+Dataset parameters:
+  Metagenomic mode
+  Reads:
+    Library number: 1, library type: paired-end
+      orientation: fr
+      left reads: ['/Users/luorunpeng/Desktop/read_sim/out2.read1.fq']
+      right reads: ['/Users/luorunpeng/Desktop/read_sim/out2.read2.fq']
+      interlaced reads: not specified
+      single reads: not specified
+      merged reads: not specified
+Read error correction parameters:
+  Iterations: 1
+  PHRED offset will be auto-detected
+  Corrected reads will be compressed
+Assembly parameters:
+  k: automatic selection based on read length
+  Extrachromosomal mode is turned ON
+  Repeat resolution is enabled
+  Mismatch careful mode is turned OFF
+  MismatchCorrector will be SKIPPED
+  Coverage cutoff is turned OFF
+Other parameters:
+  Dir for temp files: /Users/luorunpeng/Desktop/SPAdes_HapConstruction/output/tmp
+  Threads: 16
+  Memory limit (in Gb): 250
+

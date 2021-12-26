@@ -1,0 +1,73 @@
+SPADES: SAINT-PETERSBURG GENOME ASSEMBLER
+Copyright (c) 2015-2021 Saint Petersburg State University
+Copyright (c) 2011-2014 Saint Petersburg Academic University
+
+SPAdes is free software; you can redistribute it and/or modify
+it under the terms of the GNU General Public License, Version 2,
+dated June 1991, as published by the Free Software Foundation.
+
+SPAdes is distributed in the hope that it will be useful, but
+WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+General Public License for more details.
+
+You should have received a copy of the GNU General Public License along
+with this program; if not, write to the Free Software Foundation, Inc.,
+51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+
+-------------------------------------------------------------------------------
+
+SPAdes
+Genome assembler for single-cell and isolates data sets
+Version: see VERSION
+
+Developed in Center for Algorithmic Biotechnology, Institute of Translational Biomedicine, St. Petersburg State University.
+Developed in Algorithmic Biology Lab of St. Petersburg Academic University of the Russian Academy of Sciences.
+
+Current SPAdes contributors:
+
+    Dmitry Antipov,
+    Elena Bushmanova,
+    Anton Kleschin,
+    Anton Korobeynikov,
+    Olga Kunyavskaya,
+    Dmitriy Meleshko,
+    Sergey Nurk,
+    Andrey Prjibelski,
+    Mike Rayko,
+    Ivan Tolstoganov,
+    Alla Lapidus and
+    Pavel Pevzner
+
+Also contributed:
+
+    Max Alekseyev,
+    Anton Bankevich,
+    Mikhail Dvorkin,
+    Vasisliy Ershov,
+    Yuriy Gorshkov,
+    Alexey Gurevich,
+    Alexander Kulikov,
+    Valery Lesin,
+    Sergey Nikolenko,
+    Son Pham,
+    Alexey Pyshkin,
+    Yana Safonova,
+    Vladislav Saveliev,
+    Alexander Shlemov,
+    Alexander Sirotkin,
+    Yakov Sirotkin,
+    Artem Tarasov,
+    Glenn Tesler,
+    Irina Vasilinetc,
+    Nikolay Vyahhi
+
+Installation instructions and manual can be found on the website:
+http://cab.spbu.ru/software/spades/
+
+Address for communication: spades.support@cab.spbu.ru
+
+References:
+
+Prjibelski, A., Antipov, D., Meleshko, D., Lapidus, A. and Korobeynikov, A., 2020. Using SPAdes de novo assembler. Current Protocols in Bioinformatics, 70(1), p.e102.
+

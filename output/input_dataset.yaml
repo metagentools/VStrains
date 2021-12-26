@@ -1,0 +1,7 @@
+- "left reads":
+  - "/Users/luorunpeng/Desktop/read_sim/out2.read1.fq"
+  "number": !!int "1"
+  "orientation": "fr"
+  "right reads":
+  - "/Users/luorunpeng/Desktop/read_sim/out2.read2.fq"
+  "type": "paired-end"

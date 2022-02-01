@@ -44,8 +44,8 @@ def main():
     print("Parsed gfa file length: {0}, version: {1}".format(len(gfa.lines), gfa.version))
     
     graph, node_dict, edge_dict, dp_dict = gfa_to_graph(gfa)
-    graph, node_dict, edge_dict, pick_dict = flip_graph_bfs(graph, node_dict, edge_dict, dp_dict.copy(), 1)
-    graph, simp_node_dict = simplify_graph(graph, node_dict, pick_dict)
+    graph, simp_node_dict, edge_dict = flip_graph_bfs(graph, node_dict, edge_dict, dp_dict.copy(), 1)
+    # graph, simp_node_dict = simplify_graph(graph, node_dict, pick_dict)
 
     assign_edge_flow(graph, simp_node_dict, edge_dict)
 
@@ -57,12 +57,16 @@ def main():
     
     # strain_dict = map_ref_to_graph(args.ref_file, graph, simp_node_dict)
     graph, simp_node_dict, edge_dict = graph_reduction(graph, contig_dict, simp_node_dict, edge_dict)
-    graph_to_gfa(graph, simp_node_dict, edge_dict)
+    # graph_to_gfa(graph, simp_node_dict, edge_dict)
 
 def flip_graph_bfs(graph: Graph, node_dict: dict, edge_dict: dict, dp_dict: dict, init_ori):
     """
-    Flip all the orientation to the same.
+    Flip all the node orientation.
+
+    return an node_dict, which only contains one orientation per node for simplicity.
+    rename all the used node to positive, and forbidden the opponent node.
     """
+
     pick_dict = {}
     while set(dp_dict):
         seg_no = source_node_via_dp(dp_dict)
@@ -129,13 +133,7 @@ def flip_graph_bfs(graph: Graph, node_dict: dict, edge_dict: dict, dp_dict: dict
     check = check and len(node_dict) == len(pick_dict)
     if check: print("Graph is verified")
     print("-------------------------end verify------------------------")
-    return graph, node_dict, edge_dict, pick_dict
 
-def simplify_graph(graph: Graph, node_dict: dict, pick_dict: dict):
-    """
-    return an node_dict, which only contains one orientation per node for simplicity.
-    rename all the used node to positive, and forbidden the opponent.
-    """
     simp_node_dict = {}
     for seg_no, pick in pick_dict.items():
         if pick == '+':
@@ -148,7 +146,27 @@ def simplify_graph(graph: Graph, node_dict: dict, pick_dict: dict):
         print("The graph is acylic")
     else:
         print("The graph is cyclic")
-    return graph, simp_node_dict
+    
+    return graph, simp_node_dict, edge_dict
+
+# def simplify_graph(graph: Graph, node_dict: dict, pick_dict: dict):
+#     """
+#     return an node_dict, which only contains one orientation per node for simplicity.
+#     rename all the used node to positive, and forbidden the opponent.
+#     """
+#     simp_node_dict = {}
+#     for seg_no, pick in pick_dict.items():
+#         if pick == '+':
+#             picked = node_dict[seg_no][0]
+#         else:
+#             picked = node_dict[seg_no][1]
+#         graph.vp.ori[picked] = 1
+#         simp_node_dict[seg_no] = picked
+#     if is_DAG(graph):
+#         print("The graph is acylic")
+#     else:
+#         print("The graph is cyclic")
+#     return graph, simp_node_dict
 
 def graph_grouping(graph: Graph, simp_node_dict: dict, forward, reverse, partition_length_cut_off):
     """
@@ -609,7 +627,7 @@ def graph_reduction(graph: Graph, contig_dict: dict, simp_node_dict: dict, edge_
     #         if n.in_degree() <= 1 and n.out_degree() <= 1:
     #             print_vertex(graph, n, "single-connect nodes with in degree: {0}, out degree: {1}".format(n.in_degree(), n.out_degree()))
     #     print("-------------------------------------------------")
-        ccov = min(edge_flow)
+        # ccov = min(edge_flow)
         j = 1
         for i in contigs:
             if j >= len(contigs):

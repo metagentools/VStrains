@@ -105,10 +105,13 @@ def graph_to_gfa(graph: Graph, simp_node_dict: dict, edge_dict: dict):
     def to_ori(i):
         return '+' if i == 1 else '-'
     with open("acc/acc_graph.gfa", 'w') as gfa:
+        ids = []
         for v in simp_node_dict.values():
 
-            if graph.vp.color[v] == 'black':
-                # print_vertex(graph, pick_node, "picked node")
+            if graph.vp.color[v] == 'black' and graph.vp.dp[v] > 500.0:
+                if graph.vp.dp[v] > 500.0:
+                    print(graph.vp.dp[v])
+                    ids.append(int(graph.vp.id[v]))
                 name = graph.vp.id[v]
                 gfa.write("S\t{0}\t{1}\tDP:f:{2}\tKC:i:{3}\n".format
                 (name, graph.vp.seq[v], graph.vp.dp[v], graph.vp.kc[v]))
@@ -123,6 +126,8 @@ def graph_to_gfa(graph: Graph, simp_node_dict: dict, edge_dict: dict):
                 continue
             if graph.vp.color[node_u] != 'black' or graph.vp.color[node_v] != 'black':
                 continue
+            if graph.vp.dp[node_u] <= 500 or graph.vp.dp[node_v] <= 500:
+                continue
             # if graph.ep.flow[e] != 0.0:
             #     continue
             gfa.write("L\t{0}\t{1}\t{2}\t{3}\t{4}M\n".format
@@ -131,6 +136,7 @@ def graph_to_gfa(graph: Graph, simp_node_dict: dict, edge_dict: dict):
             graph.ep.overlap[e]))
         gfa.close()
     print("acc graph is stored")
+    print(ids)
     return 0
 
 def map_ref_to_graph(ref, graph: Graph, simp_node_dict: dict):

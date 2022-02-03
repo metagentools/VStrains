@@ -12,7 +12,6 @@ from graph_tool.topology import is_DAG, topological_sort, all_circuits
 from graph_tool.draw import graph_draw
 # from graph_tool.clustering import local_clustering
 from graph_tool import flow
-# import subprocess
 import argparse
 
 import gfapy
@@ -28,6 +27,7 @@ def main():
     parser.add_argument('-gfa', '--gfa_file', dest='gfa_file', type=str, required=True, help='assembly graph under gfa format')
     parser.add_argument('-c', '--contig', dest='contig_file', type=str, help='contig file from SPAdes, paths format')
     parser.add_argument('-mincov' '--minimum_coverage', dest='min_cov', type=int, help=("minimum coverage for strains"))
+    parser.add_argument('-minlen', '--minimum_strain_length', dest='min_len', type=int, help=("minimum strain length"))
     # parser.add_argument('-f', '--forward', dest='forward', type=str, required=True, help='Forward reads, fastq format')
     # parser.add_argument('-r', '--reverse', dest='reverse', type=str, required=True, help='Reverse reads, fastq format')
     # parser.add_argument('-l', "--insert_size", dest='insert_size', type=int, required=True, help='Pair-end read distance')
@@ -57,7 +57,7 @@ def main():
     
     # strain_dict = map_ref_to_graph(args.ref_file, graph, simp_node_dict)
     graph, simp_node_dict, edge_dict = graph_reduction(graph, contig_dict, simp_node_dict, edge_dict)
-    # graph_to_gfa(graph, simp_node_dict, edge_dict)
+    graph_to_gfa(graph, simp_node_dict, edge_dict)
 
 def flip_graph_bfs(graph: Graph, node_dict: dict, edge_dict: dict, dp_dict: dict, init_ori):
     """

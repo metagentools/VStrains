@@ -264,5 +264,8 @@ def contig_to_seq(graph: Graph, contig: list, contig_name, simp_node_dict: dict,
 def reverse_seq(seq: str):
     return ''.join({'A': 'T', 'T': 'A', 'C': 'G', 'G': 'C'}[x] for x in seq[::-1])
 
-def simplify_edge_dict():
-    return 
+def simplify_edge_dict(edge_dict: dict):
+    simp_edge_dict = {}
+    for (u, _, v, _), e in edge_dict.items():
+        simp_edge_dict[(u,v)] = e
+    return simp_edge_dict

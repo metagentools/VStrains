@@ -6,6 +6,7 @@
 # import re
 import subprocess
 from tkinter.messagebox import NO
+from turtle import ht
 from graph_tool import GraphView, _in_degree
 # import graph_tool
 from graph_tool.all import Graph
@@ -17,9 +18,9 @@ from graph_tool.draw import graph_draw
 import argparse
 
 import gfapy
-# import numpy
+import numpy
 
-from graph_converter import gfa_to_graph, graph_to_gfa, map_ref_to_graph, get_contig, contig_to_seq
+from graph_converter import gfa_to_graph, graph_to_gfa, map_ref_to_graph, get_contig, contig_to_seq, simplify_edge_dict
 
 usage = "Construct haplotypes using divide-and-conquer method"
 author = "Runpeng Luo"
@@ -144,11 +145,8 @@ def flip_graph_bfs(graph: Graph, node_dict: dict, edge_dict: dict, dp_dict: dict
             picked = node_dict[seg_no][1]
         graph.vp.ori[picked] = 1
         simp_node_dict[seg_no] = picked
-    
-    simp_edge_dict = {}
-    for (u, _, v, _), e in edge_dict.items():
-        simp_edge_dict[(u,v)] = e
-    
+
+    simp_edge_dict = simplify_edge_dict(edge_dict)
     print("-------------------------flip graph orientation end------------------")
     return graph, simp_node_dict, simp_edge_dict
 
@@ -158,10 +156,7 @@ def longest_distance(graph: Graph, s):
 def graph_stat(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict):
     print("-------------------------graph stat----------------------")
     for seg_no, v in simp_node_dict.items():
-        if v.in_degree() == 0 and v.out_degree() != 0:
-            print_vertex(graph, v, "vertex with only out degree")
-        if v.out_degree() == 0 and v.in_degree() != 0:
-            print_vertex(graph, v, "vertex with only in degree")
+        print_vertex(graph, v, "stat")
     for (_,_), e in simp_edge_dict.items():
         print_edge(graph, e, "stat")
     
@@ -239,11 +234,11 @@ def print_edge(graph, e, s=""):
 def print_vertex(graph, v, s=""):
     print(s, " vertex: ", graph.vp.id[v], ", dp: ", graph.vp.dp[v], ", ori: ", graph.vp.ori[v], ", in_degree: ", v.in_degree(), ", out_degree: ", v.out_degree(), graph.vp.color[v])
 
-def assign_edge_flow(graph: Graph, simp_node_dict: dict, edge_dict: dict):
+def assign_edge_flow(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict):
     """
     Assign the edge flow based on node weight and contig alignment.
     """
-    un_assigned_edge = len(edge_dict)
+    un_assigned_edge = len(simp_edge_dict)
     print("-------------------------assign edge flow----------------------")
     print("Assign edge flow: Total edges: ", un_assigned_edge)
     # it is necessary to distinguish two phase to avoid assembly graph mistake, or do we ignore the mistake?
@@ -307,7 +302,7 @@ def assign_edge_flow(graph: Graph, simp_node_dict: dict, edge_dict: dict):
     #             break
     #     return rtn
     # deal with rest of un assigned edges
-    for (_,_), e in edge_dict.items():
+    for (_,_), e in simp_edge_dict.items():
         if graph.ep.flow[e] == 0.0:
             u = e.source()
             v = e.target()
@@ -345,33 +340,30 @@ def assign_edge_flow(graph: Graph, simp_node_dict: dict, edge_dict: dict):
     print("un-assigned edges after manual assign iteration : ", un_assigned_edge)
     print("-----------------------assign edge flow end--------------------")
 
-def depth_decomposition(graph: Graph, simp_node_dict: dict):
-    None
-
-def graph_reduction(graph: Graph, contig_dict: dict, simp_node_dict: dict, edge_dict: dict, min_cov, min_len):
+def graph_reduction(graph: Graph, contig_dict: dict, simp_node_dict: dict, simp_edge_dict: dict, min_cov, min_len):
     """
     reduce the node/edge weight based on existing contig found by SPAdes.
     """
 
     print("-------------------------graph reduction----------------------")
-    def contig_reduction(graph: Graph, contig, ccov, clen, simp_node_dict: dict, edge_dict: dict, min_cov, min_len):
+    def contig_reduction(graph: Graph, contig, ccov, clen, simp_node_dict: dict, simp_edge_dict: dict, min_cov, min_len):
         print("*---Contig: ", cno, clen, ccov)
         adj_index = 1
         for node in contig:
             if adj_index >= len(contig):
                 break
             adj_node = contig[adj_index]
-            adj_index = adj_index + 1
+
             u = simp_node_dict[node] if node in simp_node_dict else None
             v = simp_node_dict[adj_node] if adj_node in simp_node_dict else None
-            e = edge_dict[(node,adj_node)] if (node,adj_node) in edge_dict else None 
+            e = simp_edge_dict[(node,adj_node)] if (node,adj_node) in simp_edge_dict else None 
 
             # edge may be eliminated from previous execution already
             if u == None or v == None or e == None:
                 if e != None:
                     graph.ep.flow[e] = 0
                     graph.ep.color[e] = 'gray'
-                    edge_dict.pop((node,adj_node))
+                    simp_edge_dict.pop((node,adj_node))
                     print_edge(graph, e, "edge been removed due to either u or v is removed")
                 else:
                     print("edge: ", node, " -> ", adj_node, "already been removed")
@@ -384,7 +376,7 @@ def graph_reduction(graph: Graph, contig_dict: dict, simp_node_dict: dict, edge_
             if graph.ep.flow[e] - ccov <= min_cov:
                 graph.ep.flow[e] = 0
                 graph.ep.color[e] = 'gray'
-                edge_dict.pop((node,adj_node))
+                simp_edge_dict.pop((node,adj_node))
                 print_edge(graph, e, "edge been removed")
             else:
                 graph.ep.flow[e] = graph.ep.flow[e] - ccov
@@ -398,45 +390,60 @@ def graph_reduction(graph: Graph, contig_dict: dict, simp_node_dict: dict, edge_
             else:
                 graph.vp.dp[u] = graph.vp.dp[u] - ccov
 
-
-            if graph.vp.dp[v] - ccov <= min_cov: 
-                graph.vp.dp[v] = 0
-                graph.vp.color[v] = 'gray'
-                simp_node_dict.pop(adj_node)
-                print("node ", adj_node, "been removed")
-            else:
-                graph.vp.dp[v] = graph.vp.dp[v] - ccov
+            # last node in the contig, reduce its depth
+            if adj_index + 1 == len(contig):
+                if graph.vp.dp[v] - ccov <= min_cov: 
+                    graph.vp.dp[v] = 0
+                    graph.vp.color[v] = 'gray'
+                    simp_node_dict.pop(adj_node)
+                    print("node ", adj_node, "been removed")
+                else:
+                    graph.vp.dp[v] = graph.vp.dp[v] - ccov
             
             # update edges
-            if (graph.vp.color[u] == 'gray' or graph.vp.color[v] == 'gray') and (node,adj_node) in edge_dict:
+            if (graph.vp.color[u] == 'gray' or graph.vp.color[v] == 'gray') and (node,adj_node) in simp_edge_dict:
                 graph.ep.flow[e] = 0
                 graph.ep.color[e] = 'gray'
-                edge_dict.pop((node,adj_node))
+                simp_edge_dict.pop((node,adj_node))
                 print_edge(graph, e, "edge been removed in the final step")
-        return graph, simp_node_dict, edge_dict
+            adj_index = adj_index + 1
+        return
+    
     for (cno, clen, ccov), (contig,_) in contig_dict.items():
         if clen >= min_len:
-            contig_reduction(graph, contig, ccov, clen, simp_node_dict, edge_dict, min_cov, min_len)    
+            contig_reduction(graph, contig, ccov, clen, simp_node_dict, simp_edge_dict, min_cov, min_len)    
     # store level 2 graph
-    graph_to_gfa(graph, simp_node_dict, edge_dict, min_cov, "acc/graph_L2.gfa")
+    graph_to_gfa(graph, simp_node_dict, simp_edge_dict, min_cov, "acc/graph_L2.gfa")
 
     for (cno, clen, ccov), (contig,_) in contig_dict.items():
         if clen < min_len:
             # keep the head&tail of the contig
-            contig = contig[1:-1]
-            contig_reduction(graph, contig, ccov, clen, simp_node_dict, edge_dict, min_cov, min_len)
+            # contig = contig[1:-1]
+            contig_reduction(graph, contig, ccov, clen, simp_node_dict, simp_edge_dict, min_cov, min_len)
     # store level 3 graph
-    graph_to_gfa(graph, simp_node_dict, edge_dict, min_cov, "acc/graph_L3.gfa")
+    graph_to_gfa(graph, simp_node_dict, simp_edge_dict, min_cov, "acc/graph_L3.gfa")
+
+    # for (cno, clen, ccov), (contig,_) in contig_dict.items():
+    #     # if clen < min_len and cno == "5":
+    #         # keep the head&tail of the contig
+    #         contig_head = contig[0:2]
+    #         contig_reduction(graph, contig_head, ccov, clen, simp_node_dict, simp_edge_dict, min_cov, min_len)
+    #         contig_tail = contig[-2:]
+    #         contig_reduction(graph, contig_tail, ccov, clen, simp_node_dict, simp_edge_dict, min_cov, min_len)
+    # # store level 4 graph
+    # graph_to_gfa(graph, simp_node_dict, simp_edge_dict, min_cov, "acc/graph_L4.gfa")
     print("-----------------------graph reduction end--------------------")
     return 0
 
 def contig_classification(contig_dict: dict, min_cov, min_len):
 
     print("-----------------------contig classifcation--------------------")
-    # graph_stat(graph, simp_node_dict, edge_dict)
 
-    graph_L2, node_dict, edge_dict, dp_dict  = gfa_to_graph("acc/graph_L2.gfa")
-    graph_L3, node_dict, edge_dict, dp_dict = gfa_to_graph("acc/graph_L3.gfa")
+    graph_L2, node_dict_L2, edge_dict_L2, dp_dict_L2  = gfa_to_graph("acc/graph_L2.gfa")
+    graph_L2, simp_node_dict_L2, simp_edge_dict_L2 = flip_graph_bfs(graph_L2, node_dict_L2, edge_dict_L2, dp_dict_L2, 1)
+    
+    graph_L3, node_dict_L3, edge_dict_L3, dp_dict_L3 = gfa_to_graph("acc/graph_L3.gfa")
+    graph_L3, simp_node_dict_L3, simp_edge_dict_L3 = flip_graph_bfs(graph_L3, node_dict_L3, edge_dict_L3, dp_dict_L3, 1)
 
     cand_strains = {}
     temp_contigs = {}
@@ -446,12 +453,32 @@ def contig_classification(contig_dict: dict, min_cov, min_len):
             print("full-length contig found: ", cno, clen, ccov)
         else:
             temp_contigs[(cno, clen, ccov)] = (contig, flow)
-    
+    h_list = []
+    t_list = []
     for (cno, clen, ccov), (contig, flow) in temp_contigs.items():
-        start = contig[0]
-        end = contig[-1]
+        head = contig[0]
+        tail = contig[-1]
+        h_list.append(int(head))
+        t_list.append(int(tail))
+        print("contig: ", cno, clen, ccov, " head: ", head, " tail: ", tail)
+    print("head list: ", h_list)
+    print("tail list: ", t_list)
 
-    
+
+    # find pair-wise distance among contigs
+    l = len(h_list)
+    dist_list = [[None for i in range(l)] for j in range(l)]
+    for i in range(l):
+        for j in range(l):
+            if i == j:
+                continue
+            dist_list[i][j] = (h_list[i], t_list[j])
+            # compte distance between ith head to tth tail
+
+
+    # dist_matrix = numpy.array(dist_list, dtype=object)
+    # print(dist_matrix)
+    print(dist_list)
     print("--------------------contig classification end--------------------")
     return
 

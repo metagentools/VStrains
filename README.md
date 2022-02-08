@@ -9,7 +9,8 @@ filename format: graph_L{x}.gfa, with x={0,1,2,3}
 level 0 graph: assembly graph directly from SPAdes
 level 1 graph: graph after spin the edges
 level 2 graph: full-length contig reduced graph
-level 3 graph: all contig reduced graph
+level 3 graph: all contig reduced graph, with partial-contig head&tail node remain
+level 4 graph: all contig reduced graph
 
 
 Methods & Procedure

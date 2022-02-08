@@ -1,5 +1,17 @@
 ## The project is aiming to construct full-length haplotype from metagenomic environment, using pair-end reads
 
+Assumption:
+
+No duplicate edges between two nodes
+
+graph level:
+filename format: graph_L{x}.gfa, with x={0,1,2,3}
+level 0 graph: assembly graph directly from SPAdes
+level 1 graph: graph after spin the edges
+level 2 graph: full-length contig reduced graph
+level 3 graph: all contig reduced graph
+
+
 Methods & Procedure
 
 1. First, we assemble the input sequence reads by state-of-art assembly tool SPAdes [2] and result into a low error rate sequence De Bruijn graph, which is a directed variation graph with each node represent a short sequence segment and edge represent the overlap between two adjacent nodes. We choose De Bruijn graph as our assembled graph instead of contig variation graph presented in state-of-art approach is to keep the low information loss from the assembly step, use sequence reads to build graph instead of contigs can minimise the dependence for the assembled contig from assembly tools, which can also help us to tackle the cases when contigs cannot cover the full-length haplotype structure.

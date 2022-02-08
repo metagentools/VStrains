@@ -5,11 +5,16 @@ import gfapy
 import subprocess
 
 
-def gfa_to_graph(gfa: gfapy.Gfa):
+def gfa_to_graph(gfa_file):
     """
-    Convert gfa to graph
+    Convert assembly graph gfa file to graph
     Nodes: segment with corresponding 
     """
+
+    print("Parsing GFA format graph")
+    gfa = gfapy.Gfa(version='gfa2').from_file(filename=gfa_file)
+    print("Parsed gfa file length: {0}, version: {1}".format(len(gfa.lines), gfa.version))
+
     graph = Graph(directed=True)
 
     vprop_seq = graph.new_vertex_property("string", val="")
@@ -35,10 +40,12 @@ def gfa_to_graph(gfa: gfapy.Gfa):
     eprop_overlap = graph.new_edge_property("int", val=0)
     eprop_visited = graph.new_edge_property("int", val=0)
     eprop_flow = graph.new_edge_property("float", val=0.0)
+    eprop_color = graph.new_edge_property("string")
 
     graph.ep.overlap = eprop_overlap
     graph.ep.visited = eprop_visited
     graph.ep.flow = eprop_flow
+    graph.ep.color = eprop_color
 
     # graph.list_properties()
     # S
@@ -86,67 +93,69 @@ def gfa_to_graph(gfa: gfapy.Gfa):
         # gfa format check
         assert overlap_len[-1] == 'M'
         graph.ep.overlap[e] = int(overlap_len[:-1])
-        # graph.ep.flow[e] = 0
-        # min(graph.vp.dp[u], graph.vp.dp[v])
-        edge_dict[(u,v)] = e
+        graph.ep.color[e] = 'black'
+
+        edge_dict[(seg_no_l, graph.vp.ori[u], seg_no_r, graph.vp.ori[v])] = e
         
     # # P
     # for path in gfa.paths:
     #     [line_type, path_no, seg_names, seg_overlap] = str(path).split("\t")
     return graph, node_dict, edge_dict, dp_dict
 
-def graph_to_gfa(graph: Graph, simp_node_dict: dict, edge_dict: dict):
+def graph_to_gfa(graph: Graph, simp_node_dict: dict, edge_dict: dict, min_cov, filename):
     """
-    store the swapped graph in acc_graph.gfa.
+    store the swapped graph in simplifed_graph.
     """
-    subprocess.check_call("rm -rf {0} && mkdir {0} && echo "" > {1}".format(
-    "acc", "acc/acc_graph.gfa"), shell=True)
+    subprocess.check_call("echo "" > {0}".format(
+    filename), shell=True)
     
     def to_ori(i):
         return '+' if i == 1 else '-'
-    with open("acc/acc_graph.gfa", 'w') as gfa:
-        ids = []
-        for v in simp_node_dict.values():
+    
+    id_record = []
+    dp_record = []
 
-            if graph.vp.color[v] == 'black' and graph.vp.dp[v] > 500.0:
-                if graph.vp.dp[v] > 500.0:
-                    print(graph.vp.dp[v])
-                    ids.append(int(graph.vp.id[v]))
+    with open(filename, 'w') as gfa:
+        for v in simp_node_dict.values():
+            if graph.vp.color[v] == 'black' and graph.vp.dp[v] > min_cov:
+                
+                id_record.append(int(graph.vp.id[v]))
+                dp_record.append(int(graph.vp.dp[v]))
+                
                 name = graph.vp.id[v]
                 gfa.write("S\t{0}\t{1}\tDP:f:{2}\tKC:i:{3}\n".format
                 (name, graph.vp.seq[v], graph.vp.dp[v], graph.vp.kc[v]))
-        for (u, v), e in edge_dict.items():
-            # print_edge(graph, e, "picked edge")
-            name_u = graph.vp.id[u]
-            node_u = simp_node_dict[name_u] if name_u in simp_node_dict else None
-            name_v = graph.vp.id[v]
-            node_v = simp_node_dict[name_v] if name_v in simp_node_dict else None
+
+        for (u,v), e in edge_dict.items():
+            node_u = simp_node_dict[u] if u in simp_node_dict else None
+            node_v = simp_node_dict[v] if v in simp_node_dict else None
 
             if node_u == None or node_v == None:
                 continue
             if graph.vp.color[node_u] != 'black' or graph.vp.color[node_v] != 'black':
                 continue
-            if graph.vp.dp[node_u] <= 500 or graph.vp.dp[node_v] <= 500:
+            if graph.vp.dp[node_u] <= min_cov or graph.vp.dp[node_v] <= min_cov or graph.ep.flow[e] <= min_cov:
                 continue
-            # if graph.ep.flow[e] != 0.0:
-            #     continue
+
             gfa.write("L\t{0}\t{1}\t{2}\t{3}\t{4}M\n".format
-            (name_u, to_ori(graph.vp.ori[u]), 
-            name_v, to_ori(graph.vp.ori[v]), 
+            (u, to_ori(graph.vp.ori[node_u]), 
+            v, to_ori(graph.vp.ori[node_v]), 
             graph.ep.overlap[e]))
         gfa.close()
-    print("acc graph is stored")
-    print(ids)
+    print("--------------------", filename, "is stored--------------------")
+    print(id_record)
+    print(dp_record)
     return 0
 
+# FIXME fix the path
 def map_ref_to_graph(ref, graph: Graph, simp_node_dict: dict):
     """
     map reference strain to the graph, debug only
-    assumption: graph is stored in acc/acc_graph.gfa, 
+    assumption: graph is stored in acc/simplifed_graph, 
     """
     if not ref:
         return -1
-    with open("acc/acc_graph.gfa", 'r') as gfa:
+    with open("acc/simplifed_graph", 'r') as gfa:
         with open("acc/gfa_to_fq.fq", 'w') as fq:
             for Line in gfa:
                 splited = Line.split('\t')
@@ -183,7 +192,8 @@ def map_ref_to_graph(ref, graph: Graph, simp_node_dict: dict):
     #         print("-------------------")
     return strain_dict
 
-def get_contig(graph: Graph, contig_file, simp_node_dict: dict, edge_dict: dict, min_cov=1000, min_node=5):
+
+def get_contig(graph: Graph, contig_file, simp_node_dict: dict, edge_dict: dict, min_cov, min_node=5):
     """
     Map SPAdes's contig to the graph, return all the contigs, with dict
     """
@@ -217,8 +227,8 @@ def get_contig(graph: Graph, contig_file, simp_node_dict: dict, edge_dict: dict,
                 continue
 
             # select contig from single orientation
-            e1 = (simp_node_dict[contigs[0]],simp_node_dict[contigs[1]])
-            e1_r = (simp_node_dict[contigs_rev[0]], simp_node_dict[contigs_rev[1]])
+            e1 = (contigs[0],contigs[1])
+            e1_r = (contigs_rev[0], contigs_rev[1])
             c = []
             if e1 not in edge_dict and e1_r not in edge_dict:
                 print("edge is not exist in both direction, error handling, TODO")
@@ -231,9 +241,7 @@ def get_contig(graph: Graph, contig_file, simp_node_dict: dict, edge_dict: dict,
 
             edge_flow = []
             for i in range(len(c)-1):
-                u = simp_node_dict[c[i]]
-                v = simp_node_dict[c[i+1]]
-                e = edge_dict[(u,v)]
+                e = edge_dict[(c[i],c[i+1])]
                 f = graph.ep.flow[e]
                 edge_flow.append(f)
 
@@ -255,3 +263,6 @@ def contig_to_seq(graph: Graph, contig: list, contig_name, simp_node_dict: dict,
 
 def reverse_seq(seq: str):
     return ''.join({'A': 'T', 'T': 'A', 'C': 'G', 'G': 'C'}[x] for x in seq[::-1])
+
+def simplify_edge_dict():
+    return 

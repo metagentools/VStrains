@@ -20,7 +20,7 @@ import argparse
 import gfapy
 import numpy
 
-from graph_converter import gfa_to_graph, graph_to_gfa, map_ref_to_graph, get_contig, contig_to_seq, simplify_edge_dict
+from graph_converter import gfa_to_graph, graph_to_gfa, map_ref_to_graph, get_contig, contig_flow, simplify_edge_dict
 
 usage = "Construct haplotypes using divide-and-conquer method"
 author = "Runpeng Luo"
@@ -31,6 +31,8 @@ def main():
     parser.add_argument('-c', '--contig', dest='contig_file', type=str, help='contig file from SPAdes, paths format')
     parser.add_argument('-mincov' '--minimum_coverage', dest='min_cov', type=int, default=500, help=("minimum coverage for strains"))
     parser.add_argument('-minlen', '--minimum_strain_length', dest='min_len', default=8000, type=int, help=("minimum strain length"))
+    parser.add_argument('-maxlen', '--maximum_strain_length', dest='max_len', default=11000, type=int, help=("maximum strain length"))
+    parser.add_argument('-overlap', '--vertex_overlap', dest='overlap', default=127, type=int, help=("adjacent vertex overlap in the graph"))
     parser.add_argument('-ref', "--reference_fa", dest='ref_file', type=str, help='reference strain, fasta format, debug only')
     # parser.add_argument('-f', '--forward', dest='forward', type=str, required=True, help='Forward reads, fastq format')
     # parser.add_argument('-r', '--reverse', dest='reverse', type=str, required=True, help='Reverse reads, fastq format')
@@ -48,6 +50,8 @@ def main():
 
     graph, simp_node_dict, simp_edge_dict = flip_graph_bfs(graph, node_dict, edge_dict, dp_dict.copy(), 1)
 
+    graph_to_gfa(graph, simp_node_dict, simp_edge_dict, 0, "acc/graph_L1.gfa")
+
     assign_edge_flow(graph, simp_node_dict, simp_edge_dict)
 
     contig_dict = get_contig(graph, args.contig_file, simp_node_dict, simp_edge_dict, args.min_cov)
@@ -60,7 +64,7 @@ def main():
 
     graph_reduction(graph, contig_dict, simp_node_dict, simp_edge_dict, args.min_cov, args.min_len)
 
-    contig_classification(contig_dict, args.min_cov, args.min_len)
+    contig_classification(contig_dict, args.min_cov, args.min_len, args.overlap)
 
 def flip_graph_bfs(graph: Graph, node_dict: dict, edge_dict: dict, dp_dict: dict, init_ori):
     """
@@ -247,12 +251,15 @@ def assign_edge_flow(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict):
             w = graph.vp.dp[node]
             if node.in_degree() == 1:
                 for e in node.in_edges():
-                    graph.ep.flow[e] = w
-                    un_assigned_edge = un_assigned_edge - 1
+                    if graph.ep.flow[e] == 0.0:
+                        graph.ep.flow[e] = w
+                        un_assigned_edge = un_assigned_edge - 1
             if node.out_degree() == 1:
                 for e in node.out_edges():
-                    graph.ep.flow[e] = w
-                    un_assigned_edge = un_assigned_edge - 1
+                    if graph.ep.flow[e] == 0.0:
+                        graph.ep.flow[e] = w
+                        un_assigned_edge = un_assigned_edge - 1
+    print("un-assigned edges after init iteration : ", un_assigned_edge)
 
     # converage iteration
     converage_flag = 0
@@ -282,12 +289,14 @@ def assign_edge_flow(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict):
 
             if in_d == 1:
                 for e in in_e:
-                    graph.ep.flow[e] = in_w
-                    un_assigned_edge = un_assigned_edge - 1
+                    if graph.ep.flow[e] == 0.0:
+                        graph.ep.flow[e] = in_w
+                        un_assigned_edge = un_assigned_edge - 1
             if out_d == 1:
                 for e in out_e:
-                    graph.ep.flow[e] = out_w
-                    un_assigned_edge = un_assigned_edge - 1
+                    if graph.ep.flow[e] == 0.0:
+                        graph.ep.flow[e] = out_w
+                        un_assigned_edge = un_assigned_edge - 1
         if converage_flag == un_assigned_edge:
             break
         else:
@@ -334,11 +343,76 @@ def assign_edge_flow(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict):
                 print("v_flow_remain: ", v_flow_remain, " v_degree: ", v_degree)
             else:
                 print("manual assigned edge: ", graph.vp.id[u], " -> ", graph.vp.id[v], assign_flow)
-                un_assigned_edge = un_assigned_edge - 1
-                graph.ep.flow[e] = assign_flow
+                if graph.ep.flow[e] == 0.0:
+                    un_assigned_edge = un_assigned_edge - 1
+                    graph.ep.flow[e] = assign_flow
 
     print("un-assigned edges after manual assign iteration : ", un_assigned_edge)
     print("-----------------------assign edge flow end--------------------")
+
+def contig_reduction(graph: Graph, contig, ccov, clen, simp_node_dict: dict, simp_edge_dict: dict, cno, min_cov, min_len):
+    """
+    reduce and update the graph by given contig
+    """
+    print("*---Contig: ", cno, clen, ccov)
+    adj_index = 1
+    for node in contig:
+        if adj_index >= len(contig):
+            break
+        adj_node = contig[adj_index]
+
+        u = simp_node_dict[node] if node in simp_node_dict else None
+        v = simp_node_dict[adj_node] if adj_node in simp_node_dict else None
+        e = simp_edge_dict[(node,adj_node)] if (node,adj_node) in simp_edge_dict else None 
+
+        # edge may be eliminated from previous execution already
+        if u == None or v == None or e == None:
+            if e != None:
+                graph.ep.flow[e] = 0
+                graph.ep.color[e] = 'gray'
+                simp_edge_dict.pop((node,adj_node))
+                print_edge(graph, e, "edge been removed due to either u or v is removed")
+            else:
+                print("edge: ", node, " -> ", adj_node, "already been removed")
+            continue
+
+        print_edge(graph, e, "current edge eval")
+        # reduce the depth for involving edge
+        if graph.ep.flow[e] - ccov <= min_cov:
+            graph.ep.flow[e] = 0
+            graph.ep.color[e] = 'gray'
+            simp_edge_dict.pop((node,adj_node))
+            print_edge(graph, e, "edge been removed")
+        else:
+            graph.ep.flow[e] = graph.ep.flow[e] - ccov
+
+        # reduce the depth for involving node, gray color for forbiddened node
+        if graph.vp.dp[u] - ccov <= min_cov:
+            graph.vp.dp[u] = 0
+            graph.vp.color[u] = 'gray'
+            simp_node_dict.pop(node)
+            print("node ", node, "been removed")
+        else:
+            graph.vp.dp[u] = graph.vp.dp[u] - ccov
+
+        # last node in the contig, reduce its depth
+        if adj_index + 1 == len(contig):
+            if graph.vp.dp[v] - ccov <= min_cov: 
+                graph.vp.dp[v] = 0
+                graph.vp.color[v] = 'gray'
+                simp_node_dict.pop(adj_node)
+                print("node ", adj_node, "been removed")
+            else:
+                graph.vp.dp[v] = graph.vp.dp[v] - ccov
+        
+        # update edges
+        if (graph.vp.color[u] == 'gray' or graph.vp.color[v] == 'gray') and (node,adj_node) in simp_edge_dict:
+            graph.ep.flow[e] = 0
+            graph.ep.color[e] = 'gray'
+            simp_edge_dict.pop((node,adj_node))
+            print_edge(graph, e, "edge been removed in the final step")
+        adj_index = adj_index + 1
+    return
 
 def graph_reduction(graph: Graph, contig_dict: dict, simp_node_dict: dict, simp_edge_dict: dict, min_cov, min_len):
     """
@@ -346,72 +420,9 @@ def graph_reduction(graph: Graph, contig_dict: dict, simp_node_dict: dict, simp_
     """
 
     print("-------------------------graph reduction----------------------")
-    def contig_reduction(graph: Graph, contig, ccov, clen, simp_node_dict: dict, simp_edge_dict: dict, min_cov, min_len):
-        print("*---Contig: ", cno, clen, ccov)
-        adj_index = 1
-        for node in contig:
-            if adj_index >= len(contig):
-                break
-            adj_node = contig[adj_index]
-
-            u = simp_node_dict[node] if node in simp_node_dict else None
-            v = simp_node_dict[adj_node] if adj_node in simp_node_dict else None
-            e = simp_edge_dict[(node,adj_node)] if (node,adj_node) in simp_edge_dict else None 
-
-            # edge may be eliminated from previous execution already
-            if u == None or v == None or e == None:
-                if e != None:
-                    graph.ep.flow[e] = 0
-                    graph.ep.color[e] = 'gray'
-                    simp_edge_dict.pop((node,adj_node))
-                    print_edge(graph, e, "edge been removed due to either u or v is removed")
-                else:
-                    print("edge: ", node, " -> ", adj_node, "already been removed")
-                continue
-            
-
-            print_edge(graph, e, "current edge eval")
-
-            # reduce the depth for involving edge
-            if graph.ep.flow[e] - ccov <= min_cov:
-                graph.ep.flow[e] = 0
-                graph.ep.color[e] = 'gray'
-                simp_edge_dict.pop((node,adj_node))
-                print_edge(graph, e, "edge been removed")
-            else:
-                graph.ep.flow[e] = graph.ep.flow[e] - ccov
-
-            # reduce the depth for involving node, gray color for forbiddened node
-            if graph.vp.dp[u] - ccov <= min_cov:
-                graph.vp.dp[u] = 0
-                graph.vp.color[u] = 'gray'
-                simp_node_dict.pop(node)
-                print("node ", node, "been removed")
-            else:
-                graph.vp.dp[u] = graph.vp.dp[u] - ccov
-
-            # last node in the contig, reduce its depth
-            if adj_index + 1 == len(contig):
-                if graph.vp.dp[v] - ccov <= min_cov: 
-                    graph.vp.dp[v] = 0
-                    graph.vp.color[v] = 'gray'
-                    simp_node_dict.pop(adj_node)
-                    print("node ", adj_node, "been removed")
-                else:
-                    graph.vp.dp[v] = graph.vp.dp[v] - ccov
-            
-            # update edges
-            if (graph.vp.color[u] == 'gray' or graph.vp.color[v] == 'gray') and (node,adj_node) in simp_edge_dict:
-                graph.ep.flow[e] = 0
-                graph.ep.color[e] = 'gray'
-                simp_edge_dict.pop((node,adj_node))
-                print_edge(graph, e, "edge been removed in the final step")
-            adj_index = adj_index + 1
-        return
-    
     for (cno, clen, ccov), (contig,_) in contig_dict.items():
         if clen >= min_len:
-            contig_reduction(graph, contig, ccov, clen, simp_node_dict, simp_edge_dict, min_cov, min_len)    
+            contig_reduction(graph, contig, ccov, clen, simp_node_dict, simp_edge_dict, cno, min_cov, min_len)    
     # store level 2 graph
     graph_to_gfa(graph, simp_node_dict, simp_edge_dict, min_cov, "acc/graph_L2.gfa")
 
@@ -419,7 +430,7 @@ def graph_reduction(graph: Graph, contig_dict: dict, simp_node_dict: dict, simp_
         if clen < min_len:
             # keep the head&tail of the contig
             # contig = contig[1:-1]
-            contig_reduction(graph, contig, ccov, clen, simp_node_dict, simp_edge_dict, min_cov, min_len)
+            contig_reduction(graph, contig, ccov, clen, simp_node_dict, simp_edge_dict, cno, min_cov, min_len)
     # store level 3 graph
     graph_to_gfa(graph, simp_node_dict, simp_edge_dict, min_cov, "acc/graph_L3.gfa")
 
@@ -435,58 +446,127 @@ def graph_reduction(graph: Graph, contig_dict: dict, simp_node_dict: dict, simp_
     print("-----------------------graph reduction end--------------------")
     return 0
 
-def contig_classification(contig_dict: dict, min_cov, min_len):
+def path_len(graph: Graph, path, overlap):
+    lens = [len(graph.vp.seq[u]) for u in path]
+    return sum(lens) - overlap * (len(lens) - 1) if len(lens) > 0 else 0
+
+def distance_search(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, source, sink, overlap: int):
+    """
+    Compute minimal distance and its path between source node and sink node
+    """
+
+    def dfs_helper(graph: graph, u, sink, visited):
+        if graph.vp.id[u] == sink:
+            return [u]
+        elif u.out_degree() == 0:
+            return None
+        else:
+            rtn = []
+            for v in u.out_neighbors():
+                if not visited[v]:
+                    visited[v] = True
+                    cmp = dfs_helper(graph, v, sink, visited)
+                    if cmp != None:
+                        # path lead to sink
+                        cmp.insert(0, u)
+                        if len(rtn) == 0:
+                            rtn = cmp
+                        else:
+                            rtn = rtn if path_len(graph, cmp, overlap) > path_len(graph, rtn, overlap) else cmp
+                    visited[v] = False
+        return rtn
+    print("------------------------------------------------------")
+    print("source: ", source, "sink: ", sink)
+    s_path = None
+    s_len = 0
+    if source not in simp_node_dict or sink not in simp_node_dict:
+        print("source/sink not found, error -1")
+    elif simp_node_dict[source].out_degree() == 0:
+        print("source has 0 out degree")
+    elif simp_node_dict[sink].in_degree() == 0:
+        print("sink has 0 in degree")
+    else:     
+        visited = {}
+        for u in graph.vertices():
+            visited[u] = False
+        u = simp_node_dict[source]
+
+        s_path = dfs_helper(graph, u, sink, visited)
+        if len(s_path) >= 2:
+            s_path = s_path[1:-1]
+            s_len = path_len(graph, s_path, overlap)
+            print("shortest path found")
+        else:
+            s_path = None
+            print("error path found")
+    print("------------------------------------------------------")
+    return s_path, s_len
+
+#FIXME
+def contig_classification(contig_dict: dict, min_cov, min_len, overlap):
 
     print("-----------------------contig classifcation--------------------")
 
     graph_L2, node_dict_L2, edge_dict_L2, dp_dict_L2  = gfa_to_graph("acc/graph_L2.gfa")
     graph_L2, simp_node_dict_L2, simp_edge_dict_L2 = flip_graph_bfs(graph_L2, node_dict_L2, edge_dict_L2, dp_dict_L2, 1)
-    
-    graph_L3, node_dict_L3, edge_dict_L3, dp_dict_L3 = gfa_to_graph("acc/graph_L3.gfa")
-    graph_L3, simp_node_dict_L3, simp_edge_dict_L3 = flip_graph_bfs(graph_L3, node_dict_L3, edge_dict_L3, dp_dict_L3, 1)
+    assign_edge_flow(graph_L2, simp_node_dict_L2, simp_edge_dict_L2)
 
-    cand_strains = {}
-    temp_contigs = {}
+    # graph_L3, node_dict_L3, edge_dict_L3, dp_dict_L3 = gfa_to_graph("acc/graph_L3.gfa")
+    # graph_L3, simp_node_dict_L3, simp_edge_dict_L3 = flip_graph_bfs(graph_L3, node_dict_L3, edge_dict_L3, dp_dict_L3, 1)
+
+    cand_strains_dict = {}
+    temp_contigs_dict = {}
     for (cno, clen, ccov), (contig, flow) in contig_dict.items():
         if clen > min_len:
-            cand_strains[(cno, clen, ccov)] = (contig, flow)
+            cand_strains_dict[(cno, clen, ccov)] = (contig, flow)
             print("full-length contig found: ", cno, clen, ccov)
         else:
-            temp_contigs[(cno, clen, ccov)] = (contig, flow)
+            temp_contigs_dict[(cno, clen, ccov)] = (contig, flow)
+    
     h_list = []
     t_list = []
-    for (cno, clen, ccov), (contig, flow) in temp_contigs.items():
+    for (cno, clen, ccov), (contig, flow) in temp_contigs_dict.items():
         head = contig[0]
         tail = contig[-1]
-        h_list.append(int(head))
-        t_list.append(int(tail))
+        h_list.append((head, (cno, clen, ccov)))
+        t_list.append((tail, (cno, clen, ccov)))
         print("contig: ", cno, clen, ccov, " head: ", head, " tail: ", tail)
     print("head list: ", h_list)
     print("tail list: ", t_list)
 
 
-    # find pair-wise distance among contigs
+    # find pair-wise shortest path distance among contigs
     l = len(h_list)
-    dist_list = [[None for i in range(l)] for j in range(l)]
+    dist_matrix = {}
     for i in range(l):
         for j in range(l):
             if i == j:
                 continue
-            dist_list[i][j] = (h_list[i], t_list[j])
-            # compte distance between ith head to tth tail
+            s_path, s_len = distance_search(graph_L2, simp_node_dict_L2, simp_edge_dict_L2, t_list[i][0], h_list[j][0], overlap)
+            if s_path != None:
+                dist_matrix[(t_list[i][1], h_list[j][1])] = (s_path, s_len)
+            # compute distance between ith head to tth tail (distance = len * #nodes in the path - #nodes * overlap)
+    
+    for ((tail_cno, tail_clen, tail_ccov), (head_cno, head_clen, head_ccov)), (s_path, s_len) in dist_matrix.items():
+        # each spot consist of row-th tail to col-th head shortest distance.
+        print("Tail Contig: ", tail_cno, " -> Head Contig: ", head_cno)
+        s_path_ids = [graph_L2.vp.id[v] for v in s_path]
+        s_path_ids_int = [int(graph_L2.vp.id[v]) for v in s_path]
+        print(s_path_ids_int)
+        print("Length: ", s_len)
+        (tail_contig, tail_edge_flow) = temp_contigs_dict[(tail_cno, tail_clen, tail_ccov)]
+        (head_contig, head_edge_flow) = temp_contigs_dict[(head_cno, head_clen, head_ccov)]
+        s_path_edge_flow = contig_flow(graph_L2, simp_edge_dict_L2, s_path_ids)
+
+        tail_mu = numpy.mean(tail_edge_flow)
+        head_mu = numpy.mean(head_edge_flow)
+        s_path_mu = numpy.mean(s_path_edge_flow) if len(s_path_edge_flow) != 0 else 0
+        print("coverage check: head contig eflow: ",head_mu, " s path eflow: ", s_path_mu, " tail contig eflow: ", tail_mu)
+        print("------------------------------------------------------")
 
 
-    # dist_matrix = numpy.array(dist_list, dtype=object)
-    # print(dist_matrix)
-    print(dist_list)
     print("--------------------contig classification end--------------------")
     return
-
-# def build_residue_graph(graph: Graph, simp_node_dict: dict, edge_dict: dict):
-#     for u in graph.vertices():
-
-#     for e in graph.edges():
-        
 
 if __name__ == "__main__":
     main()

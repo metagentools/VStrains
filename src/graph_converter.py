@@ -117,10 +117,10 @@ def graph_to_gfa(graph: Graph, simp_node_dict: dict, edge_dict: dict, min_cov, f
 
     with open(filename, 'w') as gfa:
         for v in simp_node_dict.values():
-            if graph.vp.color[v] == 'black' and graph.vp.dp[v] > min_cov:
+            if graph.vp.color[v] == 'black' and graph.vp.dp[v] >= min_cov:
                 
                 id_record.append(int(graph.vp.id[v]))
-                dp_record.append(int(graph.vp.dp[v]))
+                dp_record.append((int(graph.vp.id[v]), int(graph.vp.dp[v])))
                 
                 name = graph.vp.id[v]
                 gfa.write("S\t{0}\t{1}\tDP:f:{2}\tKC:i:{3}\n".format
@@ -134,7 +134,7 @@ def graph_to_gfa(graph: Graph, simp_node_dict: dict, edge_dict: dict, min_cov, f
                 continue
             if graph.vp.color[node_u] != 'black' or graph.vp.color[node_v] != 'black':
                 continue
-            if graph.vp.dp[node_u] <= min_cov or graph.vp.dp[node_v] <= min_cov or graph.ep.flow[e] <= min_cov:
+            if graph.vp.dp[node_u] < min_cov or graph.vp.dp[node_v] < min_cov or graph.ep.flow[e] < min_cov:
                 continue
 
             gfa.write("L\t{0}\t{1}\t{2}\t{3}\t{4}M\n".format
@@ -192,6 +192,29 @@ def map_ref_to_graph(ref, graph: Graph, simp_node_dict: dict):
     #         print("-------------------")
     return strain_dict
 
+def contig_overlap(contig_dict: dict, contig_file):
+    """
+    Construct an overlap matrix among all the non-full length contig
+    """
+    subprocess.check_call("/Users/luorunpeng/opt/miniconda3/envs/vg-flow-env/bin/minimap2 {0} {1} > {2}".format(
+        contig_file, contig_file, "acc/contig_overlap.paf"), shell=True)
+    return
+
+def contig_dict_to_fq(graph: Graph, contig_dict: dict, simp_node_dict: dict, overlap_len, contig_file, min_len):
+    """
+    Store contig dict into fastq file
+    """
+    subprocess.check_call("echo "" > {0}".format(
+    contig_file), shell=True)
+
+    with open(contig_file, 'w') as fq:
+        for (cno, clen, ccov), (contig, _) in contig_dict.items():
+            contig_name = ">" + str(cno) + "_" + str(clen) + "_" + str(ccov) + "\n"
+            seq = contig_to_seq(graph, contig, contig_name, simp_node_dict, overlap_len) + "\n"
+            fq.write(contig_name)
+            fq.write(seq)
+        fq.close()
+
 
 def get_contig(graph: Graph, contig_file, simp_node_dict: dict, edge_dict: dict, min_cov, min_node=5):
     """
@@ -239,16 +262,22 @@ def get_contig(graph: Graph, contig_file, simp_node_dict: dict, edge_dict: dict,
             else:
                 print("both direction edge, error edge case, TODO")
 
-            edge_flow = []
-            for i in range(len(c)-1):
-                e = edge_dict[(c[i],c[i+1])]
-                f = graph.ep.flow[e]
-                edge_flow.append(f)
-
+            edge_flow =  contig_flow(graph, edge_dict, c)
             contig_dict[(cno, clen, ccov)] = (c,edge_flow)
         contigs_file.close()
 
     return contig_dict
+
+def contig_flow(graph: Graph, edge_dict: dict, contig):
+    """
+    edge flow for the contig
+    """
+    edge_flow = []
+    for i in range(len(contig)-1):
+        e = edge_dict[(contig[i],contig[i+1])]
+        f = graph.ep.flow[e]
+        edge_flow.append(f)
+    return edge_flow
 
 def contig_to_seq(graph: Graph, contig: list, contig_name, simp_node_dict: dict, overlap_len):
     seq = ""
@@ -258,7 +287,7 @@ def contig_to_seq(graph: Graph, contig: list, contig_name, simp_node_dict: dict,
             seq = seq + graph.vp.seq[c]
         else:
             seq = seq + (graph.vp.seq[c])[:-overlap_len]
-    print(contig_name, " ", seq)
+    # print(contig_name, " ", seq)
     return seq
 
 def reverse_seq(seq: str):

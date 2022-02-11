@@ -234,6 +234,30 @@ def max_flow(graph: Graph, simp_node_dict: dict, edge_dict: dict, contig_dict: d
     return
 
 
+def graph_dfs(graph: Graph, source):
+    """
+    Count the maximum depth path the source node can reach via directed edge in the graph
+    """
+    visited = {}
+    for u in graph.vertices():
+        visited[u] = False
+    
+    def dfs_helper(graph: Graph, u, visited):
+        if u.out_degree() == 0:
+            return [u]
+        else:
+            rtn = []
+            for v in u.out_neighbors():
+                # print_vertex(graph, v)
+                if not visited[v]:
+                    visited[v] = True
+                    cmp = dfs_helper(graph, v, visited)
+                    cmp.insert(0, (v, len(graph.vp.seq[v])))
+                    rtn = rtn if len(cmp) < len(rtn) else cmp
+            return rtn
+
+    return dfs_helper(graph, source, visited)
+
 """
 assign edge flow
 """

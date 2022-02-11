@@ -143,8 +143,8 @@ def graph_to_gfa(graph: Graph, simp_node_dict: dict, edge_dict: dict, min_cov, f
             graph.ep.overlap[e]))
         gfa.close()
     print("--------------------", filename, "is stored--------------------")
-    print(id_record)
-    print(dp_record)
+    # print(id_record)
+    # print(dp_record)
     return 0
 
 # FIXME fix the path
@@ -216,7 +216,7 @@ def contig_dict_to_fq(graph: Graph, contig_dict: dict, simp_node_dict: dict, ove
         fq.close()
 
 
-def get_contig(graph: Graph, contig_file, simp_node_dict: dict, edge_dict: dict, min_cov, min_node=5):
+def get_contig(graph: Graph, contig_file, simp_node_dict: dict, edge_dict: dict, min_cov, min_node=3):
     """
     Map SPAdes's contig to the graph, return all the contigs, with dict
     """

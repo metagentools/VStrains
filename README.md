@@ -11,6 +11,7 @@ level 0 graph: assembly graph directly from SPAdes
 level 1 graph: graph after spin the edges
 level 2 graph: full-length contig reduced graph
 level 3 graph: all contig reduced graph
+level 4 graph: level 2 graph, with concatenated candidate strain be reduced
 
 
 Methods & Procedure

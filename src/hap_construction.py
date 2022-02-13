@@ -33,7 +33,7 @@ def main():
     parser.add_argument('-c', '--contig', dest='contig_file', type=str, help='contig file from SPAdes, paths format')
     parser.add_argument('-mincov' '--minimum_coverage', dest='min_cov', type=int, default=100, help=("minimum coverage for strains"))
     parser.add_argument('-minlen', '--minimum_strain_length', dest='min_len', default=8000, type=int, help=("minimum strain length"))
-    parser.add_argument('-maxlen', '--maximum_strain_length', dest='max_len', default=11000, type=int, help=("maximum strain length"))
+    parser.add_argument('-maxlen', '--maximum_strain_length', dest='max_len', default=10000, type=int, help=("maximum strain length"))
     parser.add_argument('-overlap', '--vertex_overlap', dest='overlap', default=127, type=int, help=("adjacent vertex overlap in the graph"))
     parser.add_argument('-ref', "--reference_fa", dest='ref_file', type=str, help='reference strain, fasta format, debug only')
     # parser.add_argument('-f', '--forward', dest='forward', type=str, required=True, help='Forward reads, fastq format')
@@ -422,6 +422,7 @@ def contig_reduction(graph: Graph, contig, ccov, clen, simp_node_dict: dict, sim
 def graph_reduction(graph: Graph, contig_dict: dict, simp_node_dict: dict, simp_edge_dict: dict, min_cov, min_len):
     """
     reduce the node/edge weight based on existing contig found by SPAdes.
+    only contig with minimum strain length satisfied be removed
     """
 
     print("-------------------------graph reduction----------------------")
@@ -431,33 +432,20 @@ def graph_reduction(graph: Graph, contig_dict: dict, simp_node_dict: dict, simp_
     # store level 2 graph
     graph_to_gfa(graph, simp_node_dict, simp_edge_dict, min_cov, "acc/graph_L2.gfa")
 
-    for (cno, clen, ccov), (contig,_) in contig_dict.items():
-        if clen < min_len:
-            # keep the head&tail of the contig
-            # contig = contig[1:-1]
-            contig_reduction(graph, contig, ccov, clen, simp_node_dict, simp_edge_dict, cno, min_cov)
-    # store level 3 graph
-    graph_to_gfa(graph, simp_node_dict, simp_edge_dict, min_cov, "acc/graph_L3.gfa")
-
-    # for (cno, clen, ccov), (contig,_) in contig_dict.items():
-    #     # if clen < min_len and cno == "5":
-    #         # keep the head&tail of the contig
-    #         contig_head = contig[0:2]
-    #         contig_reduction(graph, contig_head, ccov, clen, simp_node_dict, simp_edge_dict, min_cov, min_len)
-    #         contig_tail = contig[-2:]
-    #         contig_reduction(graph, contig_tail, ccov, clen, simp_node_dict, simp_edge_dict, min_cov, min_len)
-    # # store level 4 graph
-    # graph_to_gfa(graph, simp_node_dict, simp_edge_dict, min_cov, "acc/graph_L4.gfa")
     print("-----------------------graph reduction end--------------------")
     return 0
 
 def path_len(graph: Graph, path, overlap):
+    """
+    Find length of the linear path.
+    """
     lens = [len(graph.vp.seq[u]) for u in path]
     return sum(lens) - overlap * (len(lens) - 1) if len(lens) > 0 else 0
 
-def distance_search(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, source, sink, overlap: int):
+def distance_search(graph: Graph, simp_node_dict: dict, source, source_contig, sink, sink_contig, overlap: int):
     """
     Compute minimal distance and its path between source node and sink node
+    optimise the function with contig overlap check TODO
     """
 
     def dfs_helper(graph: graph, u, sink, visited):
@@ -504,6 +492,7 @@ def distance_search(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, so
             print("Path not found")
         elif len(s_path) >= 2:
             s_path = s_path[1:-1]
+            # compute directed path between ith tail to tth head (distance = len * #nodes in the path - (#nodes in the path - 1) * overlap)
             s_len = path_len(graph, s_path, overlap)
             print("shortest path found")
         else:
@@ -534,93 +523,60 @@ def contig_classification(contig_dict: dict, min_cov, min_len, max_len, overlap)
             print("full-length contig found: ", cno, clen, ccov)
         else:
             temp_contigs_dict[(cno, clen, ccov)] = (contig, flow)
-    
-    h_list = []
-    t_list = []
-    for (cno, clen, ccov), (contig, flow) in temp_contigs_dict.items():
-        head = contig[0]
-        tail = contig[-1]
-        h_list.append((head, (cno, clen, ccov)))
-        t_list.append((tail, (cno, clen, ccov)))
-        print("contig: ", cno, clen, ccov, " head: ", head, " tail: ", tail)
 
     # find pair-wise shortest path among contigs
-    l = len(h_list)
     dist_matrix = {}
-    for i in range(l):
-        for j in range(l):
-            if i == j:
+    for key_i, (contig_i, _) in temp_contigs_dict.items():
+        for key_j, (contig_j, _) in temp_contigs_dict.items():
+            if key_i == key_j:
                 continue
-            t = (temp_contigs_dict[t_list[i][1]])
-            h = (temp_contigs_dict[h_list[j][1]])
-            intersect = list(set(t[0]) & set(h[0]))
+            intersect = list(set(contig_i) & set(contig_j))
             if intersect != []:
-                print("Contig ",t_list[i][1][0], "-", "Contig ", h_list[j][1][0], "Intersection: ", intersect)
+                print("Contig ", key_i, "-", "Contig ", key_j, " Intersection: ", intersect)
                 continue
-            s_path, s_len = distance_search(graph_L2, simp_node_dict_L2, simp_edge_dict_L2, t_list[i][0], h_list[j][0], overlap)
+            s_path, s_len = distance_search(graph_L2, simp_node_dict_L2, contig_i[-1], contig_i, contig_j[0], contig_j, overlap)
             if s_path != None:
                 s_path_ids = [graph_L2.vp.id[v] for v in s_path]
-                s_path_edge_flow = contig_flow(graph_L2, simp_edge_dict_L2, s_path_ids)
-                s_path_mu = numpy.mean(s_path_edge_flow) if len(s_path_edge_flow) != 0 else 0
-                s_path_ids = [graph_L2.vp.id[v] for v in s_path]
-                dist_matrix[(t_list[i][1], h_list[j][1])] = (s_path, s_path_ids, s_len, s_path_edge_flow, s_path_mu)
-            # compute directed path between ith tail to tth head (distance = len * #nodes in the path - (#nodes in the path - 1) * overlap)
+                s_path_edge_flow = contig_flow(graph_L2, simp_edge_dict_L2, contig_i[-1] + s_path_ids + contig_j[0])
+                s_path_ccov = numpy.mean(s_path_edge_flow) if len(s_path_edge_flow) != 0 else 0
+                dist_matrix[(key_i, key_j)] = (s_path, s_path_ids, s_len, s_path_edge_flow, s_path_ccov)
     
     ccov_diff_cutoff = 1000
     concat_dic = []
-    for ((tail_cno, tail_clen, tail_ccov), (head_cno, head_clen, head_ccov)), (s_path, s_path_ids, s_len, s_path_edge_flow, s_path_mu) in dist_matrix.items():
+    for ((tail_cno, tail_clen, tail_ccov), (head_cno, head_clen, head_ccov)), (s_path, s_path_ids, s_len, s_path_edge_flow, s_path_ccov) in dist_matrix.items():
         print("------------------------------------------------------")
         print("Tail Contig: ", tail_cno, " -> Head Contig: ", head_cno)
+
         if ((head_cno, head_clen, head_ccov), (tail_cno, tail_clen, tail_ccov)) in dist_matrix:
             print("reverse concatentation exist")
-            print("Tail Contig: ", head_cno, " -> Head Contig: ", tail_cno)
         else:
-            print("reverse concatentation not exist")
+            print("linear concatentation exist")
     
         s_path_ids_int = [int(v) for v in s_path_ids]
-        print("path: ", s_path_ids_int)
-        print("shortest path length: ", s_len)
+        print("shortest path length: ", s_len, "path: ", s_path_ids_int)
+
         (tail_contig, tail_edge_flow) = temp_contigs_dict[(tail_cno, tail_clen, tail_ccov)]
         (head_contig, head_edge_flow) = temp_contigs_dict[(head_cno, head_clen, head_ccov)]
 
-        tail_mu = numpy.mean(tail_edge_flow)
-        head_mu = numpy.mean(head_edge_flow)
-        s_path_mu = numpy.mean(s_path_edge_flow) if len(s_path_edge_flow) != 0 else 0
-
-        ave_mu = (head_mu + tail_mu) / 2 if s_path_mu == 0.0 else (head_mu + tail_mu + s_path_mu) / 3
+        min_mu = min(head_ccov, tail_ccov, s_path_ccov) if s_path_ccov != 0.0 else min(head_ccov, tail_ccov)
         concat_len = head_clen + tail_clen - overlap if s_len == 0 else head_clen + s_len + tail_clen - overlap * 2
-        print("coverage: head contig eflow: ",head_mu, " s path eflow: ", s_path_mu, " tail contig eflow: ", tail_mu)
+        print("coverage: head contig eflow: ",head_ccov, " s path eflow: ", s_path_ccov, " tail contig eflow: ", tail_ccov)
         print("potential concatenated length: ", concat_len)
 
-        do_concat = False
-
+        # decide on cancatenation
         if concat_len > max_len:
             print("exceed maximum strain length")
         else:
-            print("length within upper bound, TODO")
-            if s_path_mu == 0.0:
-                if abs(head_mu - tail_mu) < ccov_diff_cutoff and ave_mu > min_cov:
-                    print("coverage match")
-                    do_concat = True
-                else:
-                    print("huge coverage difference found")
-            else:
-                if (abs(head_mu - tail_mu) < ccov_diff_cutoff 
-                    and abs(head_mu - s_path_mu) < ccov_diff_cutoff 
-                    and abs(tail_mu - s_path_mu) < ccov_diff_cutoff  
-                    and ave_mu > min_cov):
-
-                    print("coverage match")
-                    do_concat = True
-                else:
-                    print("huge coverage difference found")
-
-        if do_concat:
-            concat_dic.append(((tail_cno, tail_clen, tail_ccov), (head_cno, head_clen, head_ccov)))
+            print("length satisfied")
+            if min_mu > min_cov:
+                print("minimum coverage among 3 piece is higher than threshold cov value. ")
+                print("coverage satisfied")
+                concat_dic.append(((tail_cno, tail_clen, tail_ccov), (head_cno, head_clen, head_ccov)))
         print("------------------------------------------------------")
     
     #start concatenation
     concat_strain_dict = {}
+    concat_contig_dict = {}
     skip_key = set()
     for ((tail_cno, tail_clen, tail_ccov), (head_cno, head_clen, head_ccov)) in concat_dic:
         if ((head_cno, head_clen, head_ccov), (tail_cno, tail_clen, tail_ccov)) in skip_key:
@@ -629,6 +585,7 @@ def contig_classification(contig_dict: dict, min_cov, min_len, max_len, overlap)
             continue
         skip_key.add(((head_cno, head_clen, head_ccov), (tail_cno, tail_clen, tail_ccov)))
         skip_key.add(((tail_cno, tail_clen, tail_ccov), (head_cno, head_clen, head_ccov)))
+
         is_linear = False
         if ((head_cno, head_clen, head_ccov), (tail_cno, tail_clen, tail_ccov)) not in concat_dic:
             print("no reverse concatenation exists, potential lienar strain")
@@ -645,30 +602,33 @@ def contig_classification(contig_dict: dict, min_cov, min_len, max_len, overlap)
         print("Concatentate contigs: ", tail_cno, " <-> ", head_cno)
         concat_cno = tail_cno + "_" + head_cno
         overlap_count = 1 if s_len_l == 0 else 2
-        div = 2 if s_path_mu_l == 0.0 else 3
         if is_linear:
-            #linear concatenation
+            #linear strain concatenation
             concat_clen = tail_clen + s_len_l + head_clen - overlap_count * overlap
-            concat_ccov = (tail_ccov + s_path_mu_l + head_ccov) / div
+            concat_ccov = min(v for v in [head_ccov, tail_ccov, s_path_mu_l] if v > 0.0)
             concat_c = tail_contig + s_path_ids_l + head_contig
             concat_eflow = tail_edge_flow + s_path_edge_flow_l + head_edge_flow
         else:
-            #cyclic concatentation
+            #cyclic strain concatentation
             (s_path_r, s_path_ids_r, s_len_r, s_path_edge_flow_r, s_path_mu_r) = dist_matrix[((head_cno, head_clen, head_ccov), (tail_cno, tail_clen, tail_ccov))]
             overlap_count = overlap_count +1 if s_len_r == 0 else overlap_count + 2
-            div = div if s_path_mu_r == 0.0 else div + 1
 
             concat_clen = tail_clen + s_len_l + head_clen + s_len_r - overlap_count * overlap
-            concat_ccov = (tail_ccov + s_path_mu_l + head_ccov + s_path_mu_r) / div
+            concat_ccov = min(v for v in [head_ccov, tail_ccov, s_path_mu_l, s_path_mu_r] if v > 0.0)
             concat_c = tail_contig + s_path_ids_l + head_contig + s_path_ids_r
             concat_eflow = tail_edge_flow + s_path_edge_flow_l + head_edge_flow + s_path_edge_flow_r
-
-        concat_strain_dict[(concat_cno, concat_clen, concat_ccov)] = (concat_c, concat_eflow)
+        
+        if concat_clen > min_len:
+            concat_strain_dict[(concat_cno, concat_clen, concat_ccov)] = (concat_c, concat_eflow)
+        else:
+            concat_contig_dict[(concat_cno, concat_clen, concat_ccov)] = (concat_c, concat_eflow)
         
 
     for (cno, clen, ccov), (contig, eflow) in concat_strain_dict.items():
+        print("------------------------------------------------------")
         print_contig(cno, contig, "Cand concat strain")
         contig_reduction(graph_L2, contig, ccov, clen, simp_node_dict_L2, simp_edge_dict_L2, cno, min_cov)
+        print("------------------------------------------------------")
     graph_to_gfa(graph_L2, simp_node_dict_L2, simp_edge_dict_L2, min_cov, "acc/graph_L4.gfa")
     print("--------------------contig classification end--------------------")
     return

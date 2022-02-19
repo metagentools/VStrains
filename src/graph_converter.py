@@ -436,10 +436,10 @@ def contig_split(graph: Graph, cno, contig: list, simp_node_dict: dict, simp_edg
         sub = contig[s:x]
         if len(sub) >= min_node:
             cflow = contig_flow(graph, simp_edge_dict, sub)
-            ccov = numpy.mean(cflow)
+            ccov = numpy.mean(cflow) if len(cflow) != 0 else 0
             clen = path_len(graph, [simp_node_dict[node] for node in sub], overlap)
             print(clen)
-            contig_list.append((cno+"_"+str(idx), sub, clen, ccov))
+            contig_list.append((cno+"^"+str(idx), sub, clen, ccov))
             idx = idx + 1
         s = x
         for i in range(x, len(contig)):

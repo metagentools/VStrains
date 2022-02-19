@@ -60,17 +60,29 @@ def main():
 
     for cno, (contig, clen, ccov) in contig_dict.items():
         print_contig(cno, clen, ccov, contig)
+
     cand_strains_dict, temp_contigs_dict = graph_reduction(graph, contig_dict, simp_node_dict, simp_edge_dict, "acc/graph_L2.gfa", args.min_cov, args.min_len)
 
     graph_L2, simp_node_dict_L2, simp_edge_dict_L2 = gfa_to_graph("acc/graph_L2.gfa", init_ori=1)
     assign_edge_flow(graph_L2, simp_node_dict_L2, simp_edge_dict_L2)
+    graph_simplification(graph_L2, simp_node_dict_L2, simp_edge_dict_L2, args.min_cov)
     concat_strain_dict, concat_contig_dict = contig_classification(graph_L2, simp_node_dict_L2, simp_edge_dict_L2, temp_contigs_dict, "acc/graph_L3.gfa", args.min_cov, args.min_len, args.max_len, args.overlap)
     
-    graph_L3, simp_node_dict_L3, simp_edge_dict_L3 = gfa_to_graph("acc/graph_L3.gfa", 1)
-    assign_edge_flow(graph_L3, simp_node_dict_L3, simp_edge_dict_L3)
-    concat_strain_dict_2, concat_contig_dict_2 = contig_classification(graph_L3, simp_node_dict_L3, simp_edge_dict_L3, concat_contig_dict, "acc/graph_L4.gfa", args.min_cov, args.min_len, args.max_len, args.overlap)
+    # graph_L3, simp_node_dict_L3, simp_edge_dict_L3 = gfa_to_graph("acc/graph_L3.gfa", init_ori=1)
+    # assign_edge_flow(graph_L3, simp_node_dict_L3, simp_edge_dict_L3)
+    # graph_simplification(graph_L3, simp_node_dict_L3, simp_edge_dict_L3, args.min_cov)
+    # concat_strain_dict_2, concat_contig_dict_2 = contig_classification(graph_L3, simp_node_dict_L3, simp_edge_dict_L3, concat_contig_dict, "acc/graph_L4.gfa", args.min_cov, args.min_len, args.max_len, args.overlap)
 
-    contig_dict_to_fq(graph_L3, concat_contig_dict_2, simp_node_dict_L3, args.overlap, "acc/contig_overlap.fq")
+    graph_L1, simp_node_dict_L1, simp_edge_dict_L1 = gfa_to_graph("acc/graph_L1.gfa", init_ori=1)
+    assign_edge_flow(graph_L1, simp_node_dict_L1, simp_edge_dict_L1)
+    graph_simplification(graph_L2, simp_node_dict_L2, simp_edge_dict_L2, args.min_cov)
+
+    strain_dict = concat_strain_dict.copy()
+    # strain_dict.update(concat_strain_dict_2)
+    strain_dict.update(cand_strains_dict)
+
+    contig_dict_to_fq(graph_L1, strain_dict, simp_node_dict_L1, args.overlap, "acc/cand_strains.fq")
+    minimap_api(args.ref_file, "acc/cand_strains.fq", "acc/ref_map_cand_strain.paf")
 
 def graph_stat(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict):
     print("-------------------------graph stat----------------------")
@@ -505,11 +517,9 @@ def contig_classification(graph: Graph, simp_node_dict: dict, simp_edge_dict: di
         else:
             print("contig {0} is used or coverage is lower than threshold".format(cno))
     
-    # Only delete the contig if head/tail part is eliminated from l3 step, and also shrink 
-    # the contig to be valid
     for cno, [contig, clen, ccov] in list(concat_contig_dict.items()):
         concat_contig_dict.pop(cno)
-        contig_list = contig_split(graph, cno, contig, simp_node_dict, simp_edge_dict, overlap)
+        contig_list = contig_split(graph, cno, contig, simp_node_dict, simp_edge_dict, overlap) #FIXME
         if contig_list == []:
             print("No sub contig be found for original contig: ", cno)
         else:
@@ -518,7 +528,7 @@ def contig_classification(graph: Graph, simp_node_dict: dict, simp_edge_dict: di
                 if sub_cno in concat_contig_dict:
                     print("sub cno: ", sub_cno, " already exist, error")
                 else:
-                    concat_contig_dict[sub_cno] = (sub_contig, sub_clen, sub_ccov)
+                    concat_contig_dict[sub_cno] = [sub_contig, sub_clen, sub_ccov]
 
     for cno, [contig, clen, ccov] in concat_contig_dict.items():
         print("------------------------------------------------------")

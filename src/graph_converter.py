@@ -314,13 +314,10 @@ def map_ref_to_graph(ref_file, simp_node_dict: dict, simp_file):
         print("-------------------")
     return strain_dict
 
-def contig_overlap(contig_dict: dict, contig_file):
-    """
-    Construct an overlap matrix among all the non-full length contig
-    """
+def minimap_api(ref_file, fq_file, output_file):
     subprocess.check_call("/Users/luorunpeng/opt/miniconda3/envs/vg-flow-env/bin/minimap2 {0} {1} > {2}".format(
-        contig_file, contig_file, "acc/contig_overlap.paf"), shell=True)
-    return
+        ref_file, fq_file, output_file), shell=True)
+    return  
 
 def contig_dict_to_fq(graph: Graph, contig_dict: dict, simp_node_dict: dict, overlap_len, output_file, min_len=0):
     """
@@ -424,31 +421,53 @@ def contig_split(graph: Graph, cno, contig: list, simp_node_dict: dict, simp_edg
     contig_list = []
     s = 0
     idx = 0
+    print("contig len: ", len(contig))
     while s < len(contig):
         x = s
+        keep = False
         for i in range(s, len(contig)):
-            v = contig[i]
-            if v in simp_node_dict:
-                x = x + 1
+            u = contig[i]
+            if i < len(contig) - 1:
+                v = contig[i + 1]
+                if u in simp_node_dict:
+                    if (u,v) in simp_edge_dict:
+                        x = x + 1
+                    else:
+                        keep = True
+                        break
+                else:
+                    break
             else:
-                break
+                if u in simp_node_dict:
+                    x = x + 1
+                else:
+                    break
         # x will end up to removed node idx for the contig
-        sub = contig[s:x]
+        sub = contig[s:x + 1] if keep else contig[s:x]
+        print("sub start: ", contig[s], " sub end: ", contig[x-1])
         if len(sub) >= min_node:
             cflow = contig_flow(graph, simp_edge_dict, sub)
             ccov = numpy.mean(cflow) if len(cflow) != 0 else 0
             clen = path_len(graph, [simp_node_dict[node] for node in sub], overlap)
-            print(clen)
             contig_list.append((cno+"^"+str(idx), sub, clen, ccov))
             idx = idx + 1
+
         s = x
         for i in range(x, len(contig)):
-            v = contig[i]
-            if v not in simp_node_dict:
-                s = s + 1
+            u = contig[i]
+            if i < len(contig) - 1:
+                v = contig[i + 1]
+                if u not in simp_node_dict or (u,v) not in simp_edge_dict:
+                    s = s + 1
+                else:
+                    break
             else:
-                break
+                if u not in simp_node_dict:
+                    s = s + 1
+                else:
+                    break
         # s will end up to not-removed node
+
     return contig_list
 
 def path_len(graph: Graph, path, overlap):

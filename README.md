@@ -10,9 +10,11 @@ filename format: graph_L{x}.gfa, with x={0,1,2,3}
 level 0 graph: assembly graph directly from SPAdes
 level 1 graph: graph after spin the edges
 level 2 graph: full-length contig reduced graph
-level 3 graph: all contig reduced graph
-level 4 graph: level 2 graph, with concatenated candidate strain be reduced
+level 3 graph: level 2 graph, with concatenated candidate strain be reduced
 
+TODO: after delete the concated contig, we need to ensure the existence of the rest of the contigs by aligning the path.
+
+# graph_draw(graph, vprops={'text': graph.vp.id}, eprops={'text': graph.ep.flow}, output="graph.pdf", output_size=(2000,2000))
 
 Methods & Procedure
 

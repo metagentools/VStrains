@@ -4,8 +4,10 @@ from graph_tool.all import Graph
 import gfapy
 import subprocess
 
+import numpy
 
-def gfa_to_graph(gfa_file):
+
+def gfa_to_graph(gfa_file, init_ori):
     """
     Convert assembly graph gfa file to graph
     Nodes: segment with corresponding 
@@ -100,7 +102,8 @@ def gfa_to_graph(gfa_file):
     # # P
     # for path in gfa.paths:
     #     [line_type, path_no, seg_names, seg_overlap] = str(path).split("\t")
-    return graph, node_dict, edge_dict, dp_dict
+    graph, simp_node_dict, simp_edge_dict = flip_graph_bfs(graph, node_dict, edge_dict, dp_dict, init_ori)
+    return graph, simp_node_dict, simp_edge_dict
 
 def graph_to_gfa(graph: Graph, simp_node_dict: dict, edge_dict: dict, min_cov, filename):
     """
@@ -147,15 +150,133 @@ def graph_to_gfa(graph: Graph, simp_node_dict: dict, edge_dict: dict, min_cov, f
     # print(dp_record)
     return 0
 
+def flip_graph_bfs(graph: Graph, node_dict: dict, edge_dict: dict, dp_dict: dict, init_ori):
+    """
+    Flip all the node orientation.
+
+    return an node_dict, which only contains one orientation per node for simplicity.
+    rename all the used node to positive, and forbidden the opponent node.
+    """
+    def source_node_via_dp(dp_dict: dict):
+        """
+        return the pos-neg node with maximum depth
+        """
+        seg_no = max(dp_dict, key=dp_dict.get)
+        print("source node id: ", seg_no, ", depth: ", dp_dict[seg_no])
+        return seg_no
+
+    def reverse_edge(graph: Graph, edge, node_dict: dict, edge_dict: dict):
+        """
+        reverse an edge with altered orientation and direction.
+        """
+        tmp_s = edge.source()
+        tmp_t = edge.target()
+        
+        edge_dict.pop((graph.vp.id[tmp_s], graph.vp.ori[tmp_s], graph.vp.id[tmp_t], graph.vp.ori[tmp_t]))
+
+        tmp_s_pos, tmp_s_neg = node_dict[graph.vp.id[tmp_s]]
+        tmp_t_pos, tmp_t_neg = node_dict[graph.vp.id[tmp_t]]
+        s = tmp_t_pos if graph.vp.ori[tmp_t] == -1 else tmp_t_neg
+        t = tmp_s_pos if graph.vp.ori[tmp_s] == -1 else tmp_s_neg
+
+        o = graph.ep.overlap[edge]
+        graph.remove_edge(edge)
+        e = graph.add_edge(s, t)
+        graph.ep.overlap[e] = o
+        edge_dict[(graph.vp.id[s], graph.vp.ori[s], graph.vp.id[t], graph.vp.ori[t])] = e
+
+        return graph, e, edge_dict
+    print("-------------------------flip graph orientation----------------------")
+    pick_dict = {}
+    while set(dp_dict):
+        seg_no = source_node_via_dp(dp_dict)
+        source_pos, source_neg = node_dict[seg_no]
+        graph.vp.visited[source_pos] = 0
+        graph.vp.visited[source_neg] = 0
+        queue = []
+        queue.append([node_dict[seg_no], init_ori]) 
+
+        while queue:
+            (v_pos, v_neg), ori = queue.pop()
+            dp_dict.pop(graph.vp.id[v_pos])
+            
+            u = None
+            if ori == 1:
+                u = v_pos
+                pick_dict[graph.vp.id[u]] = '+'
+                # print_vertex(graph, v_neg, "node to reverse")
+                for e in list(v_neg.all_edges()):
+                    graph, r_e, edge_dict = reverse_edge(graph, e, node_dict, edge_dict)
+                    # print_edge(graph, r_e, "after reverse: ")
+            else:
+                u = v_neg
+                pick_dict[graph.vp.id[u]] = '-'
+                # print_vertex(graph, v_pos, "node to reverse")
+                for e in list(v_pos.all_edges()):
+                    graph, r_e, edge_dict = reverse_edge(graph, e, node_dict, edge_dict)
+                    # print_edge(graph, r_e, "after reverse: ")
+            
+            graph.vp.visited[v_pos] = 1
+            graph.vp.visited[v_neg] = 1
+            # add further nodes into the queue TODO, all or out only
+            for adj_node in u.all_neighbors():
+                if graph.vp.visited[adj_node] == -1:
+                    graph.vp.visited[adj_node] = 0
+                    queue.append([node_dict[graph.vp.id[adj_node]], graph.vp.ori[adj_node]])
+
+    # verify sorted graph
+    print("-------------------------verify graph----------------------")
+    check = True
+
+    check = check and (len(pick_dict) == len(node_dict))
+    for key, item in pick_dict.items():
+        v_pos, v_neg = node_dict[key]
+        if item == '+':
+            if v_neg.in_degree() + v_neg.out_degree() > 0:
+                print_vertex(graph, v_neg, "pick error found")
+                check = False
+        else:
+            if v_pos.in_degree() + v_pos.out_degree() > 0:
+                print_vertex(graph, v_pos, "pick error found")
+                check = False
+
+    for key, (v_pos, v_neg) in node_dict.items():
+        if not v_pos.in_degree() + v_pos.out_degree() == 0 and not v_neg.in_degree() + v_neg.out_degree() == 0:
+            check = False
+            print_vertex(graph, v_pos, "erroroness node pos found")
+            print_vertex(graph, v_neg, "erroroness node neg found")
+            print("re-pict nodes, pick both")
+            pick_dict[key] = 0
+            graph.vp.id[v_pos] = graph.vp.id[v_pos] + "a"
+            graph.vp.id[v_neg] = graph.vp.id[v_neg] + "b"
+
+    check = check and len(node_dict) == len(pick_dict)
+    if check: print("Graph is verified")
+    print("-------------------------end verify------------------------")
+
+    simp_node_dict = {}
+    for seg_no, pick in pick_dict.items():
+        if pick == '+':
+            picked = node_dict[seg_no][0]
+        else:
+            picked = node_dict[seg_no][1]
+        graph.vp.ori[picked] = 1
+        simp_node_dict[seg_no] = picked
+
+    simp_edge_dict = simplify_edge_dict(edge_dict)
+    print("-------------------------flip graph orientation end------------------")
+    return graph, simp_node_dict, simp_edge_dict
+
 # FIXME fix the path
-def map_ref_to_graph(ref, graph: Graph, simp_node_dict: dict):
+def map_ref_to_graph(ref_file, simp_node_dict: dict, simp_file):
     """
     map reference strain to the graph, debug only
     assumption: graph is stored in acc/simplifed_graph, 
     """
-    if not ref:
+    if not ref_file:
+        print("No ref file imported")
         return -1
-    with open("acc/simplifed_graph", 'r') as gfa:
+    with open(simp_file, 'r') as gfa:
         with open("acc/gfa_to_fq.fq", 'w') as fq:
             for Line in gfa:
                 splited = Line.split('\t')
@@ -167,29 +288,30 @@ def map_ref_to_graph(ref, graph: Graph, simp_node_dict: dict):
     
     # minimap2. you may need to replace the exec path to minimap to fit your case
     subprocess.check_call("/Users/luorunpeng/opt/miniconda3/envs/vg-flow-env/bin/minimap2 {0} {1} > {2}".format(
-    ref, "acc/gfa_to_fq.fq", "acc/overlap.paf"), shell=True)
+    ref_file, "acc/gfa_to_fq.fq", "acc/overlap.paf"), shell=True)
 
     strain_dict = {}
     with open("acc/overlap.paf", 'r') as paf:
         for Line in paf:
             splited = Line.split('\t')
+            seg_no_int = int(splited[0])
             seg_no = splited[0]
             seg_l = int(splited[1])
             seg_s = int(splited[2])
             seg_f = int(splited[3])
             ref_no = splited[5]
+            if seg_no not in simp_node_dict:
+                continue
             if ((seg_f - seg_s) / seg_l) >= 0.8:
                 if ref_no not in strain_dict:
                     strain_dict[ref_no] = []
-                strain_dict[ref_no].append(seg_no)
+                strain_dict[ref_no].append(seg_no_int)
     subprocess.check_call("rm {0}".format("acc/gfa_to_fq.fq"), shell=True)
     
-    # print("strain dict mapping")
-    # for seg_no, strains in strain_dict.items():
-    #     if "seq_1" in strains:
-    #         print("node no: ", seg_no)
-    #         print("strains: ", strains)
-    #         print("-------------------")
+    print("strain dict mapping")
+    for seg_no, strains in strain_dict.items():
+        print("strains: ", seg_no, " Path: ", strains)
+        print("-------------------")
     return strain_dict
 
 def contig_overlap(contig_dict: dict, contig_file):
@@ -200,15 +322,15 @@ def contig_overlap(contig_dict: dict, contig_file):
         contig_file, contig_file, "acc/contig_overlap.paf"), shell=True)
     return
 
-def contig_dict_to_fq(graph: Graph, contig_dict: dict, simp_node_dict: dict, overlap_len, contig_file, min_len):
+def contig_dict_to_fq(graph: Graph, contig_dict: dict, simp_node_dict: dict, overlap_len, output_file, min_len=0):
     """
     Store contig dict into fastq file
     """
     subprocess.check_call("echo "" > {0}".format(
-    contig_file), shell=True)
+    output_file), shell=True)
 
-    with open(contig_file, 'w') as fq:
-        for (cno, clen, ccov), (contig, _) in contig_dict.items():
+    with open(output_file, 'w') as fq:
+        for cno, (contig, clen, ccov) in contig_dict.items():
             contig_name = ">" + str(cno) + "_" + str(clen) + "_" + str(ccov) + "\n"
             seq = contig_to_seq(graph, contig, contig_name, simp_node_dict, overlap_len) + "\n"
             fq.write(contig_name)
@@ -216,9 +338,10 @@ def contig_dict_to_fq(graph: Graph, contig_dict: dict, simp_node_dict: dict, ove
         fq.close()
 
 
-def get_contig(graph: Graph, contig_file, simp_node_dict: dict, edge_dict: dict, min_cov, min_node=3):
+def get_contig(graph: Graph, contig_file, simp_node_dict: dict, simp_edge_dict: dict, min_cov, min_len, overlap, min_node=2):
     """
-    Map SPAdes's contig to the graph, return all the contigs, with dict
+    Map SPAdes's contig to the graph, return all the contigs.
+    if nodes of contig have coverage less than min_cov, try to shrink the contig.
     """
     if not contig_file:
         print("contig file not imported")
@@ -246,33 +369,103 @@ def get_contig(graph: Graph, contig_file, simp_node_dict: dict, edge_dict: dict,
             contigs = [n[:-1] if n[-1] in ['-', '+'] else n[:-2] for n in seg_nos.split(',')]
             contigs_rev = [n[:-1] if n[-1] in ['-', '+'] else n[:-2] for n in seg_nos_r.split(',')]
 
-            if len(contigs) <= min_node:
+            if len(contigs) < min_node or clen < min_len / 10 or ccov < min_cov:
                 continue
 
-            # select contig from single orientation
-            e1 = (contigs[0],contigs[1])
-            e1_r = (contigs_rev[0], contigs_rev[1])
-            c = []
-            if e1 not in edge_dict and e1_r not in edge_dict:
-                print("edge is not exist in both direction, error handling, TODO")
-            elif e1 not in edge_dict:
-                c = contigs_rev
-            elif e1_r not in edge_dict:
-                c = contigs
+            contig_len = len(contigs)
+            if contig_len > 1:
+                i = 0
+                c = []
+                pick = False
+                while not pick:
+                    e1 = (contigs[i],contigs[i+1])
+                    e1_r = (contigs_rev[i], contigs_rev[i+1])
+                    i = i + 1
+                    if e1 not in simp_edge_dict and e1_r not in simp_edge_dict:
+                        print("edge is not exist in both direction, continue to select, contig: ", cno)
+                    elif e1 not in simp_edge_dict:
+                        c = contigs_rev[:]
+                        pick = True
+                        print("pick forward side for contig: ", cno)
+                    elif e1_r not in simp_edge_dict:
+                        c = contigs[:]
+                        pick = True
+                        print("pick reverse side for contig: ", cno)
+                    else:
+                        print("both direction edge, error edge case, contig: ", cno)
+                    
+                    if not pick and i == contig_len - 1:
+                        # still not pick until last edge
+                        print("all the edge is removed, no pick until last point")
+                        break
+                if not pick:
+                    # whole contig is reduced already, no split chance
+                    continue
+                else:
+                    contig_list = contig_split(graph, cno, c, simp_node_dict, simp_edge_dict, overlap)
+                    for (sub_cno, sub_contig, sub_clen, sub_ccov) in contig_list:
+                        contig_dict[sub_cno] = (sub_contig, sub_clen, sub_ccov)
             else:
-                print("both direction edge, error edge case, TODO")
-
-            edge_flow =  contig_flow(graph, edge_dict, c)
-            contig_dict[(cno, clen, ccov)] = (c,edge_flow)
+                c = contigs
+                if c[0] not in simp_node_dict:
+                    print("only left up node is removed already: ", cno)
+                else:
+                    contig_dict[cno] = (c,clen,ccov)
+                    print("only left up node is picked for contig: ", cno)
         contigs_file.close()
 
     return contig_dict
+
+def contig_split(graph: Graph, cno, contig: list, simp_node_dict: dict, simp_edge_dict: dict, overlap, min_node=2):
+    """
+    Split the contig by removing all the removed node, and form segments
+    list of contig tuple: (cno, contig, ccov, len)
+    """
+    contig_list = []
+    s = 0
+    idx = 0
+    while s < len(contig):
+        x = s
+        for i in range(s, len(contig)):
+            v = contig[i]
+            if v in simp_node_dict:
+                x = x + 1
+            else:
+                break
+        # x will end up to removed node idx for the contig
+        sub = contig[s:x]
+        if len(sub) >= min_node:
+            cflow = contig_flow(graph, simp_edge_dict, sub)
+            ccov = numpy.mean(cflow)
+            clen = path_len(graph, [simp_node_dict[node] for node in sub], overlap)
+            print(clen)
+            contig_list.append((cno+"_"+str(idx), sub, clen, ccov))
+            idx = idx + 1
+        s = x
+        for i in range(x, len(contig)):
+            v = contig[i]
+            if v not in simp_node_dict:
+                s = s + 1
+            else:
+                break
+        # s will end up to not-removed node
+    return contig_list
+
+def path_len(graph: Graph, path, overlap):
+    """
+    Find length of the linear path.
+    """
+    lens = [len(graph.vp.seq[u]) for u in path]
+    return sum(lens) - overlap * (len(lens) - 1) if len(lens) > 0 else 0
 
 def contig_flow(graph: Graph, edge_dict: dict, contig):
     """
     edge flow for the contig
     """
     edge_flow = []
+    if len(contig) < 2:
+        return edge_flow
+    
     for i in range(len(contig)-1):
         e = edge_dict[(contig[i],contig[i+1])]
         f = graph.ep.flow[e]
@@ -298,3 +491,23 @@ def simplify_edge_dict(edge_dict: dict):
     for (u, _, v, _), e in edge_dict.items():
         simp_edge_dict[(u,v)] = e
     return simp_edge_dict
+
+def swap_node_ori_name(graph: Graph, node_dict: dict, seg_no):
+    """
+    swap the node's orientation, and update related edges
+    """
+    v_pos, v_neg = node_dict[seg_no]
+    graph.vp.ori[v_pos] = -1
+    graph.vp.ori[v_neg] = 1
+    node_dict[seg_no] = (v_neg, v_pos)
+
+    return graph, node_dict
+
+def print_edge(graph, e, s=""):
+    print(s, " edge: ", graph.vp.id[e.source()],graph.vp.ori[e.source()], "->", graph.vp.id[e.target()], graph.vp.ori[e.target()], graph.ep.flow[e], graph.ep.color[e])
+
+def print_vertex(graph, v, s=""):
+    print(s, " vertex: ", graph.vp.id[v], ", dp: ", graph.vp.dp[v], ", ori: ", graph.vp.ori[v], ", in_degree: ", v.in_degree(), ", out_degree: ", v.out_degree(), graph.vp.color[v])
+
+def print_contig(cno, clen, ccov, contig, s=""):
+    print(s, " Contig: ", cno, ", length: ", clen, ", cov: ", ccov, "Path: ", [int(v) for v in contig])

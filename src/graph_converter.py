@@ -306,10 +306,10 @@ def map_ref_to_graph(ref_file, simp_node_dict: dict, simp_file):
             ref_no = splited[5]
             if seg_no not in simp_node_dict:
                 continue
-            if ((seg_f - seg_s) / seg_l) >= 0.8:
-                if ref_no not in strain_dict:
-                    strain_dict[ref_no] = []
-                strain_dict[ref_no].append(seg_no_int)
+            # if ((seg_f - seg_s) / seg_l) >= 0.8:
+            if ref_no not in strain_dict:
+                strain_dict[ref_no] = []
+            strain_dict[ref_no].append(seg_no_int)
     subprocess.check_call("rm {0}".format("acc/gfa_to_fq.fq"), shell=True)
     
     print("strain dict mapping")
@@ -339,10 +339,12 @@ def contig_dict_to_fq(graph: Graph, contig_dict: dict, simp_node_dict: dict, ove
         fq.close()
 
 
-def get_contig(graph: Graph, contig_file, simp_node_dict: dict, simp_edge_dict: dict, min_cov, min_len, overlap, min_node=2):
+def get_contig(graph: Graph, contig_file, simp_node_dict: dict, simp_edge_dict: dict, removed_node_dict: dict, removed_edge_dict: dict, min_cov, min_len, overlap, min_node=2, threshold_diff=100):
     """
     Map SPAdes's contig to the graph, return all the contigs.
     if nodes of contig have coverage less than min_cov, try to shrink the contig.
+    
+    Also fix the graph by adding removed node&edge if is supported by contigs
     """
     if not contig_file:
         print("contig file not imported")
@@ -399,19 +401,73 @@ def get_contig(graph: Graph, contig_file, simp_node_dict: dict, simp_edge_dict: 
                         # still not pick until last edge
                         print("all the edge is removed, no pick until last point")
                         break
+                fixed = True
+
                 if not pick:
                     # whole contig is reduced already, no split chance
                     continue
                 else:
-                    contig_list = contig_split(graph, cno, c, simp_node_dict, simp_edge_dict, overlap, min_cov)
-                    for (sub_cno, sub_contig, sub_clen, sub_ccov) in contig_list:
-                        contig_dict[sub_cno] = (sub_contig, sub_clen, sub_ccov)
+                    # fix the graph by iterating the whole contig
+                    # in_nodes = [simp_node_dict[no] for no in c if no in simp_node_dict]
+                    # max_cov = max([graph.vp.dp[node] for node in in_nodes])
+                    for i in range(len(c) - 1):
+                        u = c[i]
+                        v = c[i+1]
+                        x = None
+                        y = None
+
+                        # handle nodes
+                        if u in simp_node_dict:
+                            continue
+                        elif u in removed_node_dict:
+                            x = removed_node_dict[u]
+                            dp_x = graph.vp.dp[x]
+                            if min_cov - dp_x <= threshold_diff:
+                                simp_node_dict[u] = x
+                                graph.vp.color[x] = 'black'
+                                print("Re-appending node: ", u)
+                            else:
+                                x = None
+                                fixed = False
+                        else:
+                            print("node: ", u, " is not in both dict, error to be handled")
+                        
+                        if v in simp_node_dict:
+                            continue
+                        elif v in removed_node_dict:
+                            y = removed_node_dict[v]
+                            dp_y = graph.vp.dp[y]
+                            if min_cov - dp_y <= threshold_diff:
+                                simp_node_dict[v] = y
+                                graph.vp.color[y] = 'black'
+                                print("Re-appending node: ", v)
+                            else:
+                                X = None
+                                fixed = False
+                        else:
+                            print("node: ", u, " is not in both dict, error to be handled") 
+
+                        # handle edges
+                        if x != None and y != None:
+                            if (u,v) in simp_edge_dict:
+                                print("Impossible case, edge should've been removed: ", (u,v))
+                            elif (u,v) in removed_edge_dict:
+                                print("Re-appending edge: ", (u,v))
+                                e = removed_edge_dict[(u,v)]
+                                graph.ep.color[e] = 'black'
+                                simp_edge_dict[(u,v)] = e
+                    if not fixed:
+                        contig_list = contig_split(graph, cno, c, simp_node_dict, simp_edge_dict, overlap, min_cov)
+                        for (sub_cno, sub_contig, sub_clen, sub_ccov) in contig_list:
+                            contig_dict[sub_cno] = (sub_contig, sub_clen, sub_ccov)
+                    else:
+                        contig_dict[cno] = (c, clen, ccov)
             else:
                 c = contigs
                 if c[0] not in simp_node_dict:
                     print("only left up node is removed already: ", cno)
                 else:
-                    contig_dict[cno] = (c,clen,ccov)
+                    contig_dict[cno] = (c, clen, ccov)
                     print("only left up node is picked for contig: ", cno)
         contigs_file.close()
 

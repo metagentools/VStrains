@@ -48,22 +48,26 @@ def main():
 
     graph, simp_node_dict, simp_edge_dict = gfa_to_graph(args.gfa_file, init_ori=1)
     assign_edge_flow(graph, simp_node_dict, simp_edge_dict)
-    graph_simplification(graph, simp_node_dict, simp_edge_dict, args.min_cov)
+    removed_node_dict, removed_edge_dict= graph_simplification(graph, simp_node_dict, simp_edge_dict, args.min_cov)
+
+    # graph_draw(graph, vprops={'text': graph.vp.id}, eprops={'text': graph.ep.flow}, output="graph.pdf", output_size=(2000,2000))
+    
+    # get_contig will also help to fix the graph by taking removed node back to the graph based on contig support
+    contig_dict = get_contig(graph, args.contig_file, simp_node_dict, simp_edge_dict, removed_node_dict, removed_edge_dict, args.min_cov, args.min_len, args.overlap)
 
     graph_to_gfa(graph, simp_node_dict, simp_edge_dict, args.min_cov, "acc/graph_L1.gfa")
 
-    # graph_draw(graph, vprops={'text': graph.vp.id}, eprops={'text': graph.ep.flow}, output="graph.pdf", output_size=(2000,2000))
-    if args.ref_file and DEBUG_MODE:
-        map_ref_to_graph(args.ref_file, simp_node_dict, "acc/graph_L1.gfa")
-        
-    contig_dict = get_contig(graph, args.contig_file, simp_node_dict, simp_edge_dict, args.min_cov, args.min_len, args.overlap)
+    graph_L1, simp_node_dict_L1, simp_edge_dict_L1 = gfa_to_graph("acc/graph_L1.gfa", init_ori=1)
+    assign_edge_flow(graph_L1, simp_node_dict_L1, simp_edge_dict_L1)
+    if args.ref_file:
+        map_ref_to_graph(args.ref_file, simp_node_dict_L1, "acc/graph_L1.gfa")
 
     contig_dict_to_fq(graph, contig_dict, simp_node_dict, args.overlap, "acc/pre_contigs.fq")
     minimap_api(args.ref_file, "acc/pre_contigs.fq", "acc/pre_contigs_to_strain.paf")
     for cno, (contig, clen, ccov) in contig_dict.items():
         print_contig(cno, clen, ccov, contig)
 
-    cand_strains_dict, temp_contigs_dict = graph_reduction(graph, contig_dict, simp_node_dict, simp_edge_dict, "acc/graph_L2.gfa", args.min_cov, args.min_len)
+    cand_strains_dict, temp_contigs_dict = graph_reduction(graph, contig_dict, simp_node_dict, simp_edge_dict, "acc/graph_L2.gfa", args.min_cov, args.min_len, args.overlap)
 
     graph_L2, simp_node_dict_L2, simp_edge_dict_L2 = gfa_to_graph("acc/graph_L2.gfa", init_ori=1)
     assign_edge_flow(graph_L2, simp_node_dict_L2, simp_edge_dict_L2)
@@ -78,9 +82,6 @@ def main():
     # graph_simplification(graph_L3, simp_node_dict_L3, simp_edge_dict_L3, args.min_cov)
     # concat_strain_dict_2, concat_contig_dict_2 = contig_classification(graph_L3, simp_node_dict_L3, simp_edge_dict_L3, concat_contig_dict, "acc/graph_L4.gfa", args.min_cov, args.min_len, args.max_len, args.overlap)
 
-    graph_L1, simp_node_dict_L1, simp_edge_dict_L1 = gfa_to_graph("acc/graph_L1.gfa", init_ori=1)
-    assign_edge_flow(graph_L1, simp_node_dict_L1, simp_edge_dict_L1)
-    graph_simplification(graph_L2, simp_node_dict_L2, simp_edge_dict_L2, args.min_cov)
     strain_dict = concat_strain_dict.copy()
     # strain_dict.update(concat_strain_dict_2)
     strain_dict.update(cand_strains_dict)
@@ -90,9 +91,14 @@ def main():
 def graph_simplification(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, min_cov):
     """
     Directly remove all the vertex with coverage less than minimum coverage and related edge
+    return:
+        removed_node_dict
+        removed_edge_dict
     """
     print("-------------------------graph simplification----------------------")
     print("Total nodes: ", len(simp_node_dict), " Total edges: ", len(simp_edge_dict))
+    removed_node_dict = {}
+    removed_edge_dict = {}
     for id, node in list(simp_node_dict.items()):
         if graph.vp.dp[node] < min_cov:
             if DEBUG_MODE:
@@ -100,6 +106,7 @@ def graph_simplification(graph: Graph, simp_node_dict: dict, simp_edge_dict: dic
             # delete the node
             simp_node_dict.pop(id)
             graph.vp.color[node] = 'gray'
+            removed_node_dict[id] = node
 
             # delete related edges
             for out_node in node.out_neighbors():
@@ -108,15 +115,17 @@ def graph_simplification(graph: Graph, simp_node_dict: dict, simp_edge_dict: dic
                     e = simp_edge_dict[(id, out_id)]
                     graph.ep.color[e] = 'gray'
                     simp_edge_dict.pop((id, out_id))
+                    removed_edge_dict[(id, out_id)] = e
             for in_node in node.in_neighbors():
                 in_id = graph.vp.id[in_node]
                 if (in_id, id) in simp_edge_dict:
                     e = simp_edge_dict[(in_id, id)]
                     graph.ep.color[e] = 'gray'
                     simp_edge_dict.pop((in_id, id))
+                    removed_edge_dict[(in_id, id)] = e
     print("Remain: Total nodes: ", len(simp_node_dict), " Total edges: ", len(simp_edge_dict))
     print("-------------------------graph simplification end----------------------")
-    return
+    return removed_node_dict, removed_edge_dict
 
 def assign_edge_flow(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict):
     """
@@ -294,7 +303,7 @@ def contig_reduction(graph: Graph, contig, cno, clen, ccov, simp_node_dict: dict
         adj_index = adj_index + 1
     return
 
-def graph_reduction(graph: Graph, contig_dict: dict, simp_node_dict: dict, simp_edge_dict: dict, output_file, min_cov, min_len):
+def graph_reduction(graph: Graph, contig_dict: dict, simp_node_dict: dict, simp_edge_dict: dict, output_file, min_cov, min_len, overlap):
     """
     reduce the node/edge weight based on existing contig found by SPAdes.
     only contig with minimum strain length satisfied be removed
@@ -312,8 +321,10 @@ def graph_reduction(graph: Graph, contig_dict: dict, simp_node_dict: dict, simp_
         else:
             temp_contigs_dict[cno] = [contig, clen, ccov]
             print("imcomplete contig found: ", cno, clen, ccov) 
+
     # store level 2 graph
     graph_to_gfa(graph, simp_node_dict, simp_edge_dict, min_cov, output_file)
+    contig_preprocess(graph, simp_node_dict, simp_edge_dict, overlap, min_cov, temp_contigs_dict)
 
     print("-----------------------graph reduction end--------------------")
     return cand_strains_dict, temp_contigs_dict

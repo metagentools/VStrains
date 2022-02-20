@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
 
+import imp
 from graph_tool.all import Graph
 import gfapy
 import subprocess
 
 import numpy
+
+from hap_construction import DEBUG_MODE
 
 
 def gfa_to_graph(gfa_file, init_ori):
@@ -162,7 +165,8 @@ def flip_graph_bfs(graph: Graph, node_dict: dict, edge_dict: dict, dp_dict: dict
         return the pos-neg node with maximum depth
         """
         seg_no = max(dp_dict, key=dp_dict.get)
-        print("source node id: ", seg_no, ", depth: ", dp_dict[seg_no])
+        if DEBUG_MODE:
+            print("source node id: ", seg_no, ", depth: ", dp_dict[seg_no])
         return seg_no
 
     def reverse_edge(graph: Graph, edge, node_dict: dict, edge_dict: dict):
@@ -399,7 +403,7 @@ def get_contig(graph: Graph, contig_file, simp_node_dict: dict, simp_edge_dict: 
                     # whole contig is reduced already, no split chance
                     continue
                 else:
-                    contig_list = contig_split(graph, cno, c, simp_node_dict, simp_edge_dict, overlap)
+                    contig_list = contig_split(graph, cno, c, simp_node_dict, simp_edge_dict, overlap, min_cov)
                     for (sub_cno, sub_contig, sub_clen, sub_ccov) in contig_list:
                         contig_dict[sub_cno] = (sub_contig, sub_clen, sub_ccov)
             else:
@@ -413,7 +417,25 @@ def get_contig(graph: Graph, contig_file, simp_node_dict: dict, simp_edge_dict: 
 
     return contig_dict
 
-def contig_split(graph: Graph, cno, contig: list, simp_node_dict: dict, simp_edge_dict: dict, overlap, min_node=2):
+def contig_preprocess(graph:Graph, simp_node_dict: dict, simp_edge_dict: dict, overlap, min_cov, contig_dict: dict):
+    """
+    Remove and split the unsatisfied contigs.
+    """
+    for cno, [contig, clen, ccov] in list(contig_dict.items()):
+        contig_dict.pop(cno)
+        contig_list = contig_split(graph, cno, contig, simp_node_dict, simp_edge_dict, overlap, min_cov) #FIXME
+        if contig_list == []:
+            print("No sub contig be found for original contig: ", cno)
+        else:
+            print("Update sub contigs to the concat contig dict for cno: ", cno)
+            for (sub_cno, sub_contig, sub_clen, sub_ccov) in contig_list:
+                if sub_cno in contig_dict:
+                    print("sub cno: ", sub_cno, " already exist, error")
+                else:
+                    contig_dict[sub_cno] = [sub_contig, sub_clen, sub_ccov]
+    return contig_dict
+
+def contig_split(graph: Graph, cno, contig: list, simp_node_dict: dict, simp_edge_dict: dict, overlap, min_cov, min_node=2):
     """
     Split the contig by removing all the removed node, and form segments
     list of contig tuple: (cno, contig, ccov, len)
@@ -421,7 +443,8 @@ def contig_split(graph: Graph, cno, contig: list, simp_node_dict: dict, simp_edg
     contig_list = []
     s = 0
     idx = 0
-    print("contig len: ", len(contig))
+    if DEBUG_MODE:
+        print("contig len: ", len(contig))
     while s < len(contig):
         x = s
         keep = False
@@ -444,13 +467,15 @@ def contig_split(graph: Graph, cno, contig: list, simp_node_dict: dict, simp_edg
                     break
         # x will end up to removed node idx for the contig
         sub = contig[s:x + 1] if keep else contig[s:x]
-        print("sub start: ", contig[s], " sub end: ", contig[x-1])
+        if DEBUG_MODE:
+            print("sub start: ", contig[s], " sub end: ", contig[x-1])
         if len(sub) >= min_node:
             cflow = contig_flow(graph, simp_edge_dict, sub)
-            ccov = numpy.mean(cflow) if len(cflow) != 0 else 0
+            ccov = numpy.median(cflow) if len(cflow) != 0 else 0
             clen = path_len(graph, [simp_node_dict[node] for node in sub], overlap)
-            contig_list.append((cno+"^"+str(idx), sub, clen, ccov))
-            idx = idx + 1
+            if ccov >= min_cov:
+                contig_list.append((cno+"^"+str(idx), sub, clen, ccov))
+                idx = idx + 1
 
         s = x
         for i in range(x, len(contig)):
@@ -467,7 +492,6 @@ def contig_split(graph: Graph, cno, contig: list, simp_node_dict: dict, simp_edg
                 else:
                     break
         # s will end up to not-removed node
-
     return contig_list
 
 def path_len(graph: Graph, path, overlap):
@@ -499,7 +523,6 @@ def contig_to_seq(graph: Graph, contig: list, contig_name, simp_node_dict: dict,
             seq = seq + graph.vp.seq[c]
         else:
             seq = seq + (graph.vp.seq[c])[:-overlap_len]
-    # print(contig_name, " ", seq)
     return seq
 
 def reverse_seq(seq: str):
@@ -521,6 +544,15 @@ def swap_node_ori_name(graph: Graph, node_dict: dict, seg_no):
     node_dict[seg_no] = (v_neg, v_pos)
 
     return graph, node_dict
+
+def graph_stat(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict):
+    print("-------------------------graph stat----------------------")
+    for seg_no, v in simp_node_dict.items():
+        print_vertex(graph, v, "stat")
+    for (_,_), e in simp_edge_dict.items():
+        print_edge(graph, e, "stat")
+    
+    print("-----------------------graph stat end--------------------")
 
 def print_edge(graph, e, s=""):
     print(s, " edge: ", graph.vp.id[e.source()],graph.vp.ori[e.source()], "->", graph.vp.id[e.target()], graph.vp.ori[e.target()], graph.ep.flow[e], graph.ep.color[e])

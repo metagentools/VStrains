@@ -14,6 +14,12 @@ level 3 graph: level 2 graph, with concatenated candidate strain be reduced
 
 TODO: after delete the concated contig, we need to ensure the existence of the rest of the contigs by aligning the path.
 
+TODO: 
+1. best recover the contig, when shared-contig node be deleted from specific node, recover it back with original dp.
+2. get all the contig from spades with particular constraint.
+
+TODO: what do we do about a satisfied length contig with nodes less than mincov existence for the contig
+
 # graph_draw(graph, vprops={'text': graph.vp.id}, eprops={'text': graph.ep.flow}, output="graph.pdf", output_size=(2000,2000))
 
 Methods & Procedure

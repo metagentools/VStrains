@@ -35,3 +35,14 @@
 .Trashes
 ehthumbs.db
 Thumbs.db
+
+# Evaluation result #
+#####################
+eval_result/
+example/
+benchmark/*
+quast*/
+
+# pycache #
+###########
+src/__pycache__/*

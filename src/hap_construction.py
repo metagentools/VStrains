@@ -4,14 +4,16 @@
 # import sys, os
 # import json
 # import re
-import subprocess
 # from graph_tool import GraphView, _in_degree
 # import graph_tool
-from graph_tool.all import Graph
-from graph_tool.search import dfs_iterator
-from graph_tool.topology import is_DAG, topological_sort, all_circuits
-from graph_tool.draw import graph_draw
+# from graph_tool.search import dfs_iterator
+# from graph_tool.topology import topological_sort, all_circuits
+# from graph_tool.draw import graph_draw
 # from graph_tool.clustering import local_clustering
+
+import subprocess
+from graph_tool.all import Graph
+from graph_tool.topology import is_DAG
 
 import argparse
 
@@ -23,16 +25,17 @@ usage = "Construct haplotypes using divide-and-conquer method"
 author = "Runpeng Luo"
 
 DEBUG_MODE = False
-
+TEMP_DIR = "acc/"
 def main():
     parser = argparse.ArgumentParser(prog='hap_construction.py', description=usage)
     parser.add_argument('-gfa', '--gfa_file', dest='gfa_file', type=str, required=True, help='assembly graph under gfa format')
     parser.add_argument('-c', '--contig', dest='contig_file', type=str, help='contig file from SPAdes, paths format')
     parser.add_argument('-mincov' '--minimum_coverage', dest='min_cov', type=int, default=100, help=("minimum coverage for strains"))
-    parser.add_argument('-minlen', '--minimum_strain_length', dest='min_len', default=8000, type=int, help=("minimum strain length"))
-    parser.add_argument('-maxlen', '--maximum_strain_length', dest='max_len', default=10000, type=int, help=("maximum strain length"))
+    parser.add_argument('-minlen', '--minimum_strain_length', dest='min_len', default=4000, type=int, help=("minimum strain length"))
+    parser.add_argument('-maxlen', '--maximum_strain_length', dest='max_len', default=12000, type=int, help=("maximum strain length"))
     parser.add_argument('-overlap', '--vertex_overlap', dest='overlap', default=127, type=int, help=("adjacent vertex overlap in the graph"))
     parser.add_argument('-ref', "--reference_fa", dest='ref_file', type=str, help='reference strain, fasta format, DEBUG_MODE only')
+    parser.add_argument('-o', '--output_dir', dest='output_dir', type=str, required=True, help='output directory')
     # parser.add_argument('-f', '--forward', dest='forward', type=str, required=True, help='Forward reads, fastq format')
     # parser.add_argument('-r', '--reverse', dest='reverse', type=str, required=True, help='Reverse reads, fastq format')
     # parser.add_argument('-l', "--insert_size", dest='insert_size', type=int, required=True, help='Pair-end read distance')
@@ -41,8 +44,13 @@ def main():
     if not args.gfa_file:
         print("gfa file is not imported")
         return 1
+
+    if not args.output_dir:
+        print("output directory unspecified, use default dir: acc/")
+    else:
+        TEMP_DIR = args.output_dir
     
-    subprocess.check_call("rm -rf acc/ && mkdir acc/", shell=True)
+    subprocess.check_call("rm -rf {0} && mkdir {0}".format(TEMP_DIR), shell=True)
 
     # Read in L0
     graph, simp_node_dict, simp_edge_dict = gfa_to_graph(args.gfa_file, init_ori=1)
@@ -50,55 +58,51 @@ def main():
 
     contig_dict, node_to_contig_dict, edge_to_contig_dict = get_contig(graph, args.contig_file, simp_node_dict, simp_edge_dict, args.min_cov, args.min_len, args.overlap)
     graph_simplification(graph, simp_node_dict, simp_edge_dict, node_to_contig_dict, edge_to_contig_dict, args.min_cov)
-    graph_to_gfa(graph, simp_node_dict, simp_edge_dict, "acc/graph_L1.gfa")
-
-    if DEBUG_MODE:
-        for no, [cnos, dp, _] in node_to_contig_dict.items():
-            print(no, dp)
-            print(cnos)
+    graph_to_gfa(graph, simp_node_dict, simp_edge_dict, "{0}graph_L1.gfa".format(TEMP_DIR))
     
     # graph_draw(graph, vprops={'text': graph.vp.id}, eprops={'text': graph.ep.flow}, output="graph.pdf", output_size=(2000,2000))
+
     # L1
-    graph_L1, simp_node_dict_L1, simp_edge_dict_L1 = flipped_gfa_to_graph("acc/graph_L1.gfa")
+    graph_L1, simp_node_dict_L1, simp_edge_dict_L1 = flipped_gfa_to_graph("{0}graph_L1.gfa".format(TEMP_DIR))
     assign_edge_flow(graph_L1, simp_node_dict_L1, simp_edge_dict_L1)
 
     if args.ref_file and DEBUG_MODE:
-        map_ref_to_graph(args.ref_file, simp_node_dict, "acc/graph_L1.gfa")
+        map_ref_to_graph(args.ref_file, simp_node_dict_L1, "{0}graph_L1.gfa".format(TEMP_DIR))
 
     # selected contig from SPAdes
-    contig_dict_to_fq(graph, contig_dict, simp_node_dict, args.overlap, "acc/pre_contigs.fq")
-    minimap_api(args.ref_file, "acc/pre_contigs.fq", "acc/pre_contigs_to_strain.paf")
+    contig_dict_to_fasta(graph, contig_dict, simp_node_dict, args.overlap, "{0}pre_contigs.fasta".format(TEMP_DIR))
+    minimap_api(args.ref_file, "{0}pre_contigs.fasta".format(TEMP_DIR), "{0}pre_contigs_to_strain.paf".format(TEMP_DIR))
 
     # reduce SPAdes full-length contig as init cand strain
-    cand_strains_dict, temp_contigs_dict = graph_reduction(graph, contig_dict, simp_node_dict, simp_edge_dict, node_to_contig_dict, edge_to_contig_dict, "acc/graph_L2.gfa", args.min_cov, args.min_len, args.overlap)
+    cand_strains_dict, temp_contigs_dict = graph_reduction(graph, contig_dict, simp_node_dict, simp_edge_dict, node_to_contig_dict, edge_to_contig_dict, "{0}graph_L2.gfa".format(TEMP_DIR), args.min_cov, args.min_len, args.overlap)
 
     # L2
-    graph_L2, simp_node_dict_L2, simp_edge_dict_L2 = flipped_gfa_to_graph("acc/graph_L2.gfa")
+    graph_L2, simp_node_dict_L2, simp_edge_dict_L2 = flipped_gfa_to_graph("{0}graph_L2.gfa".format(TEMP_DIR))
     assign_edge_flow(graph_L2, simp_node_dict_L2, simp_edge_dict_L2)
     graph_simplification(graph_L2, simp_node_dict_L2, simp_edge_dict_L2, node_to_contig_dict, edge_to_contig_dict, args.min_cov)
 
-    concat_strain_dict, concat_contig_dict = contig_merge(graph_L2, simp_node_dict_L2, simp_edge_dict_L2, temp_contigs_dict, node_to_contig_dict, edge_to_contig_dict, "acc/graph_L3.gfa", args.min_cov, args.min_len, args.max_len, args.overlap)
+    concat_strain_dict, concat_contig_dict = contig_merge(graph_L2, simp_node_dict_L2, simp_edge_dict_L2, temp_contigs_dict, node_to_contig_dict, edge_to_contig_dict, "{0}graph_L3.gfa".format(TEMP_DIR), args.min_cov, args.min_len, args.max_len, args.overlap)
 
-    contig_dict_to_fq(graph_L2, concat_contig_dict, simp_node_dict_L2, args.overlap, "acc/L2_contigs.fq")
-    minimap_api(args.ref_file, "acc/L2_contigs.fq", "acc/L2_contigs_to_strain.paf")
+    contig_dict_to_fasta(graph_L2, concat_contig_dict, simp_node_dict_L2, args.overlap, "{0}L2_contigs.fasta".format(TEMP_DIR))
+    minimap_api(args.ref_file, "{0}L2_contigs.fasta".format(TEMP_DIR), "{0}L2_contigs_to_strain.paf".format(TEMP_DIR))
 
 
     # L3
-    graph_L3, simp_node_dict_L3, simp_edge_dict_L3 = flipped_gfa_to_graph("acc/graph_L3.gfa")
+    graph_L3, simp_node_dict_L3, simp_edge_dict_L3 = flipped_gfa_to_graph("{0}graph_L3.gfa".format(TEMP_DIR))
     assign_edge_flow(graph_L3, simp_node_dict_L3, simp_edge_dict_L3)
     graph_simplification(graph_L3, simp_node_dict_L3, simp_edge_dict_L3, node_to_contig_dict, edge_to_contig_dict, args.min_cov)
 
-    concat_strain_dict_2, concat_contig_dict_2 = contig_merge(graph_L3, simp_node_dict_L3, simp_edge_dict_L3, concat_contig_dict, node_to_contig_dict, edge_to_contig_dict, "acc/graph_L4.gfa", args.min_cov, args.min_len, args.max_len, args.overlap)
+    concat_strain_dict_2, concat_contig_dict_2 = contig_merge(graph_L3, simp_node_dict_L3, simp_edge_dict_L3, concat_contig_dict, node_to_contig_dict, edge_to_contig_dict, "{0}graph_L4.gfa".format(TEMP_DIR), args.min_cov, args.min_len, args.max_len, args.overlap)
 
-    contig_dict_to_fq(graph_L3, concat_contig_dict_2, simp_node_dict_L3, args.overlap, "acc/L3_contigs.fq")
-    minimap_api(args.ref_file, "acc/L3_contigs.fq", "acc/L3_contigs_to_strain.paf")
+    contig_dict_to_fasta(graph_L3, concat_contig_dict_2, simp_node_dict_L3, args.overlap, "{0}L3_contigs.fasta".format(TEMP_DIR))
+    minimap_api(args.ref_file, "{0}L3_contigs.fasta".format(TEMP_DIR), "{0}L3_contigs_to_strain.paf".format(TEMP_DIR))
 
     # print strain and minimap overlaps
     strain_dict = concat_strain_dict.copy()
     strain_dict.update(concat_strain_dict_2)
     strain_dict.update(cand_strains_dict)
-    contig_dict_to_fq(graph_L1, strain_dict, simp_node_dict_L1, args.overlap, "acc/cand_strains.fq")
-    minimap_api(args.ref_file, "acc/cand_strains.fq", "acc/cand_strain_to_strain.paf")
+    contig_dict_to_fasta(graph_L1, strain_dict, simp_node_dict_L1, args.overlap, "{0}cand_strains.fasta".format(TEMP_DIR))
+    minimap_api(args.ref_file, "{0}cand_strains.fasta".format(TEMP_DIR), "{0}cand_strain_to_strain.paf".format(TEMP_DIR))
 
 def graph_simplification(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, node_to_contig_dict: dict, edge_to_contig_dict: dict, min_cov):
     """
@@ -398,6 +402,7 @@ def distance_search(graph: Graph, simp_node_dict: dict, source, source_contig, s
     """
     Compute minimal distance and its path between source node and sink node
     optimise the function with contig overlap check TODO
+    FIXME re-define shortest path
     """
 
     def dfs_helper(graph: graph, u, sink, visited):
@@ -420,7 +425,11 @@ def distance_search(graph: Graph, simp_node_dict: dict, source, source_contig, s
                         if rtn == None:
                             rtn = cmp
                         else:
-                            rtn = rtn if path_len(graph, cmp, overlap) > path_len(graph, rtn, overlap) else cmp
+                            #FIXME
+                            if path_len(graph, cmp, overlap) > path_len(graph, rtn, overlap):
+                                rtn = rtn
+                            else:
+                                rtn = cmp
                     visited[v] = False
         return rtn
     print("source: ", source, "sink: ", sink)
@@ -459,18 +468,17 @@ def pairwise_contig_dist(graph: Graph, simp_node_dict: dict, simp_edge_dict: dic
     for cno_i, [contig_i, clen_i, ccov_i] in temp_contigs_dict.items():
         for cno_j, [contig_j, clen_j, ccov_j] in temp_contigs_dict.items():
             print("------------------------------------------------------")
-            # if cno_i == cno_j:
-            #     continue
-            if clen_i + clen_j > max_len:
-                print("Contig ", cno_i, "-", "Contig ", cno_j, " with len over maxlen")
-                continue
             print("Tail Contig: ", cno_i, " -> Head Contig: ", cno_j)
-            intersect = list(set(contig_i) & set(contig_j))
-            if intersect != [] and cno_i != cno_j:
-                print("Contig ", cno_i, "-", "Contig ", cno_j, " Intersection with ", len(intersect), " nodes")
-                if DEBUG_MODE:
-                    print(intersect)
-                continue
+            if cno_i != cno_j:
+                if clen_i + clen_j > max_len:
+                    print("Contig ", cno_i, "-", "Contig ", cno_j, " with len over maxlen")
+                    continue
+                intersect = list(set(contig_i) & set(contig_j))
+                if intersect != []:
+                    print("Contig ", cno_i, "-", "Contig ", cno_j, " Intersection with ", len(intersect), " nodes")
+                    if DEBUG_MODE:
+                        print(intersect)
+                    continue
             s_path, s_len = distance_search(graph, simp_node_dict, contig_i[-1], contig_i, contig_j[0], contig_j, overlap)
             if s_path != None:
                 s_path_ids = [graph.vp.id[v] for v in s_path]
@@ -493,7 +501,7 @@ def contig_merge(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, temp_
     
     dist_matrix = pairwise_contig_dist(graph, simp_node_dict, simp_edge_dict, temp_contigs_dict, overlap, max_len)
 
-    concat_dicision = []
+    concat_dicision = {}
     for (tail_cno, head_cno), (s_path_ids, s_len, s_path_ccov) in dist_matrix.items():
         [tail_contig, tail_clen, tail_ccov] = temp_contigs_dict[tail_cno]
         [head_contig, head_clen, head_ccov] = temp_contigs_dict[head_cno]
@@ -516,22 +524,39 @@ def contig_merge(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, temp_
         if concat_len > max_len:
             print("exceed maximum strain length")
         else:
-            print("length satisfied")
-            if concat_ccov >= min_cov:
-                print("coverage satisfied")
-                concat_dicision.append((tail_cno, head_cno))
-            else:
-                print("lower than minimum coverage")
+            print("length satisfied, concat_ccov: ", concat_ccov)
+            concat_dicision[(tail_cno, head_cno)] = concat_ccov
+            
+            # if concat_ccov >= min_cov:
+            #     print("coverage satisfied, concat dicision candidate")
+            #     concat_dicision[(tail_cno, head_cno)] = concat_ccov
+            # else:
+            #     print("lower than minimum coverage")
         print("------------------------------------------------------")
     
+    # TODO re-evaluate the concat dicision, sort the concat dicision via concat_ccov, with reverse order or not, TBD
+    sorted_pair = sorted(concat_dicision.items(), key=lambda x:x[1], reverse=False)
+    concat_dicision_s = [t[0] for t in sorted_pair]
+
+
     #start concatenation
+    # FIXME fix the concat dicision, test for used contig only concat n times.
     concat_strain_dict = {}
     concat_contig_dict = {}
     skip_key = set()
     used_contig = set()
-    for (tail_cno, head_cno) in concat_dicision:
+    for (tail_cno, head_cno) in concat_dicision_s:
+        print("------------------------------------------------------")
+        print("Concatentate contigs: ", tail_cno, " <-> ", head_cno)
         [tail_contig, tail_clen, tail_ccov] = temp_contigs_dict[tail_cno]
         [head_contig, head_clen, head_ccov] = temp_contigs_dict[head_cno]
+
+        if head_cno in used_contig:
+            print("contig {0} be used from previous concatenation, skip".format(head_cno))
+            continue
+        if tail_cno in used_contig:
+            print("contig {0} be used from previous concatenation, skip".format(tail_cno))
+            continue
 
         if (head_cno, tail_cno) in skip_key:
             continue
@@ -541,7 +566,7 @@ def contig_merge(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, temp_
         skip_key.add((tail_cno, head_cno))
 
         is_linear = False
-        if (head_cno, tail_cno) not in concat_dicision:
+        if (head_cno, tail_cno) not in concat_dicision_s:
             print("no reverse concatenation exists, potential lienar strain")
             is_linear = True
         else: 
@@ -550,7 +575,6 @@ def contig_merge(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, temp_
         
         (s_path_ids_l, s_len_l, s_path_ccov_l) = dist_matrix[(tail_cno, head_cno)]
 
-        print("Concatentate contigs: ", tail_cno, " <-> ", head_cno)
         concat_cno = tail_cno + "_" + head_cno
         overlap_count = 1 if s_len_l == 0 else 2
         if is_linear:
@@ -586,7 +610,7 @@ def contig_merge(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, temp_
     # re-append rest of contig
     for cno, [contig, clen, ccov] in temp_contigs_dict.items():
         if cno not in used_contig:
-            print_contig(cno, clen, ccov, contig, "Re-appending contig to temp_contig_dict: ")
+            print("Re-appending contig to temp_contig_dict: ", cno)
             concat_contig_dict[cno] = [contig, clen, ccov]
         else:
             print("contig {0} is used".format(cno))
@@ -652,20 +676,22 @@ def contig_merge(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, temp_
             simp_node_dict[no] = node
             graph.vp.dp[node] = dp
             graph.vp.color[node] = "black"
-    
+    # recover edge
     for (u,v), [cnos, flow, edge] in edge_to_contig_dict.items():
         if (u,v) not in simp_edge_dict:
             simp_edge_dict[(u,v)] = edge
             graph.ep.flow[edge] = flow
             graph.ep.color[edge] = "black"
-    
-    graph_to_gfa(graph, simp_node_dict, simp_edge_dict, output_file)
-    # concat_contig_dict = contig_preprocess(graph, simp_node_dict, simp_edge_dict, overlap, min_cov, concat_contig_dict)
 
-    # for cno, [contig, clen, ccov] in concat_contig_dict.items():
-    #     print("------------------------------------------------------")
-    #     print_contig(cno, clen, ccov, contig, "partial length residue contig found after concatenation")
-    #     print("------------------------------------------------------")
+    for cno, [contig, clen, ccov] in concat_contig_dict.items():
+        print("------------------------------------------------------")
+        print_contig(cno, clen, ccov, contig, "partial length residue contig found after concatenation")
+        u = simp_node_dict[contig[0]]
+        v = simp_node_dict[contig[-1]]
+        if u.in_degree() == 0 and v.out_degree() == 0:
+            print("no further concatentation exist")
+
+    graph_to_gfa(graph, simp_node_dict, simp_edge_dict, output_file)
 
     print("--------------------contig classification end--------------------")
     return concat_strain_dict, concat_contig_dict

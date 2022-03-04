@@ -366,30 +366,31 @@ def flip_graph_bfs(graph: Graph, node_dict: dict, edge_dict: dict, dp_dict: dict
     return graph, simp_node_dict, simp_edge_dict
 
 # FIXME fix the path
-def map_ref_to_graph(ref_file, simp_node_dict: dict, simp_file):
+def map_ref_to_graph(ref_file, simp_node_dict: dict, graph_file, store_mapping=False, output_file="acc/overlap.paf"):
     """
     map reference strain to the graph, debug only
     assumption: graph is stored in acc/simplifed_graph, 
     """
+    TEMP_fasta_FILE = "acc/gfa_to_fasta.fasta"
     if not ref_file:
         print("No ref file imported")
         return -1
-    with open(simp_file, 'r') as gfa:
-        with open("acc/gfa_to_fq.fq", 'w') as fq:
+    with open(graph_file, 'r') as gfa:
+        with open(TEMP_fasta_FILE, 'w') as fasta:
             for Line in gfa:
                 splited = Line.split('\t')
                 if splited[0] == 'S':
                     quality = "B"*len(splited[2])
-                    fq.write("@{0}\n{1}\n+\n{2}\n".format(splited[1],splited[2],quality))
-            fq.close()
+                    fasta.write("@{0}\n{1}\n+\n{2}\n".format(splited[1],splited[2],quality))
+            fasta.close()
         gfa.close()
     
     # minimap2. you may need to replace the exec path to minimap to fit your case
-    subprocess.check_call("/Users/luorunpeng/opt/miniconda3/envs/vg-flow-env/bin/minimap2 {0} {1} > {2}".format(
-    ref_file, "acc/gfa_to_fq.fq", "acc/overlap.paf"), shell=True)
+    subprocess.check_call("/Users/luorunpeng/opt/miniconda3/envs/spades-hapConstruction-env/bin/minimap2 {0} {1} > {2}".format(
+    ref_file, TEMP_fasta_FILE, output_file), shell=True)
 
     strain_dict = {}
-    with open("acc/overlap.paf", 'r') as paf:
+    with open(output_file, 'r') as paf:
         for Line in paf:
             splited = Line.split('\t')
             seg_no_int = int(splited[0])
@@ -404,7 +405,11 @@ def map_ref_to_graph(ref_file, simp_node_dict: dict, simp_file):
             if ref_no not in strain_dict:
                 strain_dict[ref_no] = []
             strain_dict[ref_no].append(seg_no_int)
-    subprocess.check_call("rm {0}".format("acc/gfa_to_fq.fq"), shell=True)
+        paf.close()
+        
+    subprocess.check_call("rm {0}".format(TEMP_fasta_FILE), shell=True)
+    if not store_mapping:
+        subprocess.check_call("rm {0}".format(output_file), shell=True)
     
     print("strain dict mapping")
     for seg_no, strains in strain_dict.items():
@@ -412,25 +417,25 @@ def map_ref_to_graph(ref_file, simp_node_dict: dict, simp_file):
         print("-------------------")
     return strain_dict
 
-def minimap_api(ref_file, fq_file, output_file):
-    subprocess.check_call("/Users/luorunpeng/opt/miniconda3/envs/vg-flow-env/bin/minimap2 {0} {1} > {2}".format(
-        ref_file, fq_file, output_file), shell=True)
+def minimap_api(ref_file, fasta_file, output_file):
+    subprocess.check_call("/Users/luorunpeng/opt/miniconda3/envs/spades-hapConstruction-env/bin/minimap2 {0} {1} > {2}".format(
+        ref_file, fasta_file, output_file), shell=True)
     return  
 
-def contig_dict_to_fq(graph: Graph, contig_dict: dict, simp_node_dict: dict, overlap_len, output_file, min_len=0):
+def contig_dict_to_fasta(graph: Graph, contig_dict: dict, simp_node_dict: dict, overlap_len, output_file, min_len=0):
     """
     Store contig dict into fastq file
     """
     subprocess.check_call("echo "" > {0}".format(
     output_file), shell=True)
 
-    with open(output_file, 'w') as fq:
+    with open(output_file, 'w') as fasta:
         for cno, (contig, clen, ccov) in contig_dict.items():
             contig_name = ">" + str(cno) + "_" + str(clen) + "_" + str(ccov) + "\n"
             seq = contig_to_seq(graph, contig, contig_name, simp_node_dict, overlap_len) + "\n"
-            fq.write(contig_name)
-            fq.write(seq)
-        fq.close()
+            fasta.write(contig_name)
+            fasta.write(seq)
+        fasta.close()
 
 
 def get_contig(graph: Graph, contig_file, simp_node_dict: dict, simp_edge_dict: dict, min_cov, min_len, overlap, min_node=2):

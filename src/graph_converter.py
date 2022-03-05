@@ -7,7 +7,7 @@ import subprocess
 
 import numpy
 
-from hap_construction import DEBUG_MODE
+from hap_construction import DEBUG_MODE, TEMP_DIR
 
 
 def gfa_to_graph(gfa_file, init_ori):
@@ -326,7 +326,7 @@ def flip_graph_bfs(graph: Graph, node_dict: dict, edge_dict: dict, dp_dict: dict
     print("-------------------------verify graph----------------------")
     check = True
 
-    check = check and (len(pick_dict) == len(node_dict))
+    assert len(pick_dict) == len(node_dict)
     for key, item in pick_dict.items():
         v_pos, v_neg = node_dict[key]
         if item == '+':
@@ -348,7 +348,7 @@ def flip_graph_bfs(graph: Graph, node_dict: dict, edge_dict: dict, dp_dict: dict
             graph.vp.id[v_pos] = graph.vp.id[v_pos] + "a"
             graph.vp.id[v_neg] = graph.vp.id[v_neg] + "b"
 
-    check = check and len(node_dict) == len(pick_dict)
+    assert check
     if check: print("Graph is verified")
     print("-------------------------end verify------------------------")
 
@@ -366,12 +366,12 @@ def flip_graph_bfs(graph: Graph, node_dict: dict, edge_dict: dict, dp_dict: dict
     return graph, simp_node_dict, simp_edge_dict
 
 # FIXME fix the path
-def map_ref_to_graph(ref_file, simp_node_dict: dict, graph_file, store_mapping=False, output_file="acc/overlap.paf"):
+def map_ref_to_graph(ref_file, simp_node_dict: dict, graph_file, store_mapping=False, output_file="overlap.paf"):
     """
     map reference strain to the graph, debug only
     assumption: graph is stored in acc/simplifed_graph, 
     """
-    TEMP_fasta_FILE = "acc/gfa_to_fasta.fasta"
+    TEMP_fasta_FILE = "gfa_to_fasta.fasta"
     if not ref_file:
         print("No ref file imported")
         return -1

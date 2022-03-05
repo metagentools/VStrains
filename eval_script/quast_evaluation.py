@@ -15,7 +15,7 @@ def sep_ref(ref_file):
             name = lines[j]
             strain = lines[j+1]
             j = j + 2
-            file_name = "sub_" + str(i) + "_ref.fasta"
+            file_name = "sub_" + str(name[1:-1]) + "_ref.fasta"
             subprocess.check_call("echo "" > {0}".format(file_name), shell=True)
             with open (file_name, 'w') as sub_file:
                 sub_file.write(name)

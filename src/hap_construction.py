@@ -8,7 +8,6 @@
 # import graph_tool
 # from graph_tool.search import dfs_iterator
 # from graph_tool.topology import topological_sort, all_circuits
-# from graph_tool.draw import graph_draw
 # from graph_tool.clustering import local_clustering
 
 import subprocess
@@ -52,56 +51,80 @@ def main():
     
     subprocess.check_call("rm -rf {0} && mkdir {0}".format(TEMP_DIR), shell=True)
 
-    # Read in L0
+    # Read in as Level -1 graph
     graph, simp_node_dict, simp_edge_dict = gfa_to_graph(args.gfa_file, init_ori=1)
     assign_edge_flow(graph, simp_node_dict, simp_edge_dict)
 
     contig_dict, node_to_contig_dict, edge_to_contig_dict = get_contig(graph, args.contig_file, simp_node_dict, simp_edge_dict, args.min_cov, args.min_len, args.overlap)
     graph_simplification(graph, simp_node_dict, simp_edge_dict, node_to_contig_dict, edge_to_contig_dict, args.min_cov)
-    graph_to_gfa(graph, simp_node_dict, simp_edge_dict, "{0}graph_L1.gfa".format(TEMP_DIR))
+    graph_to_gfa(graph, simp_node_dict, simp_edge_dict, "{0}pre_graph.gfa".format(TEMP_DIR))
     
-    # graph_draw(graph, vprops={'text': graph.vp.id}, eprops={'text': graph.ep.flow}, output="graph.pdf", output_size=(2000,2000))
+    # Read in as pre graph
+    pre_graph, simp_node_dict_pre, simp_edge_dict_pre = flipped_gfa_to_graph("{0}pre_graph.gfa".format(TEMP_DIR))
+    assign_edge_flow(pre_graph, simp_node_dict_pre, simp_edge_dict_pre)
 
-    # L1
-    graph_L1, simp_node_dict_L1, simp_edge_dict_L1 = flipped_gfa_to_graph("{0}graph_L1.gfa".format(TEMP_DIR))
-    assign_edge_flow(graph_L1, simp_node_dict_L1, simp_edge_dict_L1)
-
-    if args.ref_file and DEBUG_MODE:
-        map_ref_to_graph(args.ref_file, simp_node_dict_L1, "{0}graph_L1.gfa".format(TEMP_DIR))
+    if args.ref_file:
+        map_ref_to_graph(args.ref_file, simp_node_dict_pre, "{0}pre_graph.gfa".format(TEMP_DIR))
 
     # selected contig from SPAdes
     contig_dict_to_fasta(graph, contig_dict, simp_node_dict, args.overlap, "{0}pre_contigs.fasta".format(TEMP_DIR))
     minimap_api(args.ref_file, "{0}pre_contigs.fasta".format(TEMP_DIR), "{0}pre_contigs_to_strain.paf".format(TEMP_DIR))
 
     # reduce SPAdes full-length contig as init cand strain
-    cand_strains_dict, temp_contigs_dict = graph_reduction(graph, contig_dict, simp_node_dict, simp_edge_dict, node_to_contig_dict, edge_to_contig_dict, "{0}graph_L2.gfa".format(TEMP_DIR), args.min_cov, args.min_len, args.overlap)
+    cand_strains_dict, temp_contigs_dict = graph_reduction(graph, contig_dict, simp_node_dict, simp_edge_dict, node_to_contig_dict, edge_to_contig_dict, "{0}graph_L0.gfa".format(TEMP_DIR), args.min_cov, args.min_len, args.overlap)
 
-    # L2
-    graph_L2, simp_node_dict_L2, simp_edge_dict_L2 = flipped_gfa_to_graph("{0}graph_L2.gfa".format(TEMP_DIR))
-    assign_edge_flow(graph_L2, simp_node_dict_L2, simp_edge_dict_L2)
-    graph_simplification(graph_L2, simp_node_dict_L2, simp_edge_dict_L2, node_to_contig_dict, edge_to_contig_dict, args.min_cov)
+    iter_no = 0
+    strain_dict = cand_strains_dict.copy()
+    iter_condition = set(temp_contigs_dict.keys())
+    concat_contig_dict_iter = temp_contigs_dict
+    # contig pair-wise concatenation iteration
+    # with iteration stopped when no further concatenation occurred
+    while True:
+        print("Current iteration: ", iter_no)
+        graph_iter, simp_node_dict_iter, simp_edge_dict_iter = flipped_gfa_to_graph("{0}graph_L{1}.gfa".format(TEMP_DIR, str(iter_no)))
+        assign_edge_flow(graph_iter, simp_node_dict_iter, simp_edge_dict_iter)
+        graph_simplification(graph_iter, simp_node_dict_iter, simp_edge_dict_iter, node_to_contig_dict, edge_to_contig_dict, args.min_cov)
 
-    concat_strain_dict, concat_contig_dict = contig_merge(graph_L2, simp_node_dict_L2, simp_edge_dict_L2, temp_contigs_dict, node_to_contig_dict, edge_to_contig_dict, "{0}graph_L3.gfa".format(TEMP_DIR), args.min_cov, args.min_len, args.max_len, args.overlap)
+        concat_strain_dict_iter, concat_contig_dict_iter = contig_merge(graph_iter, simp_node_dict_iter, simp_edge_dict_iter, concat_contig_dict_iter, node_to_contig_dict, edge_to_contig_dict, "{0}graph_L{1}.gfa".format(TEMP_DIR, str(iter_no+1)), args.min_cov, args.min_len, args.max_len, args.overlap)
 
-    contig_dict_to_fasta(graph_L2, concat_contig_dict, simp_node_dict_L2, args.overlap, "{0}L2_contigs.fasta".format(TEMP_DIR))
-    minimap_api(args.ref_file, "{0}L2_contigs.fasta".format(TEMP_DIR), "{0}L2_contigs_to_strain.paf".format(TEMP_DIR))
+        contig_dict_to_fasta(graph_iter, concat_contig_dict_iter, simp_node_dict_iter, args.overlap, "{0}L{1}_contigs.fasta".format(TEMP_DIR, str(iter_no)))
+        minimap_api(args.ref_file, "{0}L{1}_contigs.fasta".format(TEMP_DIR, str(iter_no)), "{0}L{1}_contigs_to_strain.paf".format(TEMP_DIR, str(iter_no)))
+
+        strain_dict.update(concat_strain_dict_iter.copy())
+
+        iter_compare = set(concat_contig_dict_iter.keys())
+        if iter_condition == iter_compare:
+            print("end of contig pair-wise concatenation iteration: ", iter_no)
+            break
+        else:
+            iter_condition = iter_compare
+            iter_no = iter_no + 1
+    # # read in as graph L0
+    # graph_L0, simp_node_dict_L0, simp_edge_dict_L0 = flipped_gfa_to_graph("{0}graph_L0.gfa".format(TEMP_DIR))
+    # assign_edge_flow(graph_L0, simp_node_dict_L0, simp_edge_dict_L0)
+    # graph_simplification(graph_L0, simp_node_dict_L0, simp_edge_dict_L0, node_to_contig_dict, edge_to_contig_dict, args.min_cov)
+
+    # concat_strain_dict, concat_contig_dict = contig_merge(graph_L0, simp_node_dict_L0, simp_edge_dict_L0, temp_contigs_dict, node_to_contig_dict, edge_to_contig_dict, "{0}graph_L1.gfa".format(TEMP_DIR), args.min_cov, args.min_len, args.max_len, args.overlap)
+
+    # contig_dict_to_fasta(graph_L0, concat_contig_dict, simp_node_dict_L0, args.overlap, "{0}L0_contigs.fasta".format(TEMP_DIR))
+    # minimap_api(args.ref_file, "{0}L0_contigs.fasta".format(TEMP_DIR), "{0}L0_contigs_to_strain.paf".format(TEMP_DIR))
 
 
-    # L3
-    graph_L3, simp_node_dict_L3, simp_edge_dict_L3 = flipped_gfa_to_graph("{0}graph_L3.gfa".format(TEMP_DIR))
-    assign_edge_flow(graph_L3, simp_node_dict_L3, simp_edge_dict_L3)
-    graph_simplification(graph_L3, simp_node_dict_L3, simp_edge_dict_L3, node_to_contig_dict, edge_to_contig_dict, args.min_cov)
+    # # read in as graph L1
+    # graph_L1, simp_node_dict_L1, simp_edge_dict_L1 = flipped_gfa_to_graph("{0}graph_L1.gfa".format(TEMP_DIR))
+    # assign_edge_flow(graph_L1, simp_node_dict_L1, simp_edge_dict_L1)
+    # graph_simplification(graph_L1, simp_node_dict_L1, simp_edge_dict_L1, node_to_contig_dict, edge_to_contig_dict, args.min_cov)
 
-    concat_strain_dict_2, concat_contig_dict_2 = contig_merge(graph_L3, simp_node_dict_L3, simp_edge_dict_L3, concat_contig_dict, node_to_contig_dict, edge_to_contig_dict, "{0}graph_L4.gfa".format(TEMP_DIR), args.min_cov, args.min_len, args.max_len, args.overlap)
+    # concat_strain_dict_2, concat_contig_dict_2 = contig_merge(graph_L1, simp_node_dict_L1, simp_edge_dict_L1, concat_contig_dict, node_to_contig_dict, edge_to_contig_dict, "{0}graph_L2.gfa".format(TEMP_DIR), args.min_cov, args.min_len, args.max_len, args.overlap)
 
-    contig_dict_to_fasta(graph_L3, concat_contig_dict_2, simp_node_dict_L3, args.overlap, "{0}L3_contigs.fasta".format(TEMP_DIR))
-    minimap_api(args.ref_file, "{0}L3_contigs.fasta".format(TEMP_DIR), "{0}L3_contigs_to_strain.paf".format(TEMP_DIR))
+    # contig_dict_to_fasta(graph_L1, concat_contig_dict_2, simp_node_dict_L1, args.overlap, "{0}L1_contigs.fasta".format(TEMP_DIR))
+    # minimap_api(args.ref_file, "{0}L1_contigs.fasta".format(TEMP_DIR), "{0}L1_contigs_to_strain.paf".format(TEMP_DIR))
 
     # print strain and minimap overlaps
-    strain_dict = concat_strain_dict.copy()
-    strain_dict.update(concat_strain_dict_2)
-    strain_dict.update(cand_strains_dict)
-    contig_dict_to_fasta(graph_L1, strain_dict, simp_node_dict_L1, args.overlap, "{0}cand_strains.fasta".format(TEMP_DIR))
+    # strain_dict = concat_strain_dict.copy()
+    # strain_dict.update(concat_strain_dict_2)
+    # strain_dict.update(cand_strains_dict)
+    contig_dict_to_fasta(pre_graph, strain_dict, simp_node_dict_pre, args.overlap, "{0}cand_strains.fasta".format(TEMP_DIR))
     minimap_api(args.ref_file, "{0}cand_strains.fasta".format(TEMP_DIR), "{0}cand_strain_to_strain.paf".format(TEMP_DIR))
 
 def graph_simplification(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, node_to_contig_dict: dict, edge_to_contig_dict: dict, min_cov):

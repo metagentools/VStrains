@@ -7,10 +7,12 @@ No duplicate edges between two nodes
  question: dp estimation is not accurate (with error up to 1000dp)
 graph level:
 filename format: graph_L{x}.gfa, with x={0,1,2,3}
-level 0 graph: assembly graph directly from SPAdes
-level 1 graph: graph after spin the edges
-level 2 graph: full-length contig reduced graph
-level 3 graph: level 2 graph, with concatenated candidate strain be reduced
+level -1 graph: assembly graph directly from SPAdes
+pre graph: graph after spin the edges
+level 0 graph: full-length spades contig reduced graph
+level 1 graph: with concatenated candidate strain be reduced
+...
+
 
 TODO: after delete the concated contig, we need to ensure the existence of the rest of the contigs by aligning the path.
 

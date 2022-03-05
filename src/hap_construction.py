@@ -91,6 +91,7 @@ def main():
         minimap_api(args.ref_file, "{0}L{1}_contigs.fasta".format(TEMP_DIR, str(iter_no)), "{0}L{1}_contigs_to_strain.paf".format(TEMP_DIR, str(iter_no)))
 
         strain_dict.update(concat_strain_dict_iter.copy())
+        iter_no = iter_no + 1
 
         iter_compare = set(concat_contig_dict_iter.keys())
         if iter_condition == iter_compare:
@@ -98,34 +99,19 @@ def main():
             break
         else:
             iter_condition = iter_compare
-            iter_no = iter_no + 1
-    # # read in as graph L0
-    # graph_L0, simp_node_dict_L0, simp_edge_dict_L0 = flipped_gfa_to_graph("{0}graph_L0.gfa".format(TEMP_DIR))
-    # assign_edge_flow(graph_L0, simp_node_dict_L0, simp_edge_dict_L0)
-    # graph_simplification(graph_L0, simp_node_dict_L0, simp_edge_dict_L0, node_to_contig_dict, edge_to_contig_dict, args.min_cov)
 
-    # concat_strain_dict, concat_contig_dict = contig_merge(graph_L0, simp_node_dict_L0, simp_edge_dict_L0, temp_contigs_dict, node_to_contig_dict, edge_to_contig_dict, "{0}graph_L1.gfa".format(TEMP_DIR), args.min_cov, args.min_len, args.max_len, args.overlap)
-
-    # contig_dict_to_fasta(graph_L0, concat_contig_dict, simp_node_dict_L0, args.overlap, "{0}L0_contigs.fasta".format(TEMP_DIR))
-    # minimap_api(args.ref_file, "{0}L0_contigs.fasta".format(TEMP_DIR), "{0}L0_contigs_to_strain.paf".format(TEMP_DIR))
-
-
-    # # read in as graph L1
-    # graph_L1, simp_node_dict_L1, simp_edge_dict_L1 = flipped_gfa_to_graph("{0}graph_L1.gfa".format(TEMP_DIR))
-    # assign_edge_flow(graph_L1, simp_node_dict_L1, simp_edge_dict_L1)
-    # graph_simplification(graph_L1, simp_node_dict_L1, simp_edge_dict_L1, node_to_contig_dict, edge_to_contig_dict, args.min_cov)
-
-    # concat_strain_dict_2, concat_contig_dict_2 = contig_merge(graph_L1, simp_node_dict_L1, simp_edge_dict_L1, concat_contig_dict, node_to_contig_dict, edge_to_contig_dict, "{0}graph_L2.gfa".format(TEMP_DIR), args.min_cov, args.min_len, args.max_len, args.overlap)
-
-    # contig_dict_to_fasta(graph_L1, concat_contig_dict_2, simp_node_dict_L1, args.overlap, "{0}L1_contigs.fasta".format(TEMP_DIR))
-    # minimap_api(args.ref_file, "{0}L1_contigs.fasta".format(TEMP_DIR), "{0}L1_contigs_to_strain.paf".format(TEMP_DIR))
 
     # print strain and minimap overlaps
-    # strain_dict = concat_strain_dict.copy()
-    # strain_dict.update(concat_strain_dict_2)
-    # strain_dict.update(cand_strains_dict)
     contig_dict_to_fasta(pre_graph, strain_dict, simp_node_dict_pre, args.overlap, "{0}cand_strains.fasta".format(TEMP_DIR))
     minimap_api(args.ref_file, "{0}cand_strains.fasta".format(TEMP_DIR), "{0}cand_strain_to_strain.paf".format(TEMP_DIR))
+    
+    # further step to recover the rest of strain from the reduced graph
+    graph_red, simp_node_dict_red, simp_edge_dict_red = flipped_gfa_to_graph("{0}graph_L{1}.gfa".format(TEMP_DIR, str(iter_no)))
+    assign_edge_flow(graph_red, simp_node_dict_red, simp_edge_dict_red)
+    graph_simplification(graph_red, simp_node_dict_red, simp_edge_dict_red, node_to_contig_dict, edge_to_contig_dict, args.min_cov)
+
+    graph_compactification(graph_red, simp_node_dict_red, simp_edge_dict_red, concat_contig_dict_iter, "{0}graph_compacted.gfa".format(TEMP_DIR), args.overlap)    
+
 
 def graph_simplification(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, node_to_contig_dict: dict, edge_to_contig_dict: dict, min_cov):
     """
@@ -290,11 +276,11 @@ def contig_reduction(graph: Graph, contig, cno, clen, ccov, simp_node_dict: dict
     """
     if DEBUG_MODE:
         print("*---Contig: ", cno, clen, ccov)
-    adj_index = 1
+    out_edgedex = 1
     for node in contig:
-        if adj_index >= len(contig):
+        if out_edgedex >= len(contig):
             break
-        adj_node = contig[adj_index]
+        adj_node = contig[out_edgedex]
 
         u = simp_node_dict[node] if node in simp_node_dict else None
         v = simp_node_dict[adj_node] if adj_node in simp_node_dict else None
@@ -335,7 +321,7 @@ def contig_reduction(graph: Graph, contig, cno, clen, ccov, simp_node_dict: dict
             graph.vp.dp[u] = graph.vp.dp[u] - ccov
 
         # last node in the contig, reduce its depth
-        if adj_index + 1 == len(contig):
+        if out_edgedex + 1 == len(contig):
             if graph.vp.dp[v] - ccov <= min_cov: 
                 graph.vp.dp[v] = 0
                 graph.vp.color[v] = 'gray'
@@ -352,7 +338,7 @@ def contig_reduction(graph: Graph, contig, cno, clen, ccov, simp_node_dict: dict
             simp_edge_dict.pop((node,adj_node))
             if DEBUG_MODE:
                 print_edge(graph, e, "edge been removed in the final step")
-        adj_index = adj_index + 1
+        out_edgedex = out_edgedex + 1
     return
 
 def graph_reduction(graph: Graph, contig_dict: dict, simp_node_dict: dict, simp_edge_dict: dict, node_to_contig_dict: dict, edge_to_contig_dict: dict, output_file, min_cov, min_len, overlap):
@@ -515,7 +501,7 @@ def pairwise_contig_dist(graph: Graph, simp_node_dict: dict, simp_edge_dict: dic
 
 def contig_merge(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, temp_contigs_dict: dict, node_to_contig_dict: dict, edge_to_contig_dict: dict, output_file, min_cov, min_len, max_len, overlap):
 
-    print("-----------------------contig classifcation--------------------")
+    print("-----------------------contig pair-wise concatenaton--------------------")
 
     if not is_DAG(graph):
         print("graph is cyclic, cyclic strian may exist")
@@ -716,8 +702,111 @@ def contig_merge(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, temp_
 
     graph_to_gfa(graph, simp_node_dict, simp_edge_dict, output_file)
 
-    print("--------------------contig classification end--------------------")
+    print("--------------------contig pair-wise concatenaton end--------------------")
     return concat_strain_dict, concat_contig_dict
+
+def graph_compactification(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, contig_dict: dict, output_file, overlap):
+    """
+    Compactify the reduced De Bruijin graph
+    """
+    print("--------------------graph compactification--------------------")
+    # find simple edges, simple edge is the only edge between its source and sink
+    simple_edges = []
+    out_edge = {}
+    in_edge = {}
+    for e in simp_edge_dict.values():
+        if e.source().out_degree() == 1 and e.target().in_degree() == 1:
+            assert e.source() != e.target()
+            simple_edges.append([e.source(), e.target()])
+            in_edge[int(e.source())] = e
+            out_edge[int(e.target())] = e
+
+    # build simple paths from simple edges
+    def extend_path(p):
+        v = int(p[-1])
+        if v in in_edge:
+            p.append(in_edge[v].target())
+            return extend_path(p)
+        else:
+            return p
+    simple_paths = []
+    for v, e in in_edge.items():
+        if v not in out_edge:
+            p = extend_path([e.source(), e.target()])
+            simple_paths.append(p)
+    
+    path_dict = {}
+    path_src = {}
+    path_sink = {}
+    for p in simple_paths:
+        print("path: ", [int(graph.vp.id[u]) for u in p])
+        pid = str(graph.vp.id[p[0]]) + "00" + str(len(p)) + "00" + str(graph.vp.id[p[-1]])
+        plen = path_len(graph, p, overlap)
+        pseq = path_to_seq(graph, p, pid, overlap)
+        pdp = numpy.mean([graph.vp.dp[u] for u in p])
+        pkc = numpy.mean([graph.vp.kc[u] for u in p])
+
+        # recolor the used node to gray
+        for i in range(len(p)):
+            u = p[i]
+            v = p[i+1] if (i + 1) < len(p) else None
+            graph.vp.color[u] = 'gray'
+            if v != None:
+                graph.vp.color[v] = 'gray'
+            if u != None and v != None:
+                graph.ep.color[graph.edge(u,v)] = 'gray'
+        
+        # add the path to graph and dict
+        pv = graph.add_vertex()
+        graph.vp.seq[pv] = pseq
+        graph.vp.dp[pv] = pdp
+        graph.vp.kc[pv] = pkc
+        graph.vp.id[pv] = pid
+        graph.vp.color[pv] = 'black'
+        
+        uid = graph.vp.id[p[0]]
+        vid = graph.vp.id[p[-1]]
+        path_dict[(pid, uid, vid)] = pv
+        path_src[uid] = pv
+        path_sink[vid] = pv
+        simp_node_dict[pid] = pv
+    
+    # re-append path edges
+    for (pid, uid, vid), pv in path_dict.items():
+        u_in_neighbors = simp_node_dict[uid].in_neighbors()
+        for u_neighbor in u_in_neighbors:
+            un_id = graph.vp.id[u_neighbor]
+            if graph.vp.color[u_neighbor] == 'black':
+                e = graph.add_edge(u_neighbor, pv)
+                graph.ep.overlap[e] = overlap
+                graph.ep.color[e] = 'black'
+                simp_edge_dict[(un_id, pid)] = e
+            else:
+                if un_id in path_sink:
+                    u_alternative = path_sink[un_id]
+                    e = graph.add_edge(u_alternative, pv)
+                    graph.ep.overlap[e] = overlap
+                    graph.ep.color[e] = 'black'
+                    simp_edge_dict[(graph.vp.id[u_alternative], pid)] = e
+                
+        v_out_neighbors = simp_node_dict[vid].out_neighbors()
+        for v_neighbor in v_out_neighbors:
+            vn_id = graph.vp.id[v_neighbor]
+            if graph.vp.color[v_neighbor] == 'black':
+                e = graph.add_edge(pv, v_neighbor)
+                graph.ep.overlap[e] = overlap
+                graph.ep.color[e] = 'black'
+                simp_edge_dict[(pid, vn_id)] = e
+            else:
+                if vn_id in path_src:
+                    v_alternative = path_src[vn_id]
+                    e = graph.add_edge(pv, v_alternative)
+                    graph.ep.overlap[e] = overlap
+                    graph.ep.color[e] = 'black'
+                    simp_edge_dict[(pid, graph.vp.id[v_alternative])] = e
+
+    graph_to_gfa(graph, simp_node_dict, simp_edge_dict, output_file)
+
 
 if __name__ == "__main__":
     main()

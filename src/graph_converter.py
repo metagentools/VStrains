@@ -417,6 +417,20 @@ def map_ref_to_graph(ref_file, simp_node_dict: dict, graph_file, store_mapping=F
         print("-------------------")
     return strain_dict
 
+def gfa_to_fasta(gfa_file, fasta_file="gfa_to_fasta.fasta"):
+    if not gfa_file:
+        print("No gfa file imported")
+        return -1
+    with open(gfa_file, 'r') as gfa:
+        with open(fasta_file, 'w') as fasta:
+            for Line in gfa:
+                splited = Line.split('\t')
+                if splited[0] == 'S':
+                    quality = "B"*len(splited[2])
+                    fasta.write("@{0}\n{1}\n+\n{2}\n".format(splited[1],splited[2],quality))
+            fasta.close()
+        gfa.close()
+
 def minimap_api(ref_file, fasta_file, output_file):
     subprocess.check_call("/Users/luorunpeng/opt/miniconda3/envs/spades-hapConstruction-env/bin/minimap2 {0} {1} > {2}".format(
         ref_file, fasta_file, output_file), shell=True)
@@ -432,7 +446,7 @@ def contig_dict_to_fasta(graph: Graph, contig_dict: dict, simp_node_dict: dict, 
     with open(output_file, 'w') as fasta:
         for cno, (contig, clen, ccov) in contig_dict.items():
             contig_name = ">" + str(cno) + "_" + str(clen) + "_" + str(ccov) + "\n"
-            seq = contig_to_seq(graph, contig, contig_name, simp_node_dict, overlap_len) + "\n"
+            seq = path_ids_to_seq(graph, contig, contig_name, simp_node_dict, overlap_len) + "\n"
             fasta.write(contig_name)
             fasta.write(seq)
         fasta.close()
@@ -708,14 +722,24 @@ def contig_flow(graph: Graph, edge_dict: dict, contig):
         edge_flow.append(f)
     return edge_flow
 
-def contig_to_seq(graph: Graph, contig: list, contig_name, simp_node_dict: dict, overlap_len):
+def path_ids_to_seq(graph: Graph, path_ids: list, path_name, simp_node_dict: dict, overlap_len):
     seq = ""
-    for i in range(len(contig)):
-        c = simp_node_dict[contig[i]]
-        if i == len(contig) - 1:
-            seq = seq + graph.vp.seq[c]
+    for i in range(len(path_ids)):
+        u = simp_node_dict[path_ids[i]]
+        if i == len(path_ids) - 1:
+            seq = seq + graph.vp.seq[u]
         else:
-            seq = seq + (graph.vp.seq[c])[:-overlap_len]
+            seq = seq + (graph.vp.seq[u])[:-overlap_len]
+    return seq
+
+def path_to_seq(graph: Graph, path: list, path_name, overlap_len):
+    seq = ""
+    for i in range(len(path)):
+        u = path[i]
+        if i == len(path) - 1:
+            seq = seq + graph.vp.seq[u]
+        else:
+            seq = seq + (graph.vp.seq[u])[:-overlap_len]
     return seq
 
 def reverse_seq(seq: str):

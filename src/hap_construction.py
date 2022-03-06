@@ -116,21 +116,18 @@ def main():
     graph_comp, simp_node_dict_comp, simp_edge_dict_comp = flipped_gfa_to_graph("{0}graph_compacted.gfa".format(TEMP_DIR))
     assign_edge_flow(graph_comp, simp_node_dict_comp, simp_edge_dict_comp)
 
-    # with open("{0}cand_strains.fasta".format(TEMP_DIR), 'a') as fasta:
-    #     for no, u in simp_node_dict_comp.items():
-    #         seq = graph.vp.seq[u]
-    #         slen = len(seq)
-    #         sdp = graph.vp.dp[u]
-    #         if slen > args.min_len / 10:
-    #             # append to cand strain fasta
-    #             name = ">" + str(no) + "_" + str(slen) + "_" + str(sdp) + "\n"
-    #             fasta.write(name)
-    #             seq += "\n"
-    #             fasta.write(seq)
-    #     fasta.close()
-
     # no reason to simplify again
-    # final_strain_dict = path_extraction(graph_comp, simp_node_dict_comp, simp_edge_dict_comp, contig_map_node_dict)   
+    final_strain_dict = path_extraction(graph_comp, simp_node_dict_comp, simp_edge_dict_comp, contig_map_node_dict, args.overlap)   
+
+    with open("{0}cand_strains.fasta".format(TEMP_DIR), 'a') as fasta:
+        for cno, (c, clen, ccov) in final_strain_dict.items():
+            seq = path_ids_to_seq(graph_comp, c, cno, simp_node_dict_comp, args.overlap)
+            seq += "\n"
+            name = ">" + str(cno) + "_" + str(clen) + "_" + str(ccov) + "\n"
+            fasta.write(name)
+            fasta.write(seq)
+        fasta.close()
+
     minimap_api(args.ref_file, "{0}cand_strains.fasta".format(TEMP_DIR), "{0}cand_strain_to_strain.paf".format(TEMP_DIR))
 
 
@@ -429,7 +426,7 @@ def graph_reduction(graph: Graph, contig_dict: dict, simp_node_dict: dict, simp_
     print("-----------------------graph reduction end--------------------")
     return cand_strains_dict, temp_contigs_dict
 
-def distance_search(graph: Graph, simp_node_dict: dict, source, source_contig, sink, sink_contig, overlap: int):
+def distance_search(graph: Graph, simp_node_dict: dict, source, sink, overlap: int):
     """
     Compute minimal distance and its path between source node and sink node
     optimise the function with contig overlap check TODO
@@ -510,7 +507,7 @@ def pairwise_contig_dist(graph: Graph, simp_node_dict: dict, simp_edge_dict: dic
                     if DEBUG_MODE:
                         print(intersect)
                     continue
-            s_path, s_len = distance_search(graph, simp_node_dict, contig_i[-1], contig_i, contig_j[0], contig_j, overlap)
+            s_path, s_len = distance_search(graph, simp_node_dict, contig_i[-1], contig_j[0], overlap)
             if s_path != None:
                 s_path_ids = [graph.vp.id[v] for v in s_path]
                 print("shortest path length: ", s_len, "path: ", [int(v) for v in s_path_ids])
@@ -862,7 +859,47 @@ def graph_compactification(graph: Graph, simp_node_dict: dict, simp_edge_dict: d
     print("------------------graph compactification end------------------")
     return contig_map_node_dict
 
-def path_extraction(graph_comp: Graph, simp_node_dict_comp: dict, simp_edge_dict_comp: dict, contig_map_node_dict: dict):
+def graph_grouping(graph: Graph, simp_node_dict: dict, forward, reverse, partition_length_cut_off):
+    """
+    Maximimize graph connectivity by minimizing node with 0 in-degree or out-degree, detect and remove all the cycles.
+    Out-of-date, TBD
+    """
+    # determine the isolated subgraphs, and assign each node with its group No, which indicates they are belong to same group
+    def bfs_grouping(graph: Graph, start_node, group_no, groups):
+        """
+        Perform a breadth-first search and assign the group no to all the connected nodes.
+        """
+        groups[group_no] = []
+
+        queue = []
+        queue.append(start_node)
+        while queue:
+            v = queue.pop()
+            graph.vp.group[v] = group_no
+            groups[group_no].append(v)
+
+            for neighbor in v.all_neighbors():
+                if graph.vp.group[neighbor] == -1:
+                    queue.append(neighbor)
+        return graph, group_no, groups
+
+    group_no = 1
+    groups = {}
+    for v in simp_node_dict.values():
+        # grouping
+        if graph.vp.group[v] == -1:
+            graph, group_no, groups = bfs_grouping(graph, v, group_no, groups)
+            group_no = group_no + 1
+
+    print("number of groups:", len(groups))
+    # for key, item in groups.items():
+    #     print("group number: ", key, " member: ", [(graph.vp.id[v],graph.vp.partition[v]) for v in item])
+
+    # connect sub-graphs based on pair-end reads information
+    # TODO
+    return graph, groups
+
+def path_extraction(graph_comp: Graph, simp_node_dict_comp: dict, simp_edge_dict_comp: dict, contig_map_node_dict: dict, overlap):
     """
     extract the last mile path from the graph, with support from residue contigs
     """
@@ -882,6 +919,26 @@ def path_extraction(graph_comp: Graph, simp_node_dict_comp: dict, simp_edge_dict
             sinks.append(no)
         else:
             middles.append(no)
+    paths = []
+    for src in srcs:
+        for sink in sinks:
+            p, plen = distance_search(graph_comp, simp_node_dict_comp, src, sink, overlap)
+            if p != None:
+                s_path_ids = [graph_comp.vp.id[v] for v in p]
+                s_path_ids.append(sink)
+                s_path_ids.insert(0, src)             
+                plen = plen + len(graph_comp.vp.seq[simp_node_dict_comp[src]]) + len(graph_comp.vp.seq[simp_node_dict_comp[sink]]) - 2 * overlap
+                paths.append((s_path_ids, plen))
+    
+    final_strain_dict = {}
+    for p_ids, plen in paths:
+        print("Path: ", [int(u) for u in p_ids])
+        print("path len: \n", plen)
+        pcov = numpy.mean([graph_comp.vp.dp[simp_node_dict_comp[u]] for u in p_ids])
+        pno = str(p_ids[0]) + "_" + str(p_ids[-1])
+        final_strain_dict[pno] = (p_ids, plen, pcov)
+    
+    return final_strain_dict
 
 if __name__ == "__main__":
     main()

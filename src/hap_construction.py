@@ -20,7 +20,7 @@ import numpy
 
 from graph_converter import *
 
-usage = "Construct haplotypes using divide-and-conquer method"
+usage = "Construct viral strains under deno vo approach"
 author = "Runpeng Luo"
 
 DEBUG_MODE = False
@@ -115,9 +115,12 @@ def main():
     # extract the last mile paths from the graph
     graph_comp, simp_node_dict_comp, simp_edge_dict_comp = flipped_gfa_to_graph("{0}graph_compacted.gfa".format(TEMP_DIR))
     assign_edge_flow(graph_comp, simp_node_dict_comp, simp_edge_dict_comp)
+    
+    if args.ref_file:
+        map_ref_to_graph(args.ref_file, simp_node_dict_comp, "{0}graph_compacted.gfa".format(TEMP_DIR))
 
     # no reason to simplify again
-    final_strain_dict = path_extraction(graph_comp, simp_node_dict_comp, simp_edge_dict_comp, contig_map_node_dict, args.overlap)   
+    final_strain_dict = path_extraction(graph_comp, simp_node_dict_comp, simp_edge_dict_comp, contig_map_node_dict, args.overlap, args.min_cov, args.min_len)   
 
     with open("{0}cand_strains.fasta".format(TEMP_DIR), 'a') as fasta:
         for cno, (c, clen, ccov) in final_strain_dict.items():
@@ -859,7 +862,7 @@ def graph_compactification(graph: Graph, simp_node_dict: dict, simp_edge_dict: d
     print("------------------graph compactification end------------------")
     return contig_map_node_dict
 
-def graph_grouping(graph: Graph, simp_node_dict: dict, forward, reverse, partition_length_cut_off):
+def graph_grouping(graph: Graph, simp_node_dict: dict, forward="", reverse="", partition_length_cut_off=0):
     """
     Maximimize graph connectivity by minimizing node with 0 in-degree or out-degree, detect and remove all the cycles.
     Out-of-date, TBD
@@ -883,6 +886,7 @@ def graph_grouping(graph: Graph, simp_node_dict: dict, forward, reverse, partiti
                     queue.append(neighbor)
         return graph, group_no, groups
 
+    graph.vp.group = graph.new_vertex_property("int16_t", val=-1)
     group_no = 1
     groups = {}
     for v in simp_node_dict.values():
@@ -892,52 +896,84 @@ def graph_grouping(graph: Graph, simp_node_dict: dict, forward, reverse, partiti
             group_no = group_no + 1
 
     print("number of groups:", len(groups))
-    # for key, item in groups.items():
-    #     print("group number: ", key, " member: ", [(graph.vp.id[v],graph.vp.partition[v]) for v in item])
+    for key, item in groups.items():
+        print("group number: ", key, " member: ", [graph.vp.id[v] for v in item])
 
     # connect sub-graphs based on pair-end reads information
     # TODO
     return graph, groups
 
-def path_extraction(graph_comp: Graph, simp_node_dict_comp: dict, simp_edge_dict_comp: dict, contig_map_node_dict: dict, overlap):
+
+def path_extraction(graph_comp: Graph, simp_node_dict_comp: dict, simp_edge_dict_comp: dict, contig_map_node_dict: dict, overlap, min_cov, min_len):
     """
     extract the last mile path from the graph, with support from residue contigs
     """
     print("--------------------path extraction--------------------")
-    srcs = []
-    sinks = []
-    isolations = []
-    middles = []
 
-    # classify the nodes
-    for no, u in simp_node_dict_comp.items():
-        if u.in_degree() == 0 and u.out_degree() == 0:
-            isolations.append(no)
-        elif u.in_degree() == 0:
-            srcs.append(no)
-        elif u.out_degree() == 0:
-            sinks.append(no)
-        else:
-            middles.append(no)
-    paths = []
-    for src in srcs:
-        for sink in sinks:
-            p, plen = distance_search(graph_comp, simp_node_dict_comp, src, sink, overlap)
-            if p != None:
-                s_path_ids = [graph_comp.vp.id[v] for v in p]
-                s_path_ids.append(sink)
-                s_path_ids.insert(0, src)             
-                plen = plen + len(graph_comp.vp.seq[simp_node_dict_comp[src]]) + len(graph_comp.vp.seq[simp_node_dict_comp[sink]]) - 2 * overlap
-                paths.append((s_path_ids, plen))
+    paths_per_group_dict = {}
+
+    graph_comp, groups = graph_grouping(graph_comp, simp_node_dict_comp)
     
     final_strain_dict = {}
-    for p_ids, plen in paths:
-        print("Path: ", [int(u) for u in p_ids])
-        print("path len: \n", plen)
-        pcov = numpy.mean([graph_comp.vp.dp[simp_node_dict_comp[u]] for u in p_ids])
-        pno = str(p_ids[0]) + "_" + str(p_ids[-1])
-        final_strain_dict[pno] = (p_ids, plen, pcov)
     
+    for gno, group in groups.items():
+        if len(group) < 2:
+            # single node group
+            if len(group) == 1 and len(graph_comp.vp.seq[group[0]]) >= min_len / 10:
+                id = graph_comp.vp.id[group[0]]
+                plen = len(graph_comp.vp.seq[group[0]])
+                print("Single node Path: ", int(id))
+                print("path len: \n", plen)
+                pcov = graph_comp.vp.dp[group[0]]
+                pno = id
+                final_strain_dict[pno] = ([id], plen, pcov)
+            else:
+                continue
+        srcs = []
+        sinks = []
+        isolations = []
+        middles = []
+        paths = []
+        # classify the nodes
+        for u in group:
+            no = graph_comp.vp.id[u]
+            if u.in_degree() == 0 and u.out_degree() == 0:
+                isolations.append(no)
+            elif u.in_degree() == 0:
+                srcs.append(no)
+            elif u.out_degree() == 0:
+                sinks.append(no)
+            else:
+                middles.append(no)
+
+        for src in srcs:
+            for sink in sinks:
+                p, plen = distance_search(graph_comp, simp_node_dict_comp, src, sink, overlap)
+                if p != None:
+                    s_path_ids = [graph_comp.vp.id[v] for v in p]
+                    s_path_ids.append(sink)
+                    s_path_ids.insert(0, src)             
+                    plen = plen + len(graph_comp.vp.seq[simp_node_dict_comp[src]]) + len(graph_comp.vp.seq[simp_node_dict_comp[sink]]) - 2 * overlap
+                    paths.append((s_path_ids, plen))
+        paths_per_group_dict[gno] = paths
+
+    for gno, paths in paths_per_group_dict.items():
+        print("Current group: ", gno)
+        for p_ids, plen in paths:
+            print("------------------------------------------------------")
+            print("Path: ", [int(u) for u in p_ids])
+            print("path len: \n", plen)
+            involved_contig = [(id, contig_map_node_dict[id]) for id in p_ids if id in contig_map_node_dict]
+            for id, cs in involved_contig:
+                print(id, cs)
+            # TODO if the path involved some used contig and the contig has been exhausted many time
+            # within its limited ccov, then skip this path.
+            pcov = numpy.min([graph_comp.vp.dp[simp_node_dict_comp[u]] for u in p_ids])
+            pno = str(p_ids[0]) + "_" + str(p_ids[-1])
+            if plen >= min_len / 5:
+                final_strain_dict[pno] = (p_ids, plen, pcov)
+    print("------------------------------------------------------")
+    print("--------------------path extraction end--------------------")
     return final_strain_dict
 
 if __name__ == "__main__":

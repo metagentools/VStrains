@@ -25,6 +25,7 @@ author = "Runpeng Luo"
 
 DEBUG_MODE = False
 TEMP_DIR = "acc/"
+
 def main():
     parser = argparse.ArgumentParser(prog='hap_construction.py', description=usage)
     parser.add_argument('-gfa', '--gfa_file', dest='gfa_file', type=str, required=True, help='assembly graph under gfa format')
@@ -51,9 +52,15 @@ def main():
     
     subprocess.check_call("rm -rf {0} && mkdir {0}".format(TEMP_DIR), shell=True)
 
+    #FIXME keep track of the node usage, add an attr or var for that.
     # Read in as Level -1 graph
     graph, simp_node_dict, simp_edge_dict = gfa_to_graph(args.gfa_file, init_ori=1)
     assign_edge_flow(graph, simp_node_dict, simp_edge_dict)
+
+    # store the usage info for each node.
+    node_usage = {}
+    for no in simp_node_dict.keys():
+        node_usage[no] = 0
 
     contig_dict, node_to_contig_dict, edge_to_contig_dict = get_contig(graph, args.contig_file, simp_node_dict, simp_edge_dict, args.min_cov, args.min_len, args.overlap)
     graph_simplification(graph, simp_node_dict, simp_edge_dict, node_to_contig_dict, edge_to_contig_dict, args.min_cov)
@@ -64,7 +71,7 @@ def main():
     assign_edge_flow(pre_graph, simp_node_dict_pre, simp_edge_dict_pre)
 
     if args.ref_file:
-        map_ref_to_graph(args.ref_file, simp_node_dict_pre, "{0}pre_graph.gfa".format(TEMP_DIR))
+        map_ref_to_graph(args.ref_file, simp_node_dict_pre, "{0}pre_graph.gfa".format(TEMP_DIR), True, "{0}node_to_ref.paf".format(TEMP_DIR), "{0}temp_gfa_to_fasta.fasta".format(TEMP_DIR))
 
     # selected contig from SPAdes
     contig_dict_to_fasta(graph, contig_dict, simp_node_dict, args.overlap, "{0}pre_contigs.fasta".format(TEMP_DIR))
@@ -72,6 +79,7 @@ def main():
 
     # reduce SPAdes full-length contig as init cand strain
     cand_strains_dict, temp_contigs_dict = graph_reduction(graph, contig_dict, simp_node_dict, simp_edge_dict, node_to_contig_dict, edge_to_contig_dict, "{0}graph_L0.gfa".format(TEMP_DIR), args.min_cov, args.min_len, args.overlap)
+
 
     iter_no = 0
     strain_dict = cand_strains_dict.copy()
@@ -110,26 +118,24 @@ def main():
     assign_edge_flow(graph_red, simp_node_dict_red, simp_edge_dict_red)
     graph_simplification(graph_red, simp_node_dict_red, simp_edge_dict_red, node_to_contig_dict, edge_to_contig_dict, args.min_cov)
 
-    contig_map_node_dict = graph_compactification(graph_red, simp_node_dict_red, simp_edge_dict_red, concat_contig_dict_iter, "{0}graph_compacted.gfa".format(TEMP_DIR), args.overlap)
+    # contig_map_node_dict = graph_compactification(graph_red, simp_node_dict_red, simp_edge_dict_red, concat_contig_dict_iter, "{0}graph_compacted.gfa".format(TEMP_DIR), args.overlap, TEMP_DIR)
     
     # extract the last mile paths from the graph
-    graph_comp, simp_node_dict_comp, simp_edge_dict_comp = flipped_gfa_to_graph("{0}graph_compacted.gfa".format(TEMP_DIR))
-    assign_edge_flow(graph_comp, simp_node_dict_comp, simp_edge_dict_comp)
-    
-    if args.ref_file:
-        map_ref_to_graph(args.ref_file, simp_node_dict_comp, "{0}graph_compacted.gfa".format(TEMP_DIR))
+    # graph_comp, simp_node_dict_comp, simp_edge_dict_comp = flipped_gfa_to_graph("{0}graph_compacted.gfa".format(TEMP_DIR))
+    # assign_edge_flow(graph_comp, simp_node_dict_comp, simp_edge_dict_comp)
 
     # no reason to simplify again
-    final_strain_dict = path_extraction(graph_comp, simp_node_dict_comp, simp_edge_dict_comp, contig_map_node_dict, args.overlap, args.min_cov, args.min_len)   
+    # final_strain_dict = path_extraction(graph_comp, simp_node_dict_comp, simp_edge_dict_comp, contig_map_node_dict, args.overlap, args.min_cov, args.min_len)   
+    final_strain_dict = path_extraction(graph_red, simp_node_dict_red, simp_edge_dict_red, args.overlap, args.min_cov, args.min_len)   
 
-    with open("{0}cand_strains.fasta".format(TEMP_DIR), 'a') as fasta:
-        for cno, (c, clen, ccov) in final_strain_dict.items():
-            seq = path_ids_to_seq(graph_comp, c, cno, simp_node_dict_comp, args.overlap)
-            seq += "\n"
-            name = ">" + str(cno) + "_" + str(clen) + "_" + str(ccov) + "\n"
-            fasta.write(name)
-            fasta.write(seq)
-        fasta.close()
+    # with open("{0}cand_strains.fasta".format(TEMP_DIR), 'a') as fasta:
+    #     for cno, (c, clen, ccov) in final_strain_dict.items():
+    #         seq = path_ids_to_seq(graph_comp, c, cno, simp_node_dict_comp, args.overlap)
+    #         seq += "\n"
+    #         name = ">" + str(cno) + "_" + str(clen) + "_" + str(ccov) + "\n"
+    #         fasta.write(name)
+    #         fasta.write(seq)
+    #     fasta.close()
 
     minimap_api(args.ref_file, "{0}cand_strains.fasta".format(TEMP_DIR), "{0}cand_strain_to_strain.paf".format(TEMP_DIR))
 
@@ -298,11 +304,11 @@ def contig_reduction(graph: Graph, contig, cno, clen, ccov, simp_node_dict: dict
     """
     if DEBUG_MODE:
         print("*---Contig: ", cno, clen, ccov)
-    out_edgedex = 1
+    next_node_index = 1
     for node in contig:
-        if out_edgedex >= len(contig):
+        if next_node_index >= len(contig):
             break
-        adj_node = contig[out_edgedex]
+        adj_node = contig[next_node_index]
 
         u = simp_node_dict[node] if node in simp_node_dict else None
         v = simp_node_dict[adj_node] if adj_node in simp_node_dict else None
@@ -343,7 +349,7 @@ def contig_reduction(graph: Graph, contig, cno, clen, ccov, simp_node_dict: dict
             graph.vp.dp[u] = graph.vp.dp[u] - ccov
 
         # last node in the contig, reduce its depth
-        if out_edgedex + 1 == len(contig):
+        if next_node_index + 1 == len(contig):
             if graph.vp.dp[v] - ccov <= min_cov: 
                 graph.vp.dp[v] = 0
                 graph.vp.color[v] = 'gray'
@@ -360,7 +366,7 @@ def contig_reduction(graph: Graph, contig, cno, clen, ccov, simp_node_dict: dict
             simp_edge_dict.pop((node,adj_node))
             if DEBUG_MODE:
                 print_edge(graph, e, "edge been removed in the final step")
-        out_edgedex = out_edgedex + 1
+        next_node_index = next_node_index + 1
     return
 
 def graph_reduction(graph: Graph, contig_dict: dict, simp_node_dict: dict, simp_edge_dict: dict, node_to_contig_dict: dict, edge_to_contig_dict: dict, output_file, min_cov, min_len, overlap):
@@ -456,8 +462,8 @@ def distance_search(graph: Graph, simp_node_dict: dict, source, sink, overlap: i
                         if ss_path == None:
                             ss_path = cmp_path
                         else:
-                            #FIXME
-                            if path_len(graph, cmp_path, overlap) > path_len(graph, ss_path, overlap):
+                            #FIXME fixed
+                            if path_len(graph, cmp_path, overlap) > path_len(graph, ss_path, overlap) and path_cov(graph, cmp_path) >= path_cov(graph, ss_path):
                                 ss_path = ss_path
                             else:
                                 ss_path = cmp_path
@@ -494,6 +500,7 @@ def distance_search(graph: Graph, simp_node_dict: dict, source, sink, overlap: i
 def pairwise_contig_dist(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, temp_contigs_dict: dict, overlap, max_len):
     """
     find pair-wise shortest path among contigs and construct the pairwise contig path matrix
+    TODO if sp found, do we also reduce its coverage?
     """
     dist_matrix = {}
     for cno_i, [contig_i, clen_i, ccov_i] in temp_contigs_dict.items():
@@ -576,6 +583,7 @@ def contig_merge(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, temp_
     concat_contig_dict = {}
     skip_key = set()
     used_contig = set()
+    #FIXME not only used_contig, but also the nodes been used throughout the path.
     for (tail_cno, head_cno) in concat_dicision_s:
         print("------------------------------------------------------")
         print("Concatentate contigs: ", tail_cno, " <-> ", head_cno)
@@ -705,17 +713,20 @@ def contig_merge(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, temp_
     for cno, (c, clen, ccov) in concat_strain_dict.items():
         contig_reduction(graph, c, cno, clen, ccov, simp_node_dict, simp_edge_dict, min_cov)
     
+    # TODO recovered node coverage should equal to the rest of contig sum cov, not full
     # recover nodes
     for no, [cnos, dp, node] in node_to_contig_dict.items():
         if no not in simp_node_dict:
             simp_node_dict[no] = node
-            graph.vp.dp[node] = dp
+            sumcov = numpy.sum([concat_contig_dict[c][2] for c in cnos])
+            graph.vp.dp[node] = sumcov
             graph.vp.color[node] = "black"
     # recover edge
     for (u,v), [cnos, flow, edge] in edge_to_contig_dict.items():
         if (u,v) not in simp_edge_dict:
             simp_edge_dict[(u,v)] = edge
-            graph.ep.flow[edge] = flow
+            sumcov = numpy.sum([concat_contig_dict[c][2] for c in cnos])
+            graph.ep.flow[edge] = sumcov
             graph.ep.color[edge] = "black"
 
     for cno, [contig, clen, ccov] in concat_contig_dict.items():
@@ -731,7 +742,7 @@ def contig_merge(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, temp_
     print("--------------------contig pair-wise concatenaton end--------------------")
     return concat_strain_dict, concat_contig_dict
 
-def graph_compactification(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, contig_dict: dict, output_file, overlap):
+def graph_compactification(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, contig_dict: dict, output_file, overlap, TEMP_DIR):
     """
     Compactify the reduced De Bruijin graph
     """
@@ -835,12 +846,12 @@ def graph_compactification(graph: Graph, simp_node_dict: dict, simp_edge_dict: d
     graph_to_gfa(graph, simp_node_dict, simp_edge_dict, output_file)
 
     # map contig to graph
-    gfa_to_fasta(output_file, "temp_graph.gfa")
-    contig_dict_to_fasta(graph, contig_dict, simp_node_dict, overlap, "temp_contigs.fasta")
-    minimap_api("temp_graph.gfa", "temp_contigs.fasta", "temp_contigs_to_graph.paf")
+    gfa_to_fasta(output_file, "{0}temp_gfa_to_fasta.fasta".format(TEMP_DIR))
+    contig_dict_to_fasta(graph, contig_dict, simp_node_dict, overlap, "{0}temp_contigs.fasta".format(TEMP_DIR))
+    minimap_api("{0}temp_gfa_to_fasta.fasta".format(TEMP_DIR), "{0}temp_contigs.fasta".format(TEMP_DIR), "{0}temp_contigs_to_graph.paf".format(TEMP_DIR))
+    
     contig_map_node_dict = {}
-
-    with open("temp_contigs_to_graph.paf", 'r') as paf:
+    with open("{0}temp_contigs_to_graph.paf".format(TEMP_DIR), 'r') as paf:
         for Line in paf:
             splited = Line.split('\t')
             cno = splited[0]
@@ -854,7 +865,7 @@ def graph_compactification(graph: Graph, simp_node_dict: dict, simp_edge_dict: d
                 contig_map_node_dict[node_no] = []
             contig_map_node_dict[node_no].append((cno, ccov))
         paf.close()
-    subprocess.check_call("rm temp_*", shell=True)
+    subprocess.check_call("rm {0}temp*".format(TEMP_DIR), shell=True)
 
     for node_no, cnos in contig_map_node_dict.items():
         print(node_no, cnos)
@@ -904,7 +915,7 @@ def graph_grouping(graph: Graph, simp_node_dict: dict, forward="", reverse="", p
     return graph, groups
 
 
-def path_extraction(graph_comp: Graph, simp_node_dict_comp: dict, simp_edge_dict_comp: dict, contig_map_node_dict: dict, overlap, min_cov, min_len):
+def path_extraction(graph_comp: Graph, simp_node_dict_comp: dict, simp_edge_dict_comp: dict, overlap, min_cov, min_len):
     """
     extract the last mile path from the graph, with support from residue contigs
     """
@@ -919,14 +930,17 @@ def path_extraction(graph_comp: Graph, simp_node_dict_comp: dict, simp_edge_dict
     for gno, group in groups.items():
         if len(group) < 2:
             # single node group
-            if len(group) == 1 and len(graph_comp.vp.seq[group[0]]) >= min_len / 10:
-                id = graph_comp.vp.id[group[0]]
-                plen = len(graph_comp.vp.seq[group[0]])
-                print("Single node Path: ", int(id))
-                print("path len: \n", plen)
-                pcov = graph_comp.vp.dp[group[0]]
-                pno = id
-                final_strain_dict[pno] = ([id], plen, pcov)
+            if len(group) == 1:
+                node = group[0]
+                pcov = graph_comp.vp.dp[node]
+                id = graph_comp.vp.id[node]
+                plen = len(graph_comp.vp.seq[node])
+                print("Single node Path: ", int(id), "path len: ", plen, "cov: ", pcov)
+                if plen < min_len / 5 or pcov < min_cov:
+                    print("reject")
+                else:
+                    print("accept")
+                    final_strain_dict[id] = ([id], plen, pcov)
             else:
                 continue
         srcs = []
@@ -963,14 +977,16 @@ def path_extraction(graph_comp: Graph, simp_node_dict_comp: dict, simp_edge_dict
             print("------------------------------------------------------")
             print("Path: ", [int(u) for u in p_ids])
             print("path len: \n", plen)
-            involved_contig = [(id, contig_map_node_dict[id]) for id in p_ids if id in contig_map_node_dict]
-            for id, cs in involved_contig:
-                print(id, cs)
+            # involved_contig = [(id, contig_map_node_dict[id]) for id in p_ids if id in contig_map_node_dict]
+            # for id, cs in involved_contig:
+            #     print(id, cs)
             # TODO if the path involved some used contig and the contig has been exhausted many time
             # within its limited ccov, then skip this path.
+            # also reduce the cov via the path cov on the nodes
+
             pcov = numpy.min([graph_comp.vp.dp[simp_node_dict_comp[u]] for u in p_ids])
             pno = str(p_ids[0]) + "_" + str(p_ids[-1])
-            if plen >= min_len / 5:
+            if plen >= min_len / 5 and pcov >= min_cov:
                 final_strain_dict[pno] = (p_ids, plen, pcov)
     print("------------------------------------------------------")
     print("--------------------path extraction end--------------------")

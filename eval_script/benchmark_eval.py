@@ -1,44 +1,76 @@
 #!/usr/bin/env python3
 import subprocess
+import argparse
+from quast_evaluation import quast_eval
+
+import logging
+import threading
+import time
+
+usage = "Run multiple benchmark case in parallel"
+author = "Runpeng Luo"
+
+def para_eval(config, t_rank):
+    logging.info("Thread %s: starting reconstruction", t_rank)
+
+    name, gfa_addr, contig_addr, ref_addr, odir_addr, log_addr, mincov, minlen, maxlen, overlap = config
+    comm = "time python src/hap_construction.py -gfa {0} -c {1} -mincov {2} -minlen {3} -maxlen {4} -overlap {5} -ref {6} -o {7} > {8}".format(gfa_addr, contig_addr, mincov, minlen, maxlen, overlap, ref_addr, odir_addr, log_addr)
+    subprocess.check_call(comm, shell=True)
+
+    logging.info("Thread %s: finishing reconstruction, start quast evaluation", t_rank)
+
+    quast_eval("{0}cand_strains.fasta".format(odir_addr), ref_addr, "quast_{0}/".format(name), t_rank)
+
+    logging.info("Thread %s: finishing quast evaluation", t_rank)
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(prog='benchmark_eval.py', description=usage)
+    parser.add_argument('-c', '--config_file', dest='config_file', type=str, required=True, help='benchmark configuration file')
+    args = parser.parse_args()
+
+    assert args.config_file
+
     # remove all the acc directory
     subprocess.check_call("rm -rf eval_result && mkdir eval_result/", shell=True)
 
-    # 5 strain hiv 20000
-    comm1 = """time python src/hap_construction.py -gfa benchmark/fastq/5-strain-HIV-20000x/output/assembly_graph_after_simplification.gfa \
-    -c benchmark/fastq/5-strain-HIV-20000x/output/contigs.paths -mincov 500 -minlen 8000 -maxlen 10000 -overlap 127 \
-    -ref benchmark/strains/5-strain-HIV.fasta -o acc_5hiv_20000/ > hap_5hiv_20000.log
-    """
-    subprocess.check_call(comm1, shell=True)
+    configs = []
+    with open(args.config_file, 'r') as config_file:
+        count = int(config_file.readline()[:-1])
+        config_file.readline() #delimiter
+        for i in range(count):
+            name = config_file.readline()[:-1]
+            gfa_addr = config_file.readline()[:-1]
+            contig_addr = config_file.readline()[:-1]
+            ref_addr = config_file.readline()[:-1]
+            odir_addr = config_file.readline()[:-1]
+            log_addr = config_file.readline()[:-1]
+            mincov = config_file.readline()[:-1]
+            minlen = config_file.readline()[:-1]
+            maxlen = config_file.readline()[:-1]
+            overlap = config_file.readline()[:-1]
+            config_file.readline()
 
-    # 6 strain polio
-    comm2 = """time python src/hap_construction.py -gfa benchmark/fastq/6-strain-poliovirus/output/assembly_graph_after_simplification.gfa \
-    -c benchmark/fastq/6-strain-poliovirus/output/contigs.paths -mincov 500 -minlen 6000 -maxlen 8000 -overlap 127 \
-    -ref benchmark/strains/6-strain-polio.fasta -o acc_6polio/ > hap_6polio.log
-    """
-    subprocess.check_call(comm2, shell=True)
+            configs.append((name, gfa_addr, contig_addr, ref_addr, odir_addr, log_addr, mincov, minlen, maxlen, overlap))
+        config_file.close()
 
-    # 10 strain hcv 20000
-    comm3 = """time python src/hap_construction.py -gfa benchmark/fastq/10-strain-HCV-20000x/output/assembly_graph_after_simplification.gfa \
-    -c benchmark/fastq/10-strain-HCV-20000x/output/contigs.paths -mincov 500 -minlen 7000 -maxlen 9500 -overlap 127 \
-    -ref benchmark/strains/10-strain-HCV.fasta -o acc_10hcv_20000/ > hap_10hcv_20000.log
-    """
-    subprocess.check_call(comm3, shell=True)
+    format = "%(asctime)s: %(message)s"
+    logging.basicConfig(format=format, level=logging.INFO, datefmt="%H:%M:%S")
 
-    # 15 strain zikv 20000
-    comm4 = """time python src/hap_construction.py -gfa benchmark/fastq/15-strain-ZIKV-20000x/output/assembly_graph_after_simplification.gfa \
-    -c benchmark/fastq/15-strain-ZIKV-20000x/output/contigs.paths -mincov 500 -minlen 8000 -maxlen 11000 -overlap 127 \
-    -ref benchmark/strains/15-strain-ZIKV.fasta -o acc_15zikv_20000/ > hap_15zikv_20000.log
-    """
-    subprocess.check_call(comm4, shell=True)
+    logging.info("Main    : before creating thread")
+    threads = []
+    for i, config in enumerate(configs):
+        logging.info("Main    : create and start thread %d.", i)
+        thread = threading.Thread(target=para_eval, args=(config, i, ))
+        threads.append(thread)
+        thread.start()
 
-    # 15 strain zikv 20000 careful
-    comm5 = """time python src/hap_construction.py -gfa benchmark/fastq/15-strain-ZIKV-20000x/output_careful/assembly_graph_after_simplification.gfa \
-    -c benchmark/fastq/15-strain-ZIKV-20000x/output_careful/contigs.paths -mincov 500 -minlen 8000 -maxlen 11000 -overlap 127 \
-    -ref benchmark/strains/15-strain-ZIKV.fasta -o acc_15zikv_20000_careful/ > hap_15zikv_20000_careful.log
-    """
-    subprocess.check_call(comm5, shell=True)
-
+    for i, thread in enumerate(threads):
+        logging.info("Main    : before joining thread %d.", i)
+        thread.join()
+        logging.info("Main    : thread %d done", i)
+    
+    print("All benchmark is finished, start cleanup")
     # relocate all the log file
     subprocess.check_call("mv hap_*.log eval_result/ && mv acc_* eval_result/", shell=True)
+    subprocess.check_call("mv quast_* eval_result/", shell=True)
+    print("Finished")

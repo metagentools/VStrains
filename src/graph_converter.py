@@ -366,17 +366,16 @@ def flip_graph_bfs(graph: Graph, node_dict: dict, edge_dict: dict, dp_dict: dict
     return graph, simp_node_dict, simp_edge_dict
 
 # FIXME fix the path
-def map_ref_to_graph(ref_file, simp_node_dict: dict, graph_file, store_mapping=False, output_file="overlap.paf"):
+def map_ref_to_graph(ref_file, simp_node_dict: dict, graph_file, store_mapping=False, output_file="overlap.paf", fasta_file="temp_gfa_to_fasta.fasta"):
     """
     map reference strain to the graph, debug only
     assumption: graph is stored in acc/simplifed_graph, 
     """
-    TEMP_fasta_FILE = "gfa_to_fasta.fasta"
     if not ref_file:
         print("No ref file imported")
         return -1
     with open(graph_file, 'r') as gfa:
-        with open(TEMP_fasta_FILE, 'w') as fasta:
+        with open(fasta_file, 'w') as fasta:
             for Line in gfa:
                 splited = Line.split('\t')
                 if splited[0] == 'S':
@@ -387,7 +386,7 @@ def map_ref_to_graph(ref_file, simp_node_dict: dict, graph_file, store_mapping=F
     
     # minimap2. you may need to replace the exec path to minimap to fit your case
     subprocess.check_call("/Users/luorunpeng/opt/miniconda3/envs/spades-hapConstruction-env/bin/minimap2 {0} {1} > {2}".format(
-    ref_file, TEMP_fasta_FILE, output_file), shell=True)
+    ref_file, fasta_file, output_file), shell=True)
 
     strain_dict = {}
     with open(output_file, 'r') as paf:
@@ -407,7 +406,7 @@ def map_ref_to_graph(ref_file, simp_node_dict: dict, graph_file, store_mapping=F
                 strain_dict[ref_no].append(seg_no_int)
         paf.close()
         
-    subprocess.check_call("rm {0}".format(TEMP_fasta_FILE), shell=True)
+    subprocess.check_call("rm {0}".format(fasta_file), shell=True)
     if not store_mapping:
         subprocess.check_call("rm {0}".format(output_file), shell=True)
     
@@ -417,10 +416,11 @@ def map_ref_to_graph(ref_file, simp_node_dict: dict, graph_file, store_mapping=F
         print("-------------------")
     return strain_dict
 
-def gfa_to_fasta(gfa_file, fasta_file="gfa_to_fasta.fasta"):
+def gfa_to_fasta(gfa_file, fasta_file):
     if not gfa_file:
         print("No gfa file imported")
         return -1
+    subprocess.check_call("touch {0}".format(fasta_file), shell=True)
     with open(gfa_file, 'r') as gfa:
         with open(fasta_file, 'w') as fasta:
             for Line in gfa:
@@ -707,6 +707,14 @@ def path_len(graph: Graph, path, overlap):
     """
     lens = [len(graph.vp.seq[u]) for u in path]
     return sum(lens) - overlap * (len(lens) - 1) if len(lens) > 0 else 0
+
+def path_cov(graph: Graph, path):
+    """
+    Compute the mean cov for the path
+    """
+    pcovs = [graph.vp.dp[n] for n in path]
+    return numpy.mean(pcovs) if len(pcovs) != 0 else 0
+
 
 def contig_flow(graph: Graph, edge_dict: dict, contig):
     """

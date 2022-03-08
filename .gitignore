@@ -42,7 +42,9 @@ eval_result/
 example/
 benchmark/*
 quast*/
+acc*/
 
 # pycache #
 ###########
-src/__pycache__/*
+*/__pycache__/*
+*.cpython*

@@ -565,7 +565,7 @@ def get_contig(graph: Graph, contig_file, simp_node_dict: dict, simp_edge_dict: 
                     #     for (sub_cno, sub_contig, sub_clen, sub_ccov) in contig_list:
                     #         contig_dict[sub_cno] = (sub_contig, sub_clen, sub_ccov)
                     # else:
-                    contig_dict[cno] = (c, clen, ccov)
+                    contig_dict[cno] = [c, clen, ccov]
                     succ_add = True
                     for i in range(len(c)):
                         c_i = c[i]
@@ -590,7 +590,7 @@ def get_contig(graph: Graph, contig_file, simp_node_dict: dict, simp_edge_dict: 
                 if c[0] not in simp_node_dict:
                     print("only left up node is removed already: ", cno)
                 else:
-                    contig_dict[cno] = (c, clen, ccov)
+                    contig_dict[cno] = [c, clen, ccov]
                     print("only left up node is picked for contig: ", cno)
         contigs_file.close()
     
@@ -715,6 +715,23 @@ def path_cov(graph: Graph, path):
     pcovs = [graph.vp.dp[n] for n in path]
     return numpy.mean(pcovs) if len(pcovs) != 0 else 0
 
+def path_usage(graph: Graph, node_usage_dict: dict, path):
+    return sum([node_usage_dict[graph.vp.id[n]] for n in path])
+
+## FIXME also increment via the path depth
+def increment_node_usage_dict(node_usage_dict: dict, path_ids):
+    """
+    update the node usage dict by incrementing all the involving node from the path.
+    """
+    for id in path_ids:
+        node_usage_dict[id] += 1
+
+def decrement_node_usage_dict(node_usage_dict: dict, path_ids):
+    """
+    update the node usage dict by incrementing all the involving node from the path.
+    """
+    for id in path_ids:
+        node_usage_dict[id] -= 1
 
 def contig_flow(graph: Graph, edge_dict: dict, contig):
     """

@@ -4,6 +4,7 @@
 # import sys, os
 # import json
 # import re
+from this import d
 from graph_tool import GraphView, _in_degree
 # import graph_tool
 from graph_tool.all import Graph
@@ -11,6 +12,8 @@ from graph_tool.search import dfs_iterator
 from graph_tool.topology import is_DAG, topological_sort, all_circuits
 from graph_tool.draw import graph_draw
 # from graph_tool.clustering import local_clustering
+
+from graph_converter import *
 
 """
 This file is used to store out of date scripts to keep a record for further usage needed.
@@ -317,3 +320,72 @@ graph reduction
     #         if n.in_degree() <= 1 and n.out_degree() <= 1:
     #             print_vertex(graph, n, "single-connect nodes with in degree: {0}, out degree: {1}".format(n.in_degree(), n.out_degree()))
     #     print("-------------------------------------------------")
+
+def graph_reduction(graph: Graph, contig_dict: dict, simp_node_dict: dict, simp_edge_dict: dict, node_to_contig_dict: dict, edge_to_contig_dict: dict, output_file, min_cov, min_len, overlap):
+    """
+    reduce the node/edge weight based on existing contig found by SPAdes.
+    only contig with minimum strain length satisfied be removed
+    return non-removed contig dict
+    """
+
+    print("-------------------------graph reduction----------------------")
+    udpate_node_to_contig_dict(node_to_contig_dict, simp_node_dict)
+    update_edge_to_contig_dict(edge_to_contig_dict, simp_edge_dict)
+    cand_strains_dict = {}
+    temp_contigs_dict = {}
+    for cno, (contig, clen, ccov) in contig_dict.items():
+        if clen >= min_len:
+            cand_strains_dict[cno] = (contig, clen, ccov)
+            print("full-length contig found: ", cno, clen, ccov)
+            contig_reduction(graph, contig, cno, clen, ccov, simp_node_dict, simp_edge_dict, min_cov)  
+        else:
+            temp_contigs_dict[cno] = [contig, clen, ccov]
+            print("imcomplete contig found: ", cno, clen, ccov) 
+
+    # reappend nodes
+    for no, [cnos, dp, node] in list(node_to_contig_dict.items()):
+
+        for strain_cno in cand_strains_dict.keys():
+            if strain_cno in cnos:
+                cnos.remove(strain_cno)
+
+        # update cnos
+        node_to_contig_dict[no][0] = cnos
+        if len(cnos) == 0:
+            node_to_contig_dict.pop(no)
+            continue
+        
+        if no not in simp_node_dict and no in node_to_contig_dict:
+            print("contig node {0} be removed, append it back".format(no))
+            graph.vp.dp[node] = dp
+            graph.vp.color[node] = "black"
+            simp_node_dict[no] = node
+            print_vertex(graph, node, "from graph reduction: ")
+
+    # reappends edges
+    for (u,v), [cnos, flow, edge] in list(edge_to_contig_dict.items()):
+
+        for strain_cno in cand_strains_dict.keys():
+            if strain_cno in cnos:
+                cnos.remove(strain_cno)
+
+        # update cnos
+        edge_to_contig_dict[(u,v)][0] = cnos
+        if len(cnos) == 0:
+            edge_to_contig_dict.pop((u,v))
+            continue
+        
+        if (u,v) not in simp_edge_dict and (u,v) in edge_to_contig_dict:
+            print("contig edge {0} be removed, append it back".format((u,v)))
+            graph.ep.flow[edge] = flow
+            graph.ep.color[edge] = "black"
+            simp_edge_dict[(u,v)] = edge
+
+    # store output graph 
+    graph_to_gfa(graph, simp_node_dict, simp_edge_dict, output_file)
+
+    print("-----------------------graph reduction end--------------------")
+    return cand_strains_dict, temp_contigs_dict
+
+def contig_reduction():
+    return

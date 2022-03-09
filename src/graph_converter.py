@@ -291,11 +291,11 @@ def flip_graph_bfs(graph: Graph, node_dict: dict, edge_dict: dict, dp_dict: dict
         source_pos, source_neg = node_dict[seg_no]
         graph.vp.visited[source_pos] = 0
         graph.vp.visited[source_neg] = 0
-        queue = []
-        queue.append([node_dict[seg_no], init_ori]) 
+        fifo_queue = []
+        fifo_queue.append([node_dict[seg_no], init_ori]) 
 
-        while queue:
-            (v_pos, v_neg), ori = queue.pop()
+        while fifo_queue:
+            (v_pos, v_neg), ori = fifo_queue.pop()
             dp_dict.pop(graph.vp.id[v_pos])
             
             u = None
@@ -316,11 +316,11 @@ def flip_graph_bfs(graph: Graph, node_dict: dict, edge_dict: dict, dp_dict: dict
             
             graph.vp.visited[v_pos] = 1
             graph.vp.visited[v_neg] = 1
-            # add further nodes into the queue TODO, all or out only
+            # add further nodes into the fifo_queue TODO, all or out only
             for adj_node in u.all_neighbors():
                 if graph.vp.visited[adj_node] == -1:
                     graph.vp.visited[adj_node] = 0
-                    queue.append([node_dict[graph.vp.id[adj_node]], graph.vp.ori[adj_node]])
+                    fifo_queue.append([node_dict[graph.vp.id[adj_node]], graph.vp.ori[adj_node]])
 
     # verify sorted graph
     print("-------------------------verify graph----------------------")
@@ -634,15 +634,23 @@ def contig_preprocess(graph:Graph, simp_node_dict: dict, simp_edge_dict: dict, o
                     contig_dict[sub_cno] = [sub_contig, sub_clen, sub_ccov]
     return contig_dict
 
-def udpate_node_to_contig_dict(node_to_contig_dict: dict, simp_node_dict: dict):
+def udpate_node_to_contig_dict(graph: Graph, node_to_contig_dict: dict, simp_node_dict: dict):
     for no in node_to_contig_dict.keys():
-        node_to_contig_dict[no][2] = simp_node_dict[no]
+        node = simp_node_dict[no]
+        node_to_contig_dict[no][1] = graph.vp.dp[no]
+        node_to_contig_dict[no][2] = node
+        
 
-def update_edge_to_contig_dict(edge_to_contig_dict: dict, simp_edge_dict: dict):
+def update_edge_to_contig_dict(graph: Graph, edge_to_contig_dict: dict, simp_edge_dict: dict):
     for (u,v) in edge_to_contig_dict.keys():
-        edge_to_contig_dict[(u,v)][2] = simp_edge_dict[(u,v)]
+        e = simp_edge_dict[(u,v)]
+        edge_to_contig_dict[(u,v)][1] = graph.ep.flow[e]
+        edge_to_contig_dict[(u,v)][2] = e
 
-    
+def clear_flow(graph: Graph, simp_edge_dict: dict):
+    for _, e in simp_edge_dict.items():
+        graph.ep.flow[e] = 0.0
+
 def contig_split(graph: Graph, cno, contig: list, simp_node_dict: dict, simp_edge_dict: dict, overlap, min_cov, min_node=2):
     """
     Split the contig by removing all the removed node, and form segments

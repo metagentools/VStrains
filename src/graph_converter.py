@@ -10,7 +10,7 @@ import numpy
 from hap_construction import DEBUG_MODE, TEMP_DIR
 
 
-def gfa_to_graph(gfa_file, init_ori):
+def gfa_to_graph(gfa_file, init_ori=1):
     """
     Convert assembly graph gfa file to graph
     Nodes: segment with corresponding 

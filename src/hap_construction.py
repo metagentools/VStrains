@@ -242,7 +242,7 @@ def coverage_rebalance(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict,
         iter_condition = False
         for no, node in list(untracked_node.items()):
             if node_expansion_both(graph, consistent_node, inconsistent_node, node, True) and node_expansion_both(graph, consistent_node, inconsistent_node, node, False):
-                print("Flip: ", no)
+                print("Flip: ", no, "to consistent")
                 untracked_node.pop(no)
                 consistent_node[no] = node
                 consistent_count += 1
@@ -282,7 +282,7 @@ def coverage_rebalance(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict,
     break_point = consistent_count
     while len(inconsistent_node) != 0:
         no, node = sorted_solid_node[i]
-        print(i, consistent_count)
+        print("Current iteration: ", i, "Total consistent node: ", consistent_count)
         print([int(n) for n in inconsistent_node])
         print("Current solid node: ", no)
         queue = [node]
@@ -755,80 +755,57 @@ def distance_search(graph: Graph, simp_node_dict: dict, node_usage_dict: dict, s
             print("error path found")
     return s_path, s_len
 
-def pairwise_contig_dist(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, temp_contigs_dict: dict, node_usage_dict: dict, overlap, max_len):
-    """
-    find pair-wise shortest path among contigs and construct the pairwise contig path matrix
-    TODO if sp found, do we also reduce its coverage?
-    """
+def contig_merge(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, temp_contigs_dict: dict, node_to_contig_dict: dict, edge_to_contig_dict: dict, node_usage_dict: dict, output_file, min_cov, min_len, max_len, overlap):
+
+    print("-----------------------contig pair-wise concatenaton--------------------")
+
+    is_linear_strain = is_DAG(graph)
+    if not is_linear_strain:
+        print("graph is cyclic, cyclic strian may exist")
+    else:
+        print("graph is not cyclic, lienar strain may exist")
+
+    # find pair-wise shortest path among contigs and construct the pairwise contig path matrix
+    # TODO if sp found, do we also reduce its coverage?
     dist_matrix = {}
-    for cno_i, [contig_i, clen_i, ccov_i] in temp_contigs_dict.items():
-        for cno_j, [contig_j, clen_j, ccov_j] in temp_contigs_dict.items():
+    concat_dicision = {}
+    for tail_cno, [tail_contig, tail_clen, tail_ccov] in temp_contigs_dict.items():
+        for head_cno, [head_contig, head_clen, head_ccov] in temp_contigs_dict.items():
             print("------------------------------------------------------")
-            print("Tail Contig: ", cno_i, " -> Head Contig: ", cno_j)
-            if cno_i != cno_j:
-                if clen_i + clen_j > max_len:
-                    print("Contig ", cno_i, "-", "Contig ", cno_j, " with len over maxlen")
+            print("Tail Contig: ", tail_cno, " -> Head Contig: ", head_cno)
+            if tail_cno != head_cno:
+                if tail_clen + head_clen > max_len:
+                    print("Contig ", tail_cno, "-", "Contig ", head_cno, " with len over maxlen")
                     continue
-                intersect = list(set(contig_i) & set(contig_j))
+                intersect = list(set(tail_contig) & set(head_contig))
                 if intersect != []:
-                    print("Contig ", cno_i, "-", "Contig ", cno_j, " Intersection with ", len(intersect), " nodes")
+                    print("Contig ", tail_cno, "-", "Contig ", head_cno, " Intersection with ", len(intersect), " nodes")
                     if DEBUG_MODE:
                         print(intersect)
                     continue
-            s_path, s_len = distance_search(graph, simp_node_dict, node_usage_dict, contig_i[-1], contig_j[0], overlap)
+            else:
+                # definitely no self-to-self path.
+                if is_linear_strain:
+                    continue
+            s_path, s_len = distance_search(graph, simp_node_dict, node_usage_dict, tail_contig[-1], head_contig[0], overlap)
             if s_path != None:
                 s_path_ids = [graph.vp.id[v] for v in s_path]
                 print("shortest path length: ", s_len, "path: ", [int(v) for v in s_path_ids])
                 s_path_edge_flow = contig_flow(graph, simp_edge_dict,  s_path_ids)
                 s_path_ccov = numpy.mean(s_path_edge_flow) if len(s_path_edge_flow) != 0 else 0
-                dist_matrix[(cno_i, cno_j)] = (s_path_ids, s_len, s_path_ccov)
+                dist_matrix[(tail_cno, head_cno)] = (s_path_ids, s_len, s_path_ccov)
 
+                concat_ccov = min(head_ccov, tail_ccov, s_path_ccov) if s_path_ccov != 0.0 else min(head_ccov, tail_ccov)
+                concat_len = head_clen + tail_clen - overlap if s_len == 0 else head_clen + s_len + tail_clen - overlap * 2
+                print("coverage: head contig eflow: ", head_ccov, " s path eflow: ", s_path_ccov, " tail contig eflow: ", tail_ccov)
+                print("potential concatenated length: ", concat_len)
+
+                if concat_len > max_len:
+                    print("exceed maximum strain length")
+                else:
+                    print("length satisfied, concat_ccov: ", concat_ccov)
+                    concat_dicision[(tail_cno, head_cno)] = concat_ccov
     print("------------------------------------------------------")
-    return dist_matrix
-
-def contig_merge(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, temp_contigs_dict: dict, node_to_contig_dict: dict, edge_to_contig_dict: dict, node_usage_dict: dict, output_file, min_cov, min_len, max_len, overlap):
-
-    print("-----------------------contig pair-wise concatenaton--------------------")
-
-    if not is_DAG(graph):
-        print("graph is cyclic, cyclic strian may exist")
-    else:
-        print("graph is not cyclic, lienar strain may exist")
-    
-    dist_matrix = pairwise_contig_dist(graph, simp_node_dict, simp_edge_dict, temp_contigs_dict, node_usage_dict, overlap, max_len)
-
-    concat_dicision = {}
-    for (tail_cno, head_cno), (s_path_ids, s_len, s_path_ccov) in dist_matrix.items():
-        [tail_contig, tail_clen, tail_ccov] = temp_contigs_dict[tail_cno]
-        [head_contig, head_clen, head_ccov] = temp_contigs_dict[head_cno]
-        print("------------------------------------------------------")
-        print("Tail Contig: ", tail_cno, " -> Head Contig: ", head_cno)
-
-        if (head_cno, tail_cno) in dist_matrix:
-            print("reverse concatentation exist")
-        else:
-            print("linear concatentation exist")
-    
-        print("shortest path length: ", s_len, "path: ", [int(v) for v in s_path_ids])
-
-        concat_ccov = min(head_ccov, tail_ccov, s_path_ccov) if s_path_ccov != 0.0 else min(head_ccov, tail_ccov)
-        concat_len = head_clen + tail_clen - overlap if s_len == 0 else head_clen + s_len + tail_clen - overlap * 2
-        print("coverage: head contig eflow: ", head_ccov, " s path eflow: ", s_path_ccov, " tail contig eflow: ", tail_ccov)
-        print("potential concatenated length: ", concat_len)
-
-        # decide on cancatenation
-        if concat_len > max_len:
-            print("exceed maximum strain length")
-        else:
-            print("length satisfied, concat_ccov: ", concat_ccov)
-            concat_dicision[(tail_cno, head_cno)] = concat_ccov
-            
-            # if concat_ccov >= min_cov:
-            #     print("coverage satisfied, concat dicision candidate")
-            #     concat_dicision[(tail_cno, head_cno)] = concat_ccov
-            # else:
-            #     print("lower than minimum coverage")
-        print("------------------------------------------------------")
     
     # TODO re-evaluate the concat dicision, sort the concat dicision via concat_ccov, with reverse order or not, TBD
     sorted_pair = sorted(concat_dicision.items(), key=lambda x:x[1], reverse=False)

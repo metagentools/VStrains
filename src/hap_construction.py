@@ -11,7 +11,6 @@
 # from graph_tool.clustering import local_clustering
 
 import subprocess
-# from this import d
 from graph_tool.all import Graph
 from graph_tool.topology import is_DAG
 import argparse
@@ -54,7 +53,6 @@ def main():
     # Read in as Level -1 graph
     graph, simp_node_dict, simp_edge_dict = gfa_to_graph(args.gfa_file, init_ori=1)
     contig_dict, node_to_contig_dict, edge_to_contig_dict = get_contig(graph, args.contig_file, simp_node_dict, simp_edge_dict, args.min_cov, args.min_len, args.overlap)
-    #FIXME if cov(node) < mincov and node belongs to the tail/head, shall we also remove them?
     graph_simplification(graph, simp_node_dict, simp_edge_dict, node_to_contig_dict, edge_to_contig_dict, args.min_cov)
     graph_to_gfa(graph, simp_node_dict, simp_edge_dict, "{0}init_graph.gfa".format(TEMP_DIR))
 
@@ -119,6 +117,7 @@ def main():
     
     # extract the last mile paths from the graph
     final_strain_dict = path_extraction(graph_red, simp_node_dict_red, simp_edge_dict_red, node_usage_dict, args.overlap, args.min_cov, args.min_len)   
+    graph_to_gfa(graph_red, simp_node_dict_red, simp_edge_dict_red, "{0}final_graph.gfa".format(TEMP_DIR))
     for sno, (path, slen, scov) in final_strain_dict.items():
             increment_node_usage_dict(node_usage_dict, path)
 
@@ -265,7 +264,8 @@ def coverage_rebalance(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict,
 
     sorted_solid_node = sorted(solid_node.items(), key=lambda x: graph.vp.dp[x[1]], reverse=True)
     i = 0
-    while len(inconsistent_node) != 0 and i < len(sorted_solid_node):
+    break_point = consistent_count
+    while len(inconsistent_node) != 0:
         no, node = sorted_solid_node[i]
         print(i, consistent_count)
         print([int(n) for n in inconsistent_node])
@@ -334,6 +334,13 @@ def coverage_rebalance(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict,
         
         assign_edge_flow(graph, simp_node_dict, simp_edge_dict, consistent_node, inconsistent_node)
         i += 1
+        if i >= len(sorted_solid_node):
+            if break_point == consistent_count:
+                # no more changes
+                break
+            else:
+                i = 0
+                break_point = consistent_count
     
     print("Total consistent node after solid fix: ", consistent_count, len(simp_node_dict))
     print([int(n) for n in consistent_node])
@@ -1009,7 +1016,7 @@ def simp_path(graph: Graph, simp_edge_dict: dict):
             simple_paths.append(p) 
     return simple_paths
 
-def graph_compactification(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, contig_dict: dict, output_file, overlap, TEMP_DIR):
+def graphactification(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, contig_dict: dict, output_file, overlap, TEMP_DIR):
     """
     Compactify the reduced De Bruijin graph
     """
@@ -1153,7 +1160,7 @@ def graph_grouping(graph: Graph, simp_node_dict: dict, forward="", reverse="", p
     # connect sub-graphs based on pair-end reads information TODO
     return graph, groups
 
-def path_extraction(graph_comp: Graph, simp_node_dict_comp: dict, simp_edge_dict_comp: dict, node_usage_dict: dict, overlap, min_cov, min_len):
+def path_extraction(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, node_usage_dict: dict, overlap, min_cov, min_len):
     """
     extract the last mile path from the graph, with support from residue contigs
     """
@@ -1161,7 +1168,7 @@ def path_extraction(graph_comp: Graph, simp_node_dict_comp: dict, simp_edge_dict
 
     paths_per_group_dict = {}
 
-    graph_comp, groups = graph_grouping(graph_comp, simp_node_dict_comp)
+    graph, groups = graph_grouping(graph, simp_node_dict)
     
     final_strain_dict = {}
     
@@ -1170,9 +1177,9 @@ def path_extraction(graph_comp: Graph, simp_node_dict_comp: dict, simp_edge_dict
             # single node group
             if len(group) == 1:
                 node = group[0]
-                pcov = graph_comp.vp.dp[node]
-                id = graph_comp.vp.id[node]
-                plen = len(graph_comp.vp.seq[node])
+                pcov = graph.vp.dp[node]
+                id = graph.vp.id[node]
+                plen = len(graph.vp.seq[node])
                 print("Single node Path: ", int(id), "path len: ", plen, "cov: ", pcov)
                 if plen < min_len / 5 or pcov < min_cov:
                     print("reject")
@@ -1188,7 +1195,7 @@ def path_extraction(graph_comp: Graph, simp_node_dict_comp: dict, simp_edge_dict
         paths = []
         # classify the nodes
         for u in group:
-            no = graph_comp.vp.id[u]
+            no = graph.vp.id[u]
             if u.in_degree() == 0 and u.out_degree() == 0:
                 isolations.append(no)
             elif u.in_degree() == 0:
@@ -1200,12 +1207,12 @@ def path_extraction(graph_comp: Graph, simp_node_dict_comp: dict, simp_edge_dict
 
         for src in srcs:
             for sink in sinks:
-                p, plen = distance_search(graph_comp, simp_node_dict_comp, node_usage_dict, src, sink, overlap)
+                p, plen = distance_search(graph, simp_node_dict, node_usage_dict, src, sink, overlap)
                 if p != None:
-                    s_path_ids = [graph_comp.vp.id[v] for v in p]
+                    s_path_ids = [graph.vp.id[v] for v in p]
                     s_path_ids.append(sink)
                     s_path_ids.insert(0, src)             
-                    plen = plen + len(graph_comp.vp.seq[simp_node_dict_comp[src]]) + len(graph_comp.vp.seq[simp_node_dict_comp[sink]]) - 2 * overlap
+                    plen = plen + len(graph.vp.seq[simp_node_dict[src]]) + len(graph.vp.seq[simp_node_dict[sink]]) - 2 * overlap
                     paths.append((s_path_ids, plen))
         paths_per_group_dict[gno] = paths
 
@@ -1214,7 +1221,7 @@ def path_extraction(graph_comp: Graph, simp_node_dict_comp: dict, simp_edge_dict
         for p_ids, plen in paths:
             print("------------------------------------------------------")
             print("Path: ", [int(u) for u in p_ids])
-            pcov = numpy.min([graph_comp.vp.dp[simp_node_dict_comp[u]] for u in p_ids])
+            pcov = numpy.mean([graph.vp.dp[simp_node_dict[u]] for u in p_ids if u in simp_node_dict])
             pno = str(p_ids[0]) + "_" + str(p_ids[-1])
             print("path no: {0} path len: {1} path cov: {2}".format(pno, plen, pcov))
             # involved_contig = [(id, contig_map_node_dict[id]) for id in p_ids if id in contig_map_node_dict]
@@ -1226,6 +1233,7 @@ def path_extraction(graph_comp: Graph, simp_node_dict_comp: dict, simp_edge_dict
 
             if plen >= min_len / 5 and pcov >= min_cov:
                 final_strain_dict[pno] = (p_ids, plen, pcov)
+                contig_reduction(graph, p_ids, pno, plen, pcov, simp_node_dict, simp_edge_dict, min_cov)
     print("------------------------------------------------------")
     print("--------------------path extraction end--------------------")
     return final_strain_dict

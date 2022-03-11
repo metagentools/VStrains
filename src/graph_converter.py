@@ -218,7 +218,7 @@ def graph_to_gfa(graph: Graph, simp_node_dict: dict, edge_dict: dict, filename):
     """
     store the swapped graph in simplifed_graph.
     """
-    subprocess.check_call("echo "" > {0}".format(
+    subprocess.check_call("touch {0}".format(
     filename), shell=True)
 
     with open(filename, 'w') as gfa:
@@ -440,7 +440,7 @@ def contig_dict_to_fasta(graph: Graph, contig_dict: dict, simp_node_dict: dict, 
     """
     Store contig dict into fastq file
     """
-    subprocess.check_call("echo "" > {0}".format(
+    subprocess.check_call("touch {0}".format(
     output_file), shell=True)
 
     with open(output_file, 'w') as fasta:
@@ -451,6 +451,21 @@ def contig_dict_to_fasta(graph: Graph, contig_dict: dict, simp_node_dict: dict, 
             fasta.write(seq)
         fasta.close()
 
+def contig_dict_to_path(contig_dict: dict, output_file):
+    """
+    Store contig dict into paths file
+    """
+    subprocess.check_call("touch {0}".format(output_file), shell=True)
+    with open(output_file, 'w') as paths:
+        for cno, (contig, clen, ccov) in contig_dict.items():
+            contig_name = "NODE_" + str(cno) + "_" + str(clen) + "_" + str(ccov) + "\n"
+            path_ids = ""
+            for id in contig:
+                path_ids += str(id) + ","
+            path_ids = path_ids[:-1]  + "\n"
+            paths.write(contig_name)
+            paths.write(path_ids)
+        paths.close()
 
 def get_contig(graph: Graph, contig_file, simp_node_dict: dict, simp_edge_dict: dict, min_cov, min_len, overlap, min_node=2):
     """

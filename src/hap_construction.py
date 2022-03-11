@@ -62,7 +62,7 @@ def main():
     coverage_rebalance(graph_init, simp_node_dict_init, simp_edge_dict_init, args.min_cov)
 
     graph_to_gfa(graph_init, simp_node_dict_init, simp_edge_dict_init, "{0}pre_graph.gfa".format(TEMP_DIR))
-    graph_to_gfa(graph, simp_node_dict, simp_edge_dict, "{0}graph_L0.gfa".format(TEMP_DIR))
+    graph_to_gfa(graph_init, simp_node_dict_init, simp_edge_dict_init, "{0}graph_L0.gfa".format(TEMP_DIR))
     
     # # Read in as pre graph, only used for path seq extraction.
     pre_graph, simp_node_dict_pre, simp_edge_dict_pre = flipped_gfa_to_graph("{0}pre_graph.gfa".format(TEMP_DIR))
@@ -77,7 +77,7 @@ def main():
         map_ref_to_graph(args.ref_file, simp_node_dict_pre, "{0}pre_graph.gfa".format(TEMP_DIR), True, "{0}node_to_ref.paf".format(TEMP_DIR), "{0}temp_gfa_to_fasta.fasta".format(TEMP_DIR))
 
     # selected contig from SPAdes
-    contig_dict_to_fasta(graph, contig_dict, simp_node_dict, args.overlap, "{0}pre_contigs.fasta".format(TEMP_DIR))
+    contig_dict_to_fasta(graph_init, contig_dict, simp_node_dict_init, args.overlap, "{0}pre_contigs.fasta".format(TEMP_DIR))
     minimap_api(args.ref_file, "{0}pre_contigs.fasta".format(TEMP_DIR), "{0}pre_contigs_to_strain.paf".format(TEMP_DIR))
 
     level_no = 0
@@ -125,12 +125,15 @@ def main():
     strain_dict.update(final_strain_dict)
     # print strain and minimap overlaps
     contig_dict_to_fasta(pre_graph, strain_dict, simp_node_dict_pre, args.overlap, "{0}cand_strains.fasta".format(TEMP_DIR))
+    contig_dict_to_path(strain_dict, "{0}cand_strains.paths".format(TEMP_DIR))
     minimap_api(args.ref_file, "{0}cand_strains.fasta".format(TEMP_DIR), "{0}cand_strain_to_strain.paf".format(TEMP_DIR))
     
     # print out node usage stat
     node_usage_pair = sorted(node_usage_dict.items(), key=lambda x: x[1], reverse=True)
     for id, used in node_usage_pair:
         print("id: {0} has been used {1} times".format(id, used))
+
+    # TODO extend the strain end length. really high chance
 
 def coverage_rebalance(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, min_cov, cutoff=250):
     """

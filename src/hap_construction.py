@@ -53,7 +53,10 @@ def main():
     # Read in as Level -1 graph
     graph, simp_node_dict, simp_edge_dict = gfa_to_graph(args.gfa_file, init_ori=1)
     contig_dict, node_to_contig_dict, edge_to_contig_dict = get_contig(graph, args.contig_file, simp_node_dict, simp_edge_dict, args.min_cov, args.min_len, args.overlap)
+    
     graph_simplification(graph, simp_node_dict, simp_edge_dict, node_to_contig_dict, edge_to_contig_dict, args.min_cov)
+    contig_node_cov_rise(graph, contig_dict, node_to_contig_dict)
+
     graph_to_gfa(graph, simp_node_dict, simp_edge_dict, "{0}init_graph.gfa".format(TEMP_DIR))
 
     graph_init, simp_node_dict_init, simp_edge_dict_init = flipped_gfa_to_graph("{0}init_graph.gfa".format(TEMP_DIR))
@@ -133,6 +136,18 @@ def main():
         print("id: {0} has been used {1} times".format(id, used))
 
     # TODO extend the strain end length. really high chance
+
+def contig_node_cov_rise(graph: Graph, contig_dict: dict, node_to_contig_dict: dict):
+    """
+    for any node that involved in one or more contigs, rise the depth if less than the sum of related contig cov
+    """
+    for no, [cnos, dp, node] in list(node_to_contig_dict.items()):
+        sum_covs = numpy.sum([contig_dict[cno][2] for cno in cnos])
+        if sum_covs > graph.vp.dp[node]:
+            print("Node: {0} dp is really low: {1} vs {2}, rise it up".format(no, graph.vp.dp[node], sum_covs))
+            graph.vp.dp[node] = sum_covs
+            node_to_contig_dict[no][2] = sum_covs
+    return
 
 def coverage_rebalance(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, min_cov, cutoff=250):
     """
@@ -454,7 +469,8 @@ def assign_edge_flow(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, c
                     else:
                         graph.ep.flow[e] = w
                     un_assigned_edge = un_assigned_edge - 1
-    print("un-assigned edges after init iteration : ", un_assigned_edge)
+    if DEBUG_MODE:
+        print("un-assigned edges after init iteration : ", un_assigned_edge)
 
     # coverage iteration
     converage_flag = 0
@@ -504,7 +520,8 @@ def assign_edge_flow(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, c
             break
         else:
             converage_flag = un_assigned_edge  
-    print("un-assigned edges after node-weight coverage iteration : ", un_assigned_edge)
+    if DEBUG_MODE:
+        print("un-assigned edges after node-weight coverage iteration : ", un_assigned_edge)
 
     # double cross consistent node assign
     for (u,v), e in simp_edge_dict.items():
@@ -544,11 +561,13 @@ def assign_edge_flow(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, c
                 print("u_flow_remain: ", u_flow_remain, " u_degree: ", u_degree)
                 print("v_flow_remain: ", v_flow_remain, " v_degree: ", v_degree)
             else:
-                print("manual assigned edge: ", graph.vp.id[src], " -> ", graph.vp.id[tgt], assign_flow)
+                if DEBUG_MODE:
+                    print("manual assigned edge: ", graph.vp.id[src], " -> ", graph.vp.id[tgt], assign_flow)
                 if graph.ep.flow[e] == 0.0:
                     un_assigned_edge = un_assigned_edge - 1
                     graph.ep.flow[e] = assign_flow
-    print("un-assigned edges after manual assign iteration : ", un_assigned_edge)
+    if DEBUG_MODE:
+        print("un-assigned edges after manual assign iteration : ", un_assigned_edge)
 
     # assign incon-con branch node
     for (u,v), e in simp_edge_dict.items():
@@ -602,7 +621,8 @@ def assign_edge_flow(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, c
         if graph.ep.flow[e] == 0.0:
             u_nodes.append(int(u))
             u_nodes.append(int(v))
-    print("unassigned related node: ", u_nodes)
+    if DEBUG_MODE:
+        print("unassigned related node: ", u_nodes)
     print("-----------------------assign edge flow end--------------------")
 
 def contig_reduction(graph: Graph, contig, cno, clen, ccov, simp_node_dict: dict, simp_edge_dict: dict, min_cov):
@@ -704,7 +724,7 @@ def distance_search(graph: Graph, simp_node_dict: dict, node_usage_dict: dict, s
                             ss_path = cmp_path
                         else:
                             #FIXME fixed, less len, more cov, less usage
-                            ss_path = sorted([cmp_path, ss_path], key=lambda p: (path_len(graph, p, overlap), -path_cov(graph, p), path_usage(graph, node_usage_dict, p)))[0]
+                            ss_path = sorted([cmp_path, ss_path], key=lambda p: (-path_cov(graph, p), path_usage(graph, node_usage_dict, p), path_len(graph, p, overlap)))[0]
                     visited[v] = False
         return ss_path
     print("source: ", source, "sink: ", sink)

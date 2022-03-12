@@ -400,7 +400,7 @@ def map_ref_to_graph(ref_file, simp_node_dict: dict, graph_file, store_mapping=F
             ref_no = splited[5]
             if seg_no not in simp_node_dict:
                 continue
-            if ((seg_f - seg_s) / seg_l) >= 0.8:
+            if ((seg_f - seg_s) / seg_l) >= 0.5:
                 if ref_no not in strain_dict:
                     strain_dict[ref_no] = []
                 strain_dict[ref_no].append(seg_no_int)
@@ -739,22 +739,30 @@ def path_cov(graph: Graph, path):
     return numpy.mean(pcovs) if len(pcovs) != 0 else 0
 
 def path_usage(graph: Graph, node_usage_dict: dict, path):
-    return sum([node_usage_dict[graph.vp.id[n]] for n in path])
+    """
+    define the usage of the path
+    """
+    sum = 0
+    path_len = len(path)
+    for node in path:
+        usage = node_usage_dict[graph.vp.id[node]]
+        sum += usage[0]/usage[1]
+    return round(sum / path_len, 2)
 
 ## FIXME also increment via the path depth
-def increment_node_usage_dict(node_usage_dict: dict, path_ids):
+def increment_node_usage_dict(node_usage_dict: dict, path_ids, cov):
     """
     update the node usage dict by incrementing all the involving node from the path.
     """
     for id in path_ids:
-        node_usage_dict[id] += 1
+        node_usage_dict[id][0] += cov
 
-def decrement_node_usage_dict(node_usage_dict: dict, path_ids):
+def decrement_node_usage_dict(node_usage_dict: dict, path_ids, cov):
     """
     update the node usage dict by incrementing all the involving node from the path.
     """
     for id in path_ids:
-        node_usage_dict[id] -= 1
+        node_usage_dict[id][0] -= cov
 
 def contig_flow(graph: Graph, edge_dict: dict, contig):
     """

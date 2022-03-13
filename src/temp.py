@@ -670,3 +670,309 @@ def node_dp_rebalance(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict):
     print("False case: ", false_count)
     print("-------------------------node depth rebalance end----------------------")
     return
+
+
+# refine all the node coverage by reassign all the edge flow
+    for (u,v), e in simp_edge_dict.items():
+        graph.ep.flow[e] = 0.0
+    
+    print("Final refine")
+    assign_edge_flow(graph, simp_node_dict, simp_edge_dict, consistent_node, inconsistent_node)
+
+    # re assign the node depth = max(curr_dp, out_neighbor_dp_sum if no branch, in_neighbor_dp_sum if no branch, out edge flow sum, in edge flow sum)
+    queue = []
+    queue.append((sorted(simp_node_dict.values(),key=lambda n: graph.vp.dp[n], reverse=True))[0])
+    visited = []
+    while queue:
+        node = queue.pop()
+        visited.append(graph.vp.id[node])
+        curr_dp = graph.vp.dp[node]
+
+        us = list(node.in_neighbors())
+        u_out_degrees = numpy.sum([u.out_degree() for u in us]) 
+        in_neighbor_dp_sum = -1
+        if u_out_degrees == node.in_degree():
+            in_neighbor_dp_sum = numpy.sum([graph.vp.dp[u] for u in us])
+
+        vs = list(node.out_neighbors())
+        v_in_degrees = numpy.sum([v.in_degree() for v in vs]) 
+        out_neighbor_dp_sum = -1
+        if v_in_degrees == node.out_degree():
+            out_neighbor_dp_sum = numpy.sum([graph.vp.dp[v] for v in vs])
+        
+        in_eflows = numpy.sum([graph.ep.flow[e] for e in node.in_edges()])
+        out_eflows = numpy.sum([graph.ep.flow[e] for e in node.out_edges()])
+        graph.vp.dp[node] = numpy.max([curr_dp, in_neighbor_dp_sum, out_neighbor_dp_sum, in_eflows, out_eflows])
+        print(graph.vp.id[node], " node depth from {0} to {1}".format(curr_dp, graph.vp.dp[node]))
+        assign_edge_flow2(graph, simp_node_dict, simp_edge_dict)
+        
+        for n in node.all_neighbors():
+            if graph.vp.id[n] not in visited:
+                queue.append(n)
+
+
+def assign_edge_flow2(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict):
+    un_assigned_edge = len(simp_edge_dict)
+    print("-------------------------assign edge flow----------------------")
+    print("Assign edge flow: Total unassigned edges: ", un_assigned_edge)
+    # it is necessary to distinguish two phase to avoid assembly graph mistake, or do we ignore the mistake?
+    # init iteration
+    for no, node in simp_node_dict.items():
+        w = graph.vp.dp[node]
+        in_d = len([n for n in node.in_neighbors()])
+        node_in_edges = [e for e in node.in_edges()]
+        if in_d == 1:
+            for e in node_in_edges:
+                src = e.source()
+                if src.out_degree() == 1:
+                    graph.ep.flow[e] = numpy.max([w, graph.ep.flow[e], graph.vp.dp[src]])
+                    un_assigned_edge = un_assigned_edge - 1
+        out_d = len([n for n in node.out_neighbors()])
+        node_out_edges = [e for e in node.out_edges()]
+        if out_d == 1:
+            for e in node_out_edges:
+                tgt = e.target()
+                if tgt.in_degree() == 1:
+                    graph.ep.flow[e] = numpy.max([w, graph.ep.flow[e], graph.vp.dp[tgt]])
+                    un_assigned_edge = un_assigned_edge - 1
+
+    # coverage iteration
+    converage_flag = 0
+    while True:          
+        for no, node in simp_node_dict.items():
+            in_d = len([n for n in node.in_neighbors()])
+            node_in_edges = [e for e in node.in_edges()]
+            in_w = graph.vp.dp[node]
+            in_e = []
+            for e in node_in_edges:
+                f = graph.ep.flow[e]
+                if f != 0.0:
+                    in_d = in_d - 1
+                    in_w = in_w - f
+                else:
+                    in_e.append(e)
+            if in_d == 1:
+                for e in in_e:
+                    graph.ep.flow[e] = max(in_w,graph.ep.flow[e])
+                    un_assigned_edge = un_assigned_edge - 1
+
+            out_d = len([n for n in node.out_neighbors()])
+            node_out_edges = [e for e in node.out_edges()]
+            out_w = graph.vp.dp[node]
+            out_e = []
+            for e in node_out_edges:
+                f = graph.ep.flow[e]
+                if f != 0.0:
+                    out_d = out_d - 1
+                    out_w = out_w - f
+                else:
+                    out_e.append(e)
+            if out_d == 1:
+                for e in out_e:
+                        graph.ep.flow[e] = max(out_w,graph.ep.flow[e])
+                        un_assigned_edge = un_assigned_edge - 1
+        if converage_flag == un_assigned_edge:
+            break
+        else:
+            converage_flag = un_assigned_edge  
+
+    # double cross consistent node assign
+    for (u,v), e in simp_edge_dict.items():
+
+        src = e.source()
+        tgt = e.target()
+
+        u_flow_remain = graph.vp.dp[src]
+        u_degree = len([n for n in src.out_neighbors()])
+        u_out_edges = [e for e in src.out_edges()]
+        for ue in u_out_edges:
+            if graph.ep.flow[ue] != 0.0:
+                # assigned edge
+                u_degree = u_degree - 1
+                u_flow_remain = u_flow_remain - graph.ep.flow[ue]
+
+        v_flow_remain = graph.vp.dp[tgt]
+        v_degree = len([n for n in tgt.in_neighbors()])
+        v_in_edges = [e for e in tgt.in_edges()]
+        for ve in v_in_edges:
+            if graph.ep.flow[ve] != 0.0:
+                # assigned edge
+                v_degree = v_degree - 1
+                v_flow_remain = v_flow_remain - graph.ep.flow[ve]
+
+        u_flow_remain = u_flow_remain if u_flow_remain > 0 else 0
+        v_flow_remain = v_flow_remain if v_flow_remain > 0 else 0
+        udiv = (u_flow_remain / u_degree) if u_degree != 0 else 0
+        vdiv = (v_flow_remain / v_degree) if v_degree != 0 else 0
+        if udiv != 0 and vdiv != 0:
+            assign_flow = (udiv + vdiv) / 2
+        elif udiv != 0:
+            assign_flow = udiv
+        elif vdiv != 0:
+            assign_flow = vdiv
+        else:
+            assign_flow = 0
+        un_assigned_edge = un_assigned_edge - 1
+        graph.ep.flow[e] = max(assign_flow,graph.ep.flow[e])
+    print("-----------------------assign edge flow v2--------------------")
+    return
+
+
+def graph_split_by_breadth(graph: Graph, simp_node_dict: dict):
+    srcs = []
+    for no, node in simp_node_dict.items():
+        if node.in_degree() == 0:
+            srcs.append(node)
+    
+    queue = []
+    visited = []
+    srcs = sorted(srcs, key=lambda x: graph.vp.dp[x], reverse=True)
+    queue.append(srcs[0])
+    split_by_level = {}
+    split_by_level[0] = [graph.vp.id[srcs[0]]]
+    curr_level = 1
+    while queue:
+        node = queue.pop()
+        visited.append(graph.vp.id[node])
+        split_by_level[curr_level] = []
+        for out_n in node.out_neighbors():
+            if not graph.vp.id[out_n] in visited:
+                split_by_level[curr_level].append(graph.vp.id[out_n])
+                queue.append(out_n)
+        curr_level += 1
+    sorted_level_pair = sorted(split_by_level.items(), key = lambda x: x[0])
+    allNodes = []
+    for level, nodes in sorted_level_pair:
+        print("Current level: ", level)
+        print("Nodes: ", [int(v) for v in nodes])
+        [allNodes.append((int(v))) for v in nodes]
+    print("All nodes: ", allNodes)
+
+
+
+
+
+
+
+
+
+# print("Final refine")
+    for no, node in simp_node_dict.items():
+        curr_dp = graph.vp.dp[node]
+        in_edges = list(node.in_edges())
+        in_sum = numpy.sum([graph.ep.flow[e] for e in in_edges])
+        out_edges = list(node.out_edges())
+        out_sum = numpy.sum([graph.ep.flow[e] for e in out_edges])
+        if in_edges != [] and curr_dp > in_sum:
+            for e in in_edges:
+                graph.ep.flow[e] = round(curr_dp * (graph.ep.flow[e] / in_sum), 2)
+        
+        if out_edges != [] and curr_dp > out_sum:
+            for e in out_edges:
+                graph.ep.flow[e] = round(curr_dp * (graph.ep.flow[e] / out_sum), 2)
+
+    for edge in simp_edge_dict.values():
+        print_edge(graph, edge, "After refine")
+
+    # re assign the node depth = max(curr_dp, out_neighbor_dp_sum if no branch, in_neighbor_dp_sum if no branch, out edge flow sum, in edge flow sum)
+    queue = []
+    queue.append((sorted(simp_node_dict.values(),key=lambda n: graph.vp.dp[n], reverse=True))[0])
+    visited = []
+    while queue:
+        curr_node = queue.pop()
+        visited.append(graph.vp.id[curr_node])
+        curr_dp = graph.vp.dp[curr_node]
+
+        us = list(curr_node.in_neighbors())
+        u_out_degrees = numpy.sum([u.out_degree() for u in us]) 
+        in_neighbor_dp_sum = -1
+        if u_out_degrees == curr_node.in_degree():
+            in_neighbor_dp_sum = numpy.sum([graph.vp.dp[u] for u in us])
+
+        vs = list(curr_node.out_neighbors())
+        v_in_degrees = numpy.sum([v.in_degree() for v in vs]) 
+        out_neighbor_dp_sum = -1
+        if v_in_degrees == curr_node.out_degree():
+            out_neighbor_dp_sum = numpy.sum([graph.vp.dp[v] for v in vs])
+        
+        in_eflows = numpy.sum([graph.ep.flow[e] for e in curr_node.in_edges()])
+        out_eflows = numpy.sum([graph.ep.flow[e] for e in curr_node.out_edges()])
+        graph.vp.dp[curr_node] = numpy.max([curr_dp, in_neighbor_dp_sum, out_neighbor_dp_sum, in_eflows, out_eflows])
+        print(graph.vp.id[curr_node], " node depth from {0} to {1}".format(curr_dp, graph.vp.dp[curr_node]))
+
+        in_d = len([n for n in curr_node.in_neighbors()])
+        node_in_edges = [e for e in curr_node.in_edges()]
+        if in_d == 1:
+            for e in node_in_edges:
+                src = e.source()
+                if (graph.vp.id[src], no) in simp_edge_dict:
+                    if graph.vp.id[src] in consistent_node and src.out_degree() == 1:
+                        graph.ep.flow[e] = max(w, graph.vp.dp[src])
+                    else:
+                        graph.ep.flow[e] = w
+
+        out_d = len([n for n in curr_node.out_neighbors()])
+        node_out_edges = [e for e in curr_node.out_edges()]
+        if out_d == 1:
+            for e in node_out_edges:
+                tgt = e.target()
+                if (no, graph.vp.id[tgt]) in simp_edge_dict:
+                    if graph.vp.id[tgt] in consistent_node and tgt.in_degree() == 1:
+                        graph.ep.flow[e] = max(w, graph.vp.dp[tgt])
+                    else:
+                        graph.ep.flow[e] = w
+
+        for n in curr_node.all_neighbors():
+            if graph.vp.id[n] not in visited:
+                queue.append(n)
+    print("Next")
+    queue = []
+    queue.append((sorted(simp_node_dict.values(),key=lambda n: graph.vp.dp[n], reverse=True))[0])
+    visited = []
+    while queue:
+        curr_node = queue.pop()
+        visited.append(graph.vp.id[curr_node])
+        curr_dp = graph.vp.dp[curr_node]
+
+        us = list(curr_node.in_neighbors())
+        u_out_degrees = numpy.sum([u.out_degree() for u in us]) 
+        in_neighbor_dp_sum = -1
+        if u_out_degrees == curr_node.in_degree():
+            in_neighbor_dp_sum = numpy.sum([graph.vp.dp[u] for u in us])
+
+        vs = list(curr_node.out_neighbors())
+        v_in_degrees = numpy.sum([v.in_degree() for v in vs]) 
+        out_neighbor_dp_sum = -1
+        if v_in_degrees == curr_node.out_degree():
+            out_neighbor_dp_sum = numpy.sum([graph.vp.dp[v] for v in vs])
+        
+        in_eflows = numpy.sum([graph.ep.flow[e] for e in curr_node.in_edges()])
+        out_eflows = numpy.sum([graph.ep.flow[e] for e in curr_node.out_edges()])
+        graph.vp.dp[curr_node] = numpy.max([curr_dp, in_neighbor_dp_sum, out_neighbor_dp_sum, in_eflows, out_eflows])
+        print(graph.vp.id[curr_node], " node depth from {0} to {1}".format(curr_dp, graph.vp.dp[curr_node]))
+
+        in_d = len([n for n in curr_node.in_neighbors()])
+        node_in_edges = [e for e in curr_node.in_edges()]
+        if in_d == 1:
+            for e in node_in_edges:
+                src = e.source()
+                if (graph.vp.id[src], no) in simp_edge_dict:
+                    if graph.vp.id[src] in consistent_node and src.out_degree() == 1:
+                        graph.ep.flow[e] = max(w, graph.vp.dp[src])
+                    else:
+                        graph.ep.flow[e] = w
+
+        out_d = len([n for n in curr_node.out_neighbors()])
+        node_out_edges = [e for e in curr_node.out_edges()]
+        if out_d == 1:
+            for e in node_out_edges:
+                tgt = e.target()
+                if (no, graph.vp.id[tgt]) in simp_edge_dict:
+                    if graph.vp.id[tgt] in consistent_node and tgt.in_degree() == 1:
+                        graph.ep.flow[e] = max(w, graph.vp.dp[tgt])
+                    else:
+                        graph.ep.flow[e] = w
+
+        for n in curr_node.all_neighbors():
+            if graph.vp.id[n] not in visited:
+                queue.append(n)

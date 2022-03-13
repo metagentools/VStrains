@@ -170,7 +170,7 @@ def coverage_rebalance(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict,
                 #skip
                 None
             elif id in incon_nodes:
-                print("From src node {0} reach in consistent node {1} return false".format(graph.vp.id[curr_node], id))
+                # print("From src node {0} reach in consistent node {1} return false".format(graph.vp.id[curr_node], id))
                 return False
             else:
                 for u in node.all_neighbors():
@@ -274,15 +274,12 @@ def coverage_rebalance(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict,
                     if in_consistent and out_consistent:
                         consistent_node[no] = node
                         consistent_count += 1
-                        print("Flip: ", no, "to consistent")
                     elif in_consistent and out_amb:
                         consistent_node[no] = node
                         consistent_count += 1
-                        print("Flip: ", no, "to consistent")
                     elif out_consistent and in_amb:
                         consistent_node[no] = node
                         consistent_count += 1
-                        print("Flip: ", no, "to consistent")
                     else:
                         inconsistent_node[no] = node
             else:
@@ -310,19 +307,22 @@ def coverage_rebalance(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict,
             solid_node[no] = node
 
     sorted_solid_node = sorted(solid_node.items(), key=lambda x: graph.vp.dp[x[1]], reverse=True)
-    print([int(n[0]) for n in sorted_solid_node])
+    print("solid node: ", [int(n[0]) for n in sorted_solid_node])
     
     # fix the inconsistent node depth, and also try to increment all the imbalance consistent
     i = 0
     break_point = consistent_count
     no_changes = False
+    if not is_DAG(graph):
+        cyclic = True
+    else:
+        cyclic = False
     while len(inconsistent_node) != 0 or not no_changes:
         no_changes = True
         no, node = sorted_solid_node[i]
         print("Current iteration: ", i, "Total consistent node: ", consistent_count)
         print([int(n) for n in inconsistent_node])
         print("Current solid node: ", no)
-
 
         queue = [node]
         visited = []
@@ -345,7 +345,8 @@ def coverage_rebalance(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict,
                 # perform fix
                 if fix:
                     graph.vp.dp[curr_node] = vtotal
-                    print(curr_id, "inconsistent node depth from {0} to {1}".format(curr_dp, graph.vp.dp[curr_node]))
+                    if DEBUG_MODE:
+                        print(curr_id, "inconsistent node depth from {0} to {1}".format(curr_dp, graph.vp.dp[curr_node]))
                     inconsistent_node.pop(curr_id)
                     consistent_node[curr_id] = curr_node
                     consistent_count += 1
@@ -501,7 +502,8 @@ def coverage_rebalance(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict,
                 # perform fix
                 if fix:
                     graph.vp.dp[curr_node] = vtotal
-                    print(curr_id, "inconsistent node depth from {0} to {1}".format(curr_dp, graph.vp.dp[curr_node]))
+                    if DEBUG_MODE:
+                        print(curr_id, "inconsistent node depth from {0} to {1}".format(curr_dp, graph.vp.dp[curr_node]))
                     inconsistent_node.pop(curr_id)
                     consistent_node[curr_id] = curr_node
                     consistent_count += 1
@@ -526,7 +528,8 @@ def coverage_rebalance(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict,
                 if graph.vp.dp[curr_node] != maxdp:
                     graph.vp.dp[curr_node] = maxdp
                     no_changes = False
-                    print(curr_id, "consistent node depth from {0} to {1}".format(curr_dp, graph.vp.dp[curr_node]))
+                    if DEBUG_MODE:
+                        print(curr_id, "consistent node depth from {0} to {1}".format(curr_dp, graph.vp.dp[curr_node]))
             
             for edge in curr_node.all_edges():
                 u = graph.vp.id[edge.source()]
@@ -638,7 +641,7 @@ def coverage_rebalance(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict,
                     queue.append(n)        
         i += 1
         if i >= len(sorted_solid_node):
-            if break_point == consistent_count and no_changes:
+            if break_point == consistent_count and (no_changes or cyclic):
                 # no more changes
                 break
             else:
@@ -649,9 +652,9 @@ def coverage_rebalance(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict,
     print([int(n) for n in consistent_node])
     print([int(n) for n in inconsistent_node]) 
     print([int(n) for n in untracked_node])
-
-    for edge in simp_edge_dict.values():
-        print_edge(graph, edge, "")
+    if DEBUG_MODE:
+        for edge in simp_edge_dict.values():
+            print_edge(graph, edge, "")
     return
 
 def graph_simplification(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, node_to_contig_dict: dict, edge_to_contig_dict: dict, min_cov):

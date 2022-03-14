@@ -10,7 +10,6 @@
 # from graph_tool.topology import topological_sort, all_circuits
 # from graph_tool.clustering import local_clustering
 
-from curses import nocbreak
 import subprocess
 from graph_tool.all import Graph
 from graph_tool.topology import is_DAG
@@ -62,8 +61,8 @@ def main():
     graph_to_gfa(graph, simp_node_dict, simp_edge_dict, "{0}init_graph.gfa".format(TEMP_DIR))
 
     graph_init, simp_node_dict_init, simp_edge_dict_init = flipped_gfa_to_graph("{0}init_graph.gfa".format(TEMP_DIR))
-    coverage_rebalance(graph_init, simp_node_dict_init, simp_edge_dict_init, args.min_cov)
-    # coverage_rebalance_v2(graph_init, simp_node_dict_init, simp_edge_dict_init)
+    # coverage_rebalance(graph_init, simp_node_dict_init, simp_edge_dict_init, args.min_cov)
+    coverage_rebalance_v3(graph_init, simp_node_dict_init, simp_edge_dict_init)
 
     graph_to_gfa(graph_init, simp_node_dict_init, simp_edge_dict_init, "{0}pre_graph.gfa".format(TEMP_DIR))
     graph_to_gfa(graph_init, simp_node_dict_init, simp_edge_dict_init, "{0}graph_L0.gfa".format(TEMP_DIR))
@@ -148,6 +147,93 @@ def contig_node_cov_rise(graph: Graph, contig_dict: dict, node_to_contig_dict: d
             graph.vp.dp[node] = sum_covs
             node_to_contig_dict[no][2] = sum_covs
     return
+
+def coverage_rebalance_v3(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict):
+    def expectation_edge_flow(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict):
+        for (u,v),e in simp_edge_dict.items():
+            u_node = simp_node_dict[u]
+            v_node = simp_node_dict[v]
+            flow = 0
+            if u_node.out_degree() == 1 and v_node.in_degree() == 1:
+                flow = max(graph.vp.dp[u_node], graph.vp.dp[v_node])
+            elif u_node.out_degree() > 1 and v_node.in_degree() == 1:
+                u_out_sum = numpy.sum([graph.vp.dp[n] for n in u_node.out_neighbors()])
+                flow = max(graph.vp.dp[v_node], (graph.vp.dp[v_node]/u_out_sum)*graph.vp.dp[u_node])
+            elif u_node.out_degree() == 1 and v_node.in_degree() > 1:
+                v_in_sum = numpy.sum([graph.vp.dp[n] for n in v_node.in_neighbors()])
+                flow = max(graph.vp.dp[u_node], (graph.vp.dp[u_node]/v_in_sum)*graph.vp.dp[v_node])
+            else:
+                u_out_sum = numpy.sum([graph.vp.dp[n] for n in u_node.out_neighbors()])
+                v_in_sum = numpy.sum([graph.vp.dp[n] for n in v_node.in_neighbors()])
+                flow = max((graph.vp.dp[v_node] / u_out_sum) * graph.vp.dp[u_node], (graph.vp.dp[u_node] / v_in_sum) * graph.vp.dp[v_node])
+            graph.ep.flow[e] = max(graph.ep.flow[e], flow)
+            # print_edge(graph, e, "{0}".format(flow))
+        return
+    def maximization_node_depth(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, usage_dict: dict):
+        is_update = False
+        for no, node in simp_node_dict.items():
+            us = list(node.in_neighbors())
+            u_out_degrees = numpy.sum([u.out_degree() for u in us]) 
+            in_neighbor_dp_sum = -1
+            if u_out_degrees == node.in_degree():
+                in_neighbor_dp_sum = numpy.sum([graph.vp.dp[u] for u in us])
+
+            vs = list(node.out_neighbors())
+            v_in_degrees = numpy.sum([v.in_degree() for v in vs]) 
+
+            out_neighbor_dp_sum = -1
+            if v_in_degrees == node.out_degree():
+                out_neighbor_dp_sum = numpy.sum([graph.vp.dp[v] for v in vs])
+
+            curr_dp = graph.vp.dp[node]
+            inflow = numpy.sum([graph.ep.flow[e] for e in node.in_edges()])
+            outflow = numpy.sum([graph.ep.flow[e] for e in node.out_edges()])
+            graph.vp.dp[node] = numpy.max([curr_dp, inflow, outflow, in_neighbor_dp_sum, out_neighbor_dp_sum])
+            # print_vertex(graph, node, "prev dp: {0}".format(curr_dp))
+            # print("inflow: ", inflow, "outflow: ", outflow, "in n sum: ", in_neighbor_dp_sum, " out n sum: ", out_neighbor_dp_sum)
+            if curr_dp != graph.vp.dp[node]:
+                usage_dict[no] += 1
+                is_update = True
+        return is_update
+    
+    cutoff = 0.001 * len(simp_node_dict)
+    sum_depth_before = numpy.sum([graph.vp.dp[u] for u in simp_node_dict.values()])
+    print(cutoff)
+    is_update = True
+    usage_dict = {}
+    for no in simp_node_dict.keys():
+        usage_dict[no] = 0
+    while is_update:
+        expectation_edge_flow(graph, simp_node_dict, simp_edge_dict)
+        ## validation
+        sum_delta = 0
+        for no, node in simp_node_dict.items():
+            inflow = numpy.sum([graph.ep.flow[e] for e in node.in_edges()])
+            outflow = numpy.sum([graph.ep.flow[e] for e in node.out_edges()])
+            if node.in_degree() == 0 or node.out_degree() == 0:
+                continue
+            else:
+                sum_delta += (abs(inflow - outflow))/((inflow + outflow)/2) 
+        print("DELTA:", sum_delta)  
+        if round(sum_delta, 2) < cutoff:
+            break
+        is_update = maximization_node_depth(graph, simp_node_dict, simp_edge_dict, usage_dict)
+
+    # final evaluation
+    invalid = []
+    for no, node in simp_node_dict.items():
+        curr_dp = graph.vp.dp[node]
+        inflow = numpy.sum([graph.ep.flow[e] for e in node.in_edges()])
+        outflow = numpy.sum([graph.ep.flow[e] for e in node.out_edges()])
+        if (inflow != 0 and curr_dp != inflow) or (outflow != 0 and curr_dp != outflow):
+            invalid.append(int(no))
+    print("Inconsistent node after all: ", invalid)
+
+    sum_ratio = (numpy.sum([graph.vp.dp[u] for u in simp_node_dict.values()]) / sum_depth_before)
+    print("Ratio: ", sum_ratio)
+    for node in simp_node_dict.values():
+        graph.vp.dp[node] = graph.vp.dp[node] / sum_ratio
+    return        
 
 def coverage_rebalance_v2(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict):
     """
@@ -618,24 +704,8 @@ def coverage_rebalance(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict,
 
     # assign edge flow only to consistent node related edge
     assign_edge_flow(graph, simp_node_dict, simp_edge_dict, consistent_node, inconsistent_node)
-
-    # find the solid branch consistent node
-    solid_node = {}
-    for no, node in consistent_node.items():
-        dp = graph.vp.dp[node]
-
-        us = list(node.in_neighbors())
-        u_out_degrees = numpy.sum([u.out_degree() for u in us]) 
-
-        vs = list(node.out_neighbors())
-        v_in_degrees = numpy.sum([v.in_degree() for v in vs]) 
-
-        if u_out_degrees == node.in_degree() and v_in_degrees == node.out_degree() and graph.vp.dp[node] >= min_cov:
-            solid_node[no] = node
-
-    sorted_solid_node = sorted(solid_node.items(), key=lambda x: graph.vp.dp[x[1]], reverse=True)
-    print("solid node: ", [int(n[0]) for n in sorted_solid_node])
     
+    sorted_consistent_node = sorted(consistent_node.items(), key=lambda x: graph.vp.dp[x[1]], reverse=True)
     # fix the inconsistent node depth, and also try to 
     # increment all the imbalance consistent node
     i = 0
@@ -645,7 +715,7 @@ def coverage_rebalance(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict,
 
     while len(inconsistent_node) != 0 or not no_changes:
         no_changes = True
-        no, node = sorted_solid_node[i]
+        no, node = sorted_consistent_node[i]
         print("Current iteration: ", i, "Total consistent node: ", consistent_count)
         print([int(n) for n in inconsistent_node])
         print("Current solid node: ", no)
@@ -756,7 +826,7 @@ def coverage_rebalance(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict,
                 if graph.vp.id[n] not in visited:
                     queue.append(n)        
         i += 1
-        if i >= len(sorted_solid_node):
+        if i >= len(sorted_consistent_node):
             if break_point == consistent_count and (no_changes or cyclic):
                 # no more changes
                 break

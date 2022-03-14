@@ -655,7 +655,6 @@ def udpate_node_to_contig_dict(graph: Graph, node_to_contig_dict: dict, simp_nod
         node_to_contig_dict[no][1] = graph.vp.dp[no]
         node_to_contig_dict[no][2] = node
         
-
 def update_edge_to_contig_dict(graph: Graph, edge_to_contig_dict: dict, simp_edge_dict: dict):
     for (u,v) in edge_to_contig_dict.keys():
         e = simp_edge_dict[(u,v)]
@@ -723,6 +722,42 @@ def contig_split(graph: Graph, cno, contig: list, simp_node_dict: dict, simp_edg
                     break
         # s will end up to not-removed node
     return contig_list
+
+def graph_grouping(graph: Graph, simp_node_dict: dict, forward="", reverse="", partition_length_cut_off=0):
+    """
+    Maximimize graph connectivity by minimizing node with 0 in-degree or out-degree, detect and remove all the cycles.
+    Out-of-date, TBD
+    """
+    # determine the isolated subgraphs, and assign each node with its group No, which indicates they are belong to same group
+    def bfs_grouping(graph: Graph, start_node, group_no, groups):
+        """
+        Perform a breadth-first search and assign the group no to all the connected nodes.
+        """
+        groups[group_no] = []
+
+        queue = []
+        queue.append(start_node)
+        while queue:
+            v = queue.pop()
+            graph.vp.group[v] = group_no
+            groups[group_no].append(v)
+
+            for neighbor in v.all_neighbors():
+                if graph.vp.group[neighbor] == -1:
+                    queue.append(neighbor)
+        return graph, group_no, groups
+
+    graph.vp.group = graph.new_vertex_property("int16_t", val=-1)
+    group_no = 1
+    groups = {}
+    for v in simp_node_dict.values():
+        # grouping
+        if graph.vp.group[v] == -1:
+            graph, group_no, groups = bfs_grouping(graph, v, group_no, groups)
+            group_no = group_no + 1
+
+    # connect sub-graphs based on pair-end reads information TODO
+    return graph, groups
 
 def path_len(graph: Graph, path, overlap):
     """

@@ -385,7 +385,7 @@ def map_ref_to_graph(ref_file, simp_node_dict: dict, graph_file, store_mapping=F
         gfa.close()
     
     # minimap2. you may need to replace the exec path to minimap to fit your case
-    subprocess.check_call("/Users/luorunpeng/opt/miniconda3/envs/spades-hapConstruction-env/bin/minimap2 {0} {1} > {2}".format(
+    subprocess.check_call("/Users/luorunpeng/opt/miniconda3/envs/spades-hapConstruction-env/bin/minimap2 {0} {1} -c > {2}".format(
     ref_file, fasta_file, output_file), shell=True)
 
     strain_dict = {}
@@ -432,7 +432,7 @@ def gfa_to_fasta(gfa_file, fasta_file):
         gfa.close()
 
 def minimap_api(ref_file, fasta_file, output_file):
-    subprocess.check_call("/Users/luorunpeng/opt/miniconda3/envs/spades-hapConstruction-env/bin/minimap2 {0} {1} > {2}".format(
+    subprocess.check_call("/Users/luorunpeng/opt/miniconda3/envs/spades-hapConstruction-env/bin/minimap2 {0} {1} -c > {2}".format(
         ref_file, fasta_file, output_file), shell=True)
     return  
 
@@ -533,53 +533,9 @@ def get_contig(graph: Graph, contig_file, simp_node_dict: dict, simp_edge_dict: 
                 # fixed = True
 
                 if not pick:
-                    # whole contig is reduced already, no split chance
+                    # whole contig is reduced already, no split chance, potential error
                     continue
                 else:
-                    # # fix the graph by iterating the whole contig, re-append all the deleted node
-                    # for i in range(len(c)):
-                    #     u = c[i]
-                    #     if i < len(c) - 1:
-                    #         v = c[i+1]
-                    #     else:
-                    #         v = None
-                    #     x = None
-                    #     y = None
-
-                    #     # handle nodes
-                    #     if u in simp_node_dict:
-                    #         x = simp_node_dict[u]
-                    #     elif u in removed_node_dict:
-                    #         x = removed_node_dict[u]
-                    #         simp_node_dict[u] = x
-                    #         graph.vp.color[x] = 'black'
-                    #         print("Re-appending node: ", u)
-                    #     else:
-                    #         print("node: ", u, " is not in both dict, error to be handled")
-
-                    #     if v != None:
-                    #         if v in simp_node_dict:
-                    #             y = simp_node_dict[v]
-                    #         elif v in removed_node_dict:
-                    #             y = removed_node_dict[v]
-                    #             simp_node_dict[v] = y
-                    #             graph.vp.color[y] = 'black'
-                    #             print("Re-appending node: ", v)
-                    #         else:
-                    #             print("node: ", u, " is not in both dict, error to be handled") 
-
-                    #     # handle edges
-                    #     if x != None and y != None and (u,v) in removed_edge_dict:
-                    #         print("Re-appending edge: ", (u,v))
-                    #         e = removed_edge_dict[(u,v)]
-                    #         graph.ep.color[e] = 'black'
-                    #         simp_edge_dict[(u,v)] = e
-
-                    # if not fixed:
-                    #     contig_list = contig_split(graph, cno, c, simp_node_dict, simp_edge_dict, overlap, min_cov)
-                    #     for (sub_cno, sub_contig, sub_clen, sub_ccov) in contig_list:
-                    #         contig_dict[sub_cno] = (sub_contig, sub_clen, sub_ccov)
-                    # else:
                     contig_dict[cno] = [c, clen, ccov]
                     succ_add = True
                     for i in range(len(c)):

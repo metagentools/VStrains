@@ -976,3 +976,389 @@ def graph_split_by_breadth(graph: Graph, simp_node_dict: dict):
         for n in curr_node.all_neighbors():
             if graph.vp.id[n] not in visited:
                 queue.append(n)
+
+
+def coverage_rebalance(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, min_cov, cutoff=125):
+    """
+    rebalance all the node coverage to ensure flow consistency
+    """
+    # helper functions
+    def node_expansion_both(graph: Graph, con_nodes, incon_nodes, curr_node):
+        """
+        from given node, BFS search all the in/out branches, if the curr node is covered by c node layer
+        then return true, if any inconsistent node be found then return false
+        """
+        visited = []
+        queue = [curr_node]
+        while queue:
+            node = queue.pop()
+            id = graph.vp.id[node]
+            visited.append(id)
+            if id in con_nodes:
+                #skip
+                None
+            elif id in incon_nodes:
+                # print("From src node {0} reach in consistent node {1} return false".format(graph.vp.id[curr_node], id))
+                return False
+            else:
+                for u in node.all_neighbors():
+                    if graph.vp.id[u] not in visited:
+                        queue.append(u)
+        return True
+    
+    def subfix(graph: Graph, curr_node, no_changes_in, consistent_node: dict, inconsistent_node: dict, simp_node_dict: dict):
+        no_changes = no_changes_in
+        for edge in curr_node.all_edges():
+            u = graph.vp.id[edge.source()]
+            v = graph.vp.id[edge.target()]
+
+            if u in inconsistent_node and v in inconsistent_node:
+                None
+            elif v in inconsistent_node:
+                # u is consistent
+                u_node = simp_node_dict[u]
+                all_incon_dp = 0
+                incon_edges = []
+                out_flow_remain = graph.vp.dp[u_node]
+                for out_edge in u_node.out_edges():
+                    tgt = out_edge.target()
+                    if graph.ep.flow[out_edge] != 0.0:
+                        out_flow_remain -= graph.ep.flow[out_edge]
+                    else:
+                        all_incon_dp += graph.vp.dp[tgt]
+                        incon_edges.append(out_edge)
+                for incon_edge in incon_edges:
+                    tgt = incon_edge.target()
+                    maxflow =  max(graph.ep.flow[incon_edge], round((graph.vp.dp[tgt]/all_incon_dp) * out_flow_remain, 2))
+                    if maxflow != graph.ep.flow[incon_edge]:
+                        graph.ep.flow[incon_edge] = maxflow
+                        no_changes = False
+            elif u in inconsistent_node:
+                # v is consistent
+                v_node = simp_node_dict[v]
+                all_incon_dp = 0
+                incon_edges = []
+                in_flow_remain = graph.vp.dp[v_node]
+                for in_edge in v_node.in_edges():
+                    src = in_edge.source()
+                    if graph.ep.flow[in_edge] != 0.0:
+                        in_flow_remain -= graph.ep.flow[in_edge]
+                    else:
+                        all_incon_dp += graph.vp.dp[src]
+                        incon_edges.append(in_edge)
+                for incon_edge in incon_edges:
+                    src = incon_edge.source()
+                    maxflow = numpy.max([graph.ep.flow[incon_edge], round((graph.vp.dp[src]/all_incon_dp) * in_flow_remain, 2)])
+                    if maxflow != graph.ep.flow[incon_edge]:
+                        graph.ep.flow[incon_edge] = maxflow
+                        no_changes = False     
+            else:
+                None
+
+        if curr_id in consistent_node:
+            w = graph.vp.dp[curr_node]
+            node_in_edges = list(curr_node.in_edges())
+            if len(node_in_edges) < 1:
+                None
+            elif len(node_in_edges) == 1:
+                e = node_in_edges[0]
+                src = e.source()
+                if src.out_degree() == 1:
+                    if graph.vp.id[src] in consistent_node:
+                        maxflow = numpy.max([graph.ep.flow[e], w, graph.vp.dp[src]])
+                        if graph.ep.flow[e] != maxflow:
+                            graph.ep.flow[e] = maxflow
+                            no_changes = False
+                    else:
+                        maxflow = numpy.max([graph.ep.flow[e], w])
+                        if graph.ep.flow[e] != maxflow:
+                            graph.ep.flow[e] = maxflow
+                            no_changes = False
+            else:
+                # mutliple in edges
+                total_dp = numpy.sum([graph.vp.dp[u] for u in curr_node.in_neighbors()])
+                for e in node_in_edges:
+                    src = e.source()
+                    maxflow = numpy.max([graph.ep.flow[e], round((graph.vp.dp[src]/total_dp) * w)])
+                    if graph.ep.flow[e] != maxflow:
+                        graph.ep.flow[e] = maxflow
+                        no_changes = False                            
+
+            node_out_edges = list(curr_node.out_edges())
+            if len(node_out_edges) < 1:
+                None
+            elif len(node_out_edges) == 1:
+                e = node_out_edges[0]
+                tgt = e.target()
+                if tgt.in_degree() == 1:
+                    if graph.vp.id[tgt] in consistent_node:
+                        maxflow = numpy.max([graph.ep.flow[e], w, graph.vp.dp[tgt]])
+                        if graph.ep.flow[e] != maxflow:
+                            graph.ep.flow[e] = maxflow
+                            no_changes = False
+                    else:
+                        maxflow = numpy.max([graph.ep.flow[e], w])
+                        if graph.ep.flow[e] != maxflow:
+                            graph.ep.flow[e] = maxflow
+                            no_changes = False
+            else:
+                # mutliple in edges
+                total_dp = numpy.sum([graph.vp.dp[u] for u in curr_node.out_neighbors()])
+                for e in node_out_edges:
+                    tgt = e.target()
+                    maxflow = numpy.max([graph.ep.flow[e], round((graph.vp.dp[tgt]/total_dp) * w)])
+                    if graph.ep.flow[e] != maxflow:
+                        graph.ep.flow[e] = maxflow
+                        no_changes = False
+        return no_changes
+    #### Helper functions
+    print("-------------------------coverage rebalance----------------------")
+    print("Total node: ", len(simp_node_dict))
+    consistent_count = 0
+
+    consistent_node = {}
+    inconsistent_node = {}
+    untracked_node = {}
+
+    # select the most confident nodes
+    for no, node in simp_node_dict.items():
+        dp = graph.vp.dp[node]
+        untracked = False
+
+        us = list(node.in_neighbors())
+        u_out_degrees = numpy.sum([u.out_degree() for u in us]) 
+        out_consistent = False
+        if u_out_degrees == 0:
+            out_consistent = False
+        else:
+            if u_out_degrees == node.in_degree():
+                u_sum = numpy.sum([graph.vp.dp[u] for u in us])
+                out_consistent = abs(u_sum - dp) < cutoff
+            else:
+                out_consistent = True
+                untracked = True
+
+        vs = list(node.out_neighbors())
+        v_in_degrees = numpy.sum([v.in_degree() for v in vs]) 
+        in_consistent = False
+        if v_in_degrees == 0:
+            in_consistent = False
+        else:
+            if v_in_degrees == node.out_degree():
+                v_sum = numpy.sum([graph.vp.dp[v] for v in vs])
+                in_consistent = abs(v_sum - dp) < cutoff
+            else:
+                in_consistent = True
+                untracked = True
+
+        if in_consistent and out_consistent:
+            if untracked:
+                untracked_node[graph.vp.id[node]] = node
+            else:
+                consistent_node[graph.vp.id[node]] = node
+                consistent_count += 1
+        else:
+            inconsistent_node[graph.vp.id[node]] = node
+    
+    print("Total consistent node after most confident extraction: ", consistent_count, len(simp_node_dict))
+    print([int(n) for n in consistent_node.keys()])
+    print([int(n) for n in inconsistent_node.keys()]) 
+    print([int(n) for n in untracked_node.keys()])
+
+    # deal with untracked node
+    # from current untracked node, BFS to both end, for every branch, stop until non-untracked
+    # node be found, if found a in-consistent node during the search, then keep it untracked/mark it
+    # inconsistent, otherwise mark it consistent.
+    for no, node in list(untracked_node.items()):
+        untracked_node.pop(no)
+        if node_expansion_both(graph, consistent_node, inconsistent_node, node):
+            dp = graph.vp.dp[node]
+
+            us = list(node.in_neighbors())
+            u_out_degrees = numpy.sum([u.out_degree() for u in us]) 
+            out_consistent = False
+            out_amb = False
+            if u_out_degrees == 0:
+                out_consistent = False
+            else:
+                if u_out_degrees == node.in_degree():
+                    u_sum = numpy.sum([graph.vp.dp[u] for u in us])
+                    out_consistent = abs(u_sum - dp) < cutoff
+                else:
+                    out_amb = True
+
+            vs = list(node.out_neighbors())
+            v_in_degrees = numpy.sum([v.in_degree() for v in vs]) 
+            in_consistent = False
+            in_amb = False
+            if v_in_degrees == 0:
+                in_consistent = False
+            else:
+                if v_in_degrees == node.out_degree():
+                    v_sum = numpy.sum([graph.vp.dp[v] for v in vs])
+                    in_consistent = abs(v_sum - dp) < cutoff
+                else:
+                    in_amb = True
+            
+            if out_amb and in_amb:
+                # no way to determine its consistency
+                inconsistent_node[no] = node
+            else:
+                if in_consistent and out_consistent:
+                    consistent_node[no] = node
+                    consistent_count += 1
+                elif in_consistent and out_amb:
+                    consistent_node[no] = node
+                    consistent_count += 1
+                elif out_consistent and in_amb:
+                    consistent_node[no] = node
+                    consistent_count += 1
+                else:
+                    inconsistent_node[no] = node
+        else:
+            inconsistent_node[no] = node
+    print("Total consistent node after untracked classification: ", consistent_count, len(simp_node_dict))
+    print([int(n) for n in consistent_node])
+    print([int(n) for n in inconsistent_node]) 
+    print([int(n) for n in untracked_node])
+
+    # assign edge flow only to consistent node related edge
+    assign_edge_flow(graph, simp_node_dict, simp_edge_dict, consistent_node, inconsistent_node)
+    
+    sorted_consistent_node = sorted(consistent_node.items(), key=lambda x: graph.vp.dp[x[1]], reverse=True)
+    # fix the inconsistent node depth, and also try to 
+    # increment all the imbalance consistent node
+    i = 0
+    break_point = consistent_count
+    no_changes = False
+    cyclic = not is_DAG(graph)
+
+    while len(inconsistent_node) != 0 or not no_changes:
+        no_changes = True
+        no, node = sorted_consistent_node[i]
+        print("Current iteration: ", i, "Total consistent node: ", consistent_count)
+        print([int(n) for n in inconsistent_node])
+        print("Current solid node: ", no)
+
+        queue = [node]
+        visited = []
+        while queue:
+            curr_node = queue.pop()
+            curr_id = graph.vp.id[curr_node]
+            curr_dp = graph.vp.dp[curr_node]
+            visited.append(curr_id)
+            # fix the curr node if is in consistent
+            if curr_id in inconsistent_node:
+                fix = True
+                vtotal = 0
+                for e in curr_node.in_edges():
+                    if graph.ep.flow[e] != 0.0:
+                        vtotal += graph.ep.flow[e]
+                    else:
+                        # there exist an unassigned edge around the curr node
+                        fix = False
+                        break
+                # perform fix
+                if fix:
+                    graph.vp.dp[curr_node] = vtotal
+                    if DEBUG_MODE:
+                        print(curr_id, "inconsistent node depth from {0} to {1}".format(curr_dp, graph.vp.dp[curr_node]))
+                    inconsistent_node.pop(curr_id)
+                    consistent_node[curr_id] = curr_node
+                    consistent_count += 1
+                    no_changes = False
+            else:
+                us = list(curr_node.in_neighbors())
+                u_out_degrees = numpy.sum([u.out_degree() for u in us]) 
+                in_neighbor_dp_sum = -1
+                if u_out_degrees == curr_node.in_degree():
+                    in_neighbor_dp_sum = numpy.sum([graph.vp.dp[u] for u in us])
+
+                vs = list(curr_node.out_neighbors())
+                v_in_degrees = numpy.sum([v.in_degree() for v in vs]) 
+                out_neighbor_dp_sum = -1
+                if v_in_degrees == curr_node.out_degree():
+                    out_neighbor_dp_sum = numpy.sum([graph.vp.dp[v] for v in vs])
+                
+                in_eflows = numpy.sum([graph.ep.flow[e] for e in curr_node.in_edges()])
+                out_eflows = numpy.sum([graph.ep.flow[e] for e in curr_node.out_edges()])
+                maxdp = numpy.max([curr_dp, in_neighbor_dp_sum, out_neighbor_dp_sum, in_eflows, out_eflows])
+                if curr_dp != maxdp:
+                    graph.vp.dp[curr_node] = maxdp
+                    no_changes = False
+            
+            no_changes = subfix(graph, curr_node, no_changes, consistent_node, inconsistent_node, simp_node_dict)
+            # append all the out neighbors
+            for n in curr_node.out_neighbors():
+                if graph.vp.id[n] not in visited:
+                    queue.append(n)
+
+        queue = [node]
+        visited = []
+        while queue:
+            curr_node = queue.pop()
+            curr_id = graph.vp.id[curr_node]
+            curr_dp = graph.vp.dp[curr_node]
+            visited.append(curr_id)
+            # fix the curr node if is in consistent
+            if curr_id in inconsistent_node:
+                fix = True
+                vtotal = 0
+                for e in curr_node.out_edges():
+                    if graph.ep.flow[e] != 0.0:
+                        vtotal += graph.ep.flow[e]
+                    else:
+                        # there exist an unassigned edge around the curr node
+                        fix = False
+                        break
+                # perform fix
+                if fix:
+                    graph.vp.dp[curr_node] = vtotal
+                    if DEBUG_MODE:
+                        print(curr_id, "inconsistent node depth from {0} to {1}".format(curr_dp, graph.vp.dp[curr_node]))
+                    inconsistent_node.pop(curr_id)
+                    consistent_node[curr_id] = curr_node
+                    consistent_count += 1
+                    no_changes = False
+            else:
+                us = list(curr_node.in_neighbors())
+                u_out_degrees = numpy.sum([u.out_degree() for u in us]) 
+                in_neighbor_dp_sum = -1
+                if u_out_degrees == curr_node.in_degree():
+                    in_neighbor_dp_sum = numpy.sum([graph.vp.dp[u] for u in us])
+
+                vs = list(curr_node.out_neighbors())
+                v_in_degrees = numpy.sum([v.in_degree() for v in vs]) 
+                out_neighbor_dp_sum = -1
+                if v_in_degrees == curr_node.out_degree():
+                    out_neighbor_dp_sum = numpy.sum([graph.vp.dp[v] for v in vs])
+                
+                in_eflows = numpy.sum([graph.ep.flow[e] for e in curr_node.in_edges()])
+                out_eflows = numpy.sum([graph.ep.flow[e] for e in curr_node.out_edges()])
+                maxdp = numpy.max([curr_dp, in_neighbor_dp_sum, out_neighbor_dp_sum, in_eflows, out_eflows])
+                if curr_dp != maxdp:
+                    graph.vp.dp[curr_node] = maxdp
+                    no_changes = False
+            
+            no_changes = subfix(graph, curr_node, no_changes, consistent_node, inconsistent_node, simp_node_dict)
+            # append all the in neighbors
+            for n in curr_node.in_neighbors():
+                if graph.vp.id[n] not in visited:
+                    queue.append(n)        
+        i += 1
+        if i >= len(sorted_consistent_node):
+            if break_point == consistent_count and (no_changes or cyclic):
+                # no more changes
+                break
+            else:
+                i = 0
+                break_point = consistent_count
+
+    print("Total consistent node after solid fix: ", consistent_count, len(simp_node_dict))
+    print([int(n) for n in consistent_node])
+    print([int(n) for n in inconsistent_node]) 
+    print([int(n) for n in untracked_node])
+    if DEBUG_MODE:
+        for edge in simp_edge_dict.values():
+            print_edge(graph, edge, "")
+    return

@@ -22,7 +22,7 @@ from graph_converter import *
 usage = "Construct viral strains under deno vo approach"
 author = "Runpeng Luo"
 
-DEBUG_MODE = False
+DEBUG_MODE = True
 TEMP_DIR = "acc/"
 
 def main():
@@ -55,49 +55,141 @@ def main():
     graph, simp_node_dict, simp_edge_dict = gfa_to_graph(args.gfa_file, init_ori=1)
     contig_dict, node_to_contig_dict, edge_to_contig_dict = get_contig(graph, args.contig_file, simp_node_dict, simp_edge_dict, args.min_cov, args.min_len, args.overlap)
     
-    graph_simplification(graph, simp_node_dict, simp_edge_dict, node_to_contig_dict, edge_to_contig_dict, args.min_cov)
     contig_node_cov_rise(graph, contig_dict, node_to_contig_dict)
 
     graph_to_gfa(graph, simp_node_dict, simp_edge_dict, "{0}init_graph.gfa".format(TEMP_DIR))
-
     graph_init, simp_node_dict_init, simp_edge_dict_init = flipped_gfa_to_graph("{0}init_graph.gfa".format(TEMP_DIR))
-    # coverage_rebalance(graph_init, simp_node_dict_init, simp_edge_dict_init, args.min_cov)
-    coverage_rebalance_v3(graph_init, simp_node_dict_init, simp_edge_dict_init)
+    
+    prev_dp_dict = coverage_rebalance_formal(graph_init, simp_node_dict_init, simp_edge_dict_init)
 
     graph_to_gfa(graph_init, simp_node_dict_init, simp_edge_dict_init, "{0}pre_graph.gfa".format(TEMP_DIR))
-    graph_to_gfa(graph_init, simp_node_dict_init, simp_edge_dict_init, "{0}graph_L0.gfa".format(TEMP_DIR))
     
-    # # Read in as pre graph, only used for path seq extraction.
-    # pre_graph, simp_node_dict_pre, simp_edge_dict_pre = flipped_gfa_to_graph("{0}pre_graph.gfa".format(TEMP_DIR))
-    # assign_edge_flow(pre_graph, simp_node_dict_pre, simp_edge_dict_pre, simp_node_dict_pre, {})
+    # Read in as pre graph, only used for path seq extraction.
+    pre_graph, simp_node_dict_pre, simp_edge_dict_pre = flipped_gfa_to_graph("{0}pre_graph.gfa".format(TEMP_DIR))
+    assign_edge_flow(pre_graph, simp_node_dict_pre, simp_edge_dict_pre)
 
-    # # store the usage info for each node. TODO
-    # node_usage_dict = {}
-    # for no, node in simp_node_dict_pre.items():
-    #     node_usage_dict[no] = [0, pre_graph.vp.dp[node]]
+    if args.ref_file:
+        map_ref_to_graph(args.ref_file, simp_node_dict_pre, "{0}pre_graph.gfa".format(TEMP_DIR), True, "{0}node_to_ref.paf".format(TEMP_DIR), "{0}temp_gfa_to_fasta.fasta".format(TEMP_DIR))
+    # selected contig from SPAdes
+    contig_dict_to_fasta(graph_init, contig_dict, simp_node_dict_init, args.overlap, "{0}pre_contigs.fasta".format(TEMP_DIR))
+    minimap_api(args.ref_file, "{0}pre_contigs.fasta".format(TEMP_DIR), "{0}pre_contigs_to_strain.paf".format(TEMP_DIR))
 
-    # if args.ref_file:
-    #     map_ref_to_graph(args.ref_file, simp_node_dict_pre, "{0}pre_graph.gfa".format(TEMP_DIR), True, "{0}node_to_ref.paf".format(TEMP_DIR), "{0}temp_gfa_to_fasta.fasta".format(TEMP_DIR))
+    for cno, (contig, clen, ccov) in list(contig_dict.items()):
+        print("---------------------------------------------------------------")
+        print_contig(cno, clen, ccov, contig)
+        if len(contig) < 2:
+            contig_edge_flow = [pre_graph.vp.dp[simp_node_dict_pre[contig[0]]]]
+        else:
+            contig_edge_flow = contig_flow(pre_graph, simp_edge_dict_pre, contig)
+        print("edge flow - mean: {0}, min: {1}, max: {2}, median: {3}".format(numpy.mean(contig_edge_flow), numpy.min(contig_edge_flow), numpy.max(contig_edge_flow), numpy.median(contig_edge_flow)))
+        
+        contig_depths = [pre_graph.vp.dp[simp_node_dict_pre[u]] for u in contig]
+        print("depth - mean: {0}, min: {1}, max: {2}, median: {3}".format(numpy.mean(contig_depths), numpy.min(contig_depths), numpy.max(contig_depths), numpy.median(contig_depths)))
+        
+        contig_kc = [pre_graph.vp.kc[simp_node_dict_pre[u]] for u in contig]
+        print("kc - mean: {0}, min: {1}, max: {2}, median: {3}".format(numpy.mean(contig_kc), numpy.min(contig_kc), numpy.max(contig_kc), numpy.median(contig_kc)))
+        
+        prev_dp_sum = numpy.sum([prev_dp_dict[n] for n in contig])
+        curr_dp_sum = numpy.sum([pre_graph.vp.dp[simp_node_dict_pre[n]] for n in contig])
+        ratio = curr_dp_sum / prev_dp_sum
+        print("Prev dp sum: ", prev_dp_sum)
+        print("Curr dp sum: ", curr_dp_sum)
+        print("Ratio: ", curr_dp_sum / prev_dp_sum)
+        print("Prev cov: {0} vs median flow: {1}".format(ccov, numpy.median(contig_edge_flow)))
+        print("normalised cov: {0} vs normalised median flow (new ccov): {1}".format(ccov/ratio, numpy.median([d/ratio for d in contig_edge_flow])))
+        contig_dict[cno][2] = numpy.median([d/ratio for d in contig_edge_flow])
 
-    # # selected contig from SPAdes
-    # contig_dict_to_fasta(graph_init, contig_dict, simp_node_dict_init, args.overlap, "{0}pre_contigs.fasta".format(TEMP_DIR))
-    # minimap_api(args.ref_file, "{0}pre_contigs.fasta".format(TEMP_DIR), "{0}pre_contigs_to_strain.paf".format(TEMP_DIR))
+    # the max depth node on the connected graph must be visited by all the s-t path
+    # proof:
+    # if there exist a s-t path that is not involved by max dp node n
+    # then there exist a node n' other than n such that dp(n') = dp(n) + path_flow(p)
+    # in which n is not the max dp node, contradiction.
+    #
+    # the min depth node on the connected graph must be visited by exactly one s-t path 
+    # store all the overlap/intersection contig case, key can never concat with any contig from the values
+    
+    contig_concat_plans = get_concat_plan(contig_dict, args.max_len)
+    
+    contig_info = []
+    contig_node_dict = {}
+    # reduce all the contig to a single node from the graph
+    for cno, (contig, clen, ccov) in list(contig_dict.items()):
+        src = contig[0]
+        tgt = contig[-1]
+        id = src + "00" + cno + "00" + tgt
+        cseq = path_to_seq(graph_init, [simp_node_dict_init[n] for n in contig], cno, args.overlap)
+        kc = numpy.median([graph_init.vp.kc[simp_node_dict_init[u]] for u in contig])
+        in_edges = list((graph_init.vp.id[e.source()], src) for e in simp_node_dict_init[src].in_edges())
+        out_edges = list((tgt, graph_init.vp.id[e.target()],) for e in simp_node_dict_init[tgt].out_edges())
+        
+        contig_reduction(pre_graph, contig, cno, clen, ccov, simp_node_dict_pre, simp_edge_dict_pre, 0)
 
-    # level_no = 0
+        cv = pre_graph.add_vertex()
+        pre_graph.vp.seq[cv] = cseq
+        pre_graph.vp.dp[cv] = ccov
+        pre_graph.vp.kc[cv] = kc
+        pre_graph.vp.id[cv] = id
+        pre_graph.vp.color[cv] = 'black'
+        simp_node_dict_pre[id] = cv
+
+        contig_info.append([src, tgt, cno, cv, in_edges, out_edges])
+        contig_node_dict[cno] = cv
+    
+    # recover all the in-out edges surrounding the contigs
+    for [_, _, _, node, in_edges, out_edges] in contig_info:
+        for (u,_) in in_edges:
+            if u in simp_node_dict_pre and (u, pre_graph.vp.id[node]) not in simp_edge_dict_pre:
+                ue = pre_graph.add_edge(simp_node_dict_pre[u], node)
+                pre_graph.ep.overlap[ue] = args.overlap
+                pre_graph.ep.color[ue] = 'black'
+                simp_edge_dict_pre[(u, pre_graph.vp.id[node])] = ue
+            
+            for [_, tgt, _, in_node, _, _] in contig_info:
+                if tgt == u and (pre_graph.vp.id[in_node], pre_graph.vp.id[node]) not in simp_edge_dict_pre:
+                    ue = pre_graph.add_edge(in_node, node)
+                    pre_graph.ep.overlap[ue] = args.overlap
+                    pre_graph.ep.color[ue] = 'black'
+                    simp_edge_dict_pre[(pre_graph.vp.id[in_node], pre_graph.vp.id[node])] = ue                 
+
+        for (_,v) in out_edges:
+            if v in simp_node_dict_pre and (pre_graph.vp.id[node], v) not in simp_edge_dict_pre:
+                ve = pre_graph.add_edge(node, simp_node_dict_pre[v])
+                pre_graph.ep.overlap[ve] = args.overlap
+                pre_graph.ep.color[ve] = 'black'
+                simp_edge_dict_pre[(pre_graph.vp.id[node], v)] = ve
+            
+            for [src, _, _, out_node, _, _] in contig_info:
+                if src == v and (pre_graph.vp.id[node], pre_graph.vp.id[out_node]) not in simp_edge_dict_pre:
+                    ve = pre_graph.add_edge(node, out_node)
+                    pre_graph.ep.overlap[ve] = args.overlap
+                    pre_graph.ep.color[ve] = 'black'
+                    simp_edge_dict_pre[(pre_graph.vp.id[node], pre_graph.vp.id[out_node])] = ve 
+    
+    graph_simplification(pre_graph, simp_node_dict_pre, simp_edge_dict_pre, {}, {}, args.min_cov/2)
+    graph_to_gfa(pre_graph, simp_node_dict_pre, simp_edge_dict_pre, "{0}red_graph.gfa".format(TEMP_DIR))
+    
+    pre_graph_v2, simp_node_dict_pre_v2, simp_edge_dict_pre_v2 = flipped_gfa_to_graph("{0}red_graph.gfa".format(TEMP_DIR))
+    coverage_rebalance_formal(pre_graph_v2, simp_node_dict_pre_v2, simp_edge_dict_pre_v2)
+    
+    graph_to_gfa(pre_graph_v2, simp_node_dict_pre_v2, simp_edge_dict_pre_v2, "{0}graph_L0.gfa".format(TEMP_DIR))
+
+    level_no = 0
+    graph_iter, simp_node_dict_iter, simp_edge_dict_iter = flipped_gfa_to_graph("{0}graph_L{1}.gfa".format(TEMP_DIR, str(level_no)))
+    # pairwise_contig_concatenation(graph_iter, simp_node_dict_iter, simp_edge_dict_iter, contig_node_dict, contig_concat_plans)
     # strain_dict = {}
     # iter_condition = set()
     # concat_contig_dict_iter = contig_dict.copy()
     # concat_strain_dict_iter = {}
-    # # contig pair-wise concatenation iteration
-    # # with iteration stopped when no further concatenation occurred
+    # contig pair-wise concatenation iteration
+    # with iteration stopped when no further concatenation occurred
     # while True:
     #     print("Current iteration: ", level_no)
     #     graph_iter, simp_node_dict_iter, simp_edge_dict_iter = flipped_gfa_to_graph("{0}graph_L{1}.gfa".format(TEMP_DIR, str(level_no)))
-    #     graph_simplification(graph_iter, simp_node_dict_iter, simp_edge_dict_iter, node_to_contig_dict, edge_to_contig_dict, args.min_cov)
-    #     assign_edge_flow(graph_iter, simp_node_dict_iter, simp_edge_dict_iter, simp_node_dict_iter, {})
+    #     graph_simplification(graph_iter, simp_node_dict_iter, simp_edge_dict_iter, {}, {}, args.min_cov/2)
+    #     assign_edge_flow(graph_iter, simp_node_dict_iter, simp_edge_dict_iter)
     #     output_file = "{0}graph_L{1}.gfa".format(TEMP_DIR, str(level_no+1))
     #     # contig pair-wise concatenation
-    #     concat_strain_dict_iter, concat_contig_dict_iter = contig_merge(graph_iter, simp_node_dict_iter, simp_edge_dict_iter, concat_contig_dict_iter, node_to_contig_dict, edge_to_contig_dict, node_usage_dict, output_file, args.min_cov, args.min_len, args.max_len, args.overlap)
+    #     concat_strain_dict_iter, concat_contig_dict_iter = contig_merge(graph_iter, simp_node_dict_iter, simp_edge_dict_iter, concat_contig_dict_iter, node_to_contig_dict, edge_to_contig_dict, output_file, args.min_cov, args.min_len, args.max_len, args.overlap)
 
     #     contig_dict_to_fasta(graph_iter, concat_contig_dict_iter, simp_node_dict_iter, args.overlap, "{0}L{1}_contigs.fasta".format(TEMP_DIR, str(level_no)))
     #     minimap_api(args.ref_file, "{0}L{1}_contigs.fasta".format(TEMP_DIR, str(level_no)), "{0}L{1}_contigs_to_strain.paf".format(TEMP_DIR, str(level_no)))
@@ -115,16 +207,18 @@ def main():
     # # further step to recover the rest of strain from the reduced graph
 
     # graph_red, simp_node_dict_red, simp_edge_dict_red = flipped_gfa_to_graph("{0}graph_L{1}.gfa".format(TEMP_DIR, str(level_no)))
-    # graph_simplification(graph_red, simp_node_dict_red, simp_edge_dict_red, node_to_contig_dict, edge_to_contig_dict, args.min_cov)
-    # assign_edge_flow(graph_red, simp_node_dict_red, simp_edge_dict_red, simp_node_dict_red, {})
+    # # graph_simplification(graph_red, simp_node_dict_red, simp_edge_dict_red, node_to_contig_dict, edge_to_contig_dict, args.min_cov)
+    # assign_edge_flow(graph_red, simp_node_dict_red, simp_edge_dict_red)
     
     # # extract the last mile paths from the graph
     # final_strain_dict = path_extraction(graph_red, simp_node_dict_red, simp_edge_dict_red, node_usage_dict, args.overlap, args.min_cov, args.min_len)   
+    
     # graph_to_gfa(graph_red, simp_node_dict_red, simp_edge_dict_red, "{0}final_graph.gfa".format(TEMP_DIR))
 
     # strain_dict.update(final_strain_dict)
+
     # # print strain and minimap overlaps
-    # contig_dict_to_fasta(pre_graph, strain_dict, simp_node_dict_pre, args.overlap, "{0}cand_strains.fasta".format(TEMP_DIR))
+    # contig_dict_to_fasta(pre_graph_v2, strain_dict, simp_node_dict_pre_v2, args.overlap, "{0}cand_strains.fasta".format(TEMP_DIR))
     # contig_dict_to_path(strain_dict, "{0}cand_strains.paths".format(TEMP_DIR))
     # minimap_api(args.ref_file, "{0}cand_strains.fasta".format(TEMP_DIR), "{0}cand_strain_to_strain.paf".format(TEMP_DIR))
     
@@ -135,6 +229,28 @@ def main():
 
     # TODO extend the strain end length. really high chance
     # map all the final strains back into pre graphs
+
+def get_concat_plan(contig_dict: dict, max_len):
+    contig_impossible_dict = {}
+    all_contig_ids = contig_dict.keys()
+    for no in contig_dict.keys():
+        contig_impossible_dict[no] = set()
+    for tail_cno, [tail_contig, tail_clen, _] in contig_dict.items():
+        for head_cno, [head_contig, head_clen, _] in contig_dict.items():
+            if tail_cno != head_cno:
+                if tail_clen + head_clen > max_len:
+                    contig_impossible_dict[tail_cno].add(head_cno)
+                if list(set(tail_contig) & set(head_contig)) != []:
+                    contig_impossible_dict[tail_cno].add(head_cno)
+    contig_concat_plans = {}
+    for key, item in contig_impossible_dict.items():
+        ps = all_contig_ids - item
+        print("cno: ", key, " can concat with following: ", ps)
+        contig_concat_plans[key] = ps
+    return contig_concat_plans
+# def pairwise_contig_concatenation(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, contig_node_dict: dict, concat_plan: dict):
+#     for 
+#     return 
 
 def contig_node_cov_rise(graph: Graph, contig_dict: dict, node_to_contig_dict: dict):
     """
@@ -148,7 +264,7 @@ def contig_node_cov_rise(graph: Graph, contig_dict: dict, node_to_contig_dict: d
             node_to_contig_dict[no][2] = sum_covs
     return
 
-def coverage_rebalance_v3(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict):
+def coverage_rebalance_formal(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict):
     def expectation_edge_flow(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict):
         for (u,v),e in simp_edge_dict.items():
             u_node = simp_node_dict[u]
@@ -169,7 +285,7 @@ def coverage_rebalance_v3(graph: Graph, simp_node_dict: dict, simp_edge_dict: di
             graph.ep.flow[e] = max(graph.ep.flow[e], flow)
             # print_edge(graph, e, "{0}".format(flow))
         return
-    def maximization_node_depth(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, usage_dict: dict):
+    def maximization_node_depth(graph: Graph, simp_node_dict: dict, usage_dict: dict):
         is_update = False
         for no, node in simp_node_dict.items():
             us = list(node.in_neighbors())
@@ -197,15 +313,23 @@ def coverage_rebalance_v3(graph: Graph, simp_node_dict: dict, simp_edge_dict: di
         return is_update
     
     cutoff = 0.001 * len(simp_node_dict)
+    sum_delta = 0
     sum_depth_before = numpy.sum([graph.vp.dp[u] for u in simp_node_dict.values()])
+    
+    # store previous node depth
+    prev_dp_dict = {}
+    for no, v in simp_node_dict.items():
+        prev_dp_dict[no] = graph.vp.dp[v]
+
     print(cutoff)
     is_update = True
     usage_dict = {}
     for no in simp_node_dict.keys():
         usage_dict[no] = 0
     while is_update:
+        # E Step
         expectation_edge_flow(graph, simp_node_dict, simp_edge_dict)
-        ## validation
+        # validation
         sum_delta = 0
         for no, node in simp_node_dict.items():
             inflow = numpy.sum([graph.ep.flow[e] for e in node.in_edges()])
@@ -214,634 +338,17 @@ def coverage_rebalance_v3(graph: Graph, simp_node_dict: dict, simp_edge_dict: di
                 continue
             else:
                 sum_delta += (abs(inflow - outflow))/((inflow + outflow)/2) 
-        print("DELTA:", sum_delta)  
         if round(sum_delta, 2) < cutoff:
             break
-        is_update = maximization_node_depth(graph, simp_node_dict, simp_edge_dict, usage_dict)
+        # M Step
+        is_update = maximization_node_depth(graph, simp_node_dict, usage_dict)
 
     # final evaluation
-    invalid = []
-    for no, node in simp_node_dict.items():
-        curr_dp = graph.vp.dp[node]
-        inflow = numpy.sum([graph.ep.flow[e] for e in node.in_edges()])
-        outflow = numpy.sum([graph.ep.flow[e] for e in node.out_edges()])
-        if (inflow != 0 and curr_dp != inflow) or (outflow != 0 and curr_dp != outflow):
-            invalid.append(int(no))
-    print("Inconsistent node after all: ", invalid)
-
     sum_ratio = (numpy.sum([graph.vp.dp[u] for u in simp_node_dict.values()]) / sum_depth_before)
-    print("Ratio: ", sum_ratio)
+    print("Ratio: ", sum_ratio, "Delta: ", sum_delta)
     for node in simp_node_dict.values():
         graph.vp.dp[node] = graph.vp.dp[node] / sum_ratio
-    return        
-
-def coverage_rebalance_v2(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict):
-    """
-    assign edge flow based on current depth, reassign node depth based on current flow
-    iterate until no more changes on current depth
-    """
-    def subfix(graph: Graph, curr_node, consistent_node: dict):
-        has_change = False
-
-        for edge in curr_node.all_edges():
-            u_node = edge.source()
-            v_node = edge.target()
-            if u_node in consistent_node and v_node in consistent_node:
-                None
-            elif u_node in consistent_node:
-                # u is consistent
-                all_incon_dp = numpy.sum([graph.vp.dp[u] for u in u_node.out_neighbors()])
-                incon_edges = list(u_node.out_edges())
-                out_flow_remain = graph.vp.dp[u_node]
-                for incon_edge in incon_edges:
-                    tgt = incon_edge.target()
-                    maxflow = max(graph.ep.flow[incon_edge], round((graph.vp.dp[tgt]/all_incon_dp) * out_flow_remain))
-                    if graph.ep.flow[incon_edge] != maxflow:
-                        graph.ep.flow[incon_edge] = maxflow
-                        has_change = True
-            elif v_node in consistent_node:
-                # v is consistent
-                all_outcon_dp = numpy.sum([graph.vp.dp[v] for v in v_node.in_neighbors()])
-                outcon_edges = list(v_node.in_edges())
-                in_flow_remain = graph.vp.dp[v_node]
-                for outcon_edge in outcon_edges:
-                    src = outcon_edge.source()
-                    maxflow = max(graph.ep.flow[outcon_edge], round((graph.vp.dp[src]/all_outcon_dp) * in_flow_remain))
-                    if graph.ep.flow[outcon_edge] != maxflow:
-                        graph.ep.flow[outcon_edge] = maxflow
-                        has_change = True
-            else:
-                None
-
-        w = graph.vp.dp[curr_node]
-        node_in_edges = list(curr_node.in_edges())
-        if len(node_in_edges) < 1:
-            None
-        elif len(node_in_edges) == 1:
-            e = node_in_edges[0]
-            src = e.source()
-            if src.out_degree() == 1:
-                if graph.vp.id[src] in consistent_node:
-                    maxflow = numpy.max([graph.ep.flow[e], w, graph.vp.dp[src]])
-                    if graph.ep.flow[e] != maxflow:
-                        graph.ep.flow[e] = maxflow
-                        has_change = True
-                else:
-                    maxflow = numpy.max([graph.ep.flow[e], w])
-                    if graph.ep.flow[e] != maxflow:
-                        graph.ep.flow[e] = maxflow
-                        has_change = True
-        else:
-            # mutliple in edges
-            total_dp = numpy.sum([graph.vp.dp[u] for u in curr_node.in_neighbors()])
-            for e in node_in_edges:
-                src = e.source()
-                maxflow = numpy.max([graph.ep.flow[e], round((graph.vp.dp[src]/total_dp) * w)])                       
-                if graph.ep.flow[e] != maxflow:
-                    graph.ep.flow[e] = maxflow
-                    has_change = True
-
-        node_out_edges = list(curr_node.out_edges())
-        if len(node_out_edges) < 1:
-            None
-        elif len(node_out_edges) == 1:
-            e = node_out_edges[0]
-            tgt = e.target()
-            if tgt.in_degree() == 1:
-                if graph.vp.id[tgt] in consistent_node:
-                    maxflow = numpy.max([graph.ep.flow[e], w, graph.vp.dp[tgt]])
-                    if graph.ep.flow[e] != maxflow:
-                        graph.ep.flow[e] = maxflow
-                        has_change = True
-                else:
-                    maxflow = numpy.max([graph.ep.flow[e], w])
-                    if graph.ep.flow[e] != maxflow:
-                        graph.ep.flow[e] = maxflow
-                        has_change = True
-        else:
-            # mutliple out edges
-            total_dp = numpy.sum([graph.vp.dp[u] for u in curr_node.out_neighbors()])
-            for e in node_out_edges:
-                tgt = e.target()
-                maxflow = numpy.max([graph.ep.flow[e], round((graph.vp.dp[tgt]/total_dp) * w)])
-                if graph.ep.flow[e] != maxflow:
-                    graph.ep.flow[e] = maxflow
-                    has_change = True
-        return has_change
-
-
-    ## assign edge flow, E Step
-    # reinitialize
-    un_assigned_edge = len(simp_edge_dict)
-    for e in simp_edge_dict.values():
-        graph.ep.flow[e] = 0.0
-    # coverage iteration
-    converage_flag = 0
-    while True:          
-        for no, node in simp_node_dict.items():
-            in_w = graph.vp.dp[node]
-            in_e = []
-            for e in node.in_edges():
-                f = graph.ep.flow[e]
-                if f != 0.0:
-                    in_w = in_w - f
-                else:
-                    in_e.append(e)
-            if len(in_e) == 1:
-                e = in_e[0]
-                if graph.ep.flow[e] != 0.0:
-                    graph.ep.flow[e] = in_w
-                    un_assigned_edge -= 1
-
-            out_w = graph.vp.dp[node]
-            out_e = []
-            for e in node.out_edges():
-                f = graph.ep.flow[e]
-                if f != 0.0:
-                    out_w = out_w - f
-                else:
-                    out_e.append(e)
-            if len(out_e) == 1:
-                e = out_e[0]
-                if graph.ep.flow[e] != 0.0:
-                    graph.ep.flow[e] = out_w
-                    un_assigned_edge -= 1
-        if converage_flag == un_assigned_edge:
-            break
-        else:
-            converage_flag = un_assigned_edge
-
-    # double cross consistent node assign
-    for (u,v), e in simp_edge_dict.items():
-        if graph.ep.flow[e] != 0.0:
-            continue
-        src = e.source()
-        tgt = e.target()
-
-        u_flow_remain = graph.vp.dp[src]
-        u_degree = src.out_degree()
-        for ue in src.out_edges():
-            if graph.ep.flow[ue] != 0.0:
-                # assigned edge
-                u_degree = u_degree - 1
-                u_flow_remain = u_flow_remain - graph.ep.flow[ue]
-
-        v_flow_remain = graph.vp.dp[tgt]
-        v_degree = tgt.in_degree()
-        for ve in tgt.in_edges():
-            if graph.ep.flow[ve] != 0.0:
-                # assigned edge
-                v_degree = v_degree - 1
-                v_flow_remain = v_flow_remain - graph.ep.flow[ve]
-
-        udiv = (u_flow_remain / u_degree) if u_degree != 0 else 0
-        vdiv = (v_flow_remain / v_degree) if v_degree != 0 else 0
-        if u_degree == 0 or v_degree == 0:
-            assign_flow = 0.0
-        else:
-            assign_flow = (udiv + vdiv) / 2
-
-        un_assigned_edge -= 1
-        graph.ep.flow[e] = assign_flow
-    
-    for e in simp_edge_dict.values():
-        print_edge(graph, e, "init")
-
-    has_changes = True
-    while True:
-        # M Step, reassign node depth
-        # max_dp = numpy.max([graph.vp.dp[n] for n in simp_node_dict.values()])
-        # print("max dp: ", max_dp)
-        has_changes = False
-        changed_node = []
-        for no, node in simp_node_dict.items():
-            us = list(node.in_neighbors())
-            u_out_degrees = numpy.sum([u.out_degree() for u in us]) 
-            in_neighbor_dp_sum = -1
-            if u_out_degrees == node.in_degree():
-                in_neighbor_dp_sum = numpy.sum([graph.vp.dp[u] for u in us])
-
-            vs = list(node.out_neighbors())
-            v_in_degrees = numpy.sum([v.in_degree() for v in vs]) 
-
-            out_neighbor_dp_sum = -1
-            if v_in_degrees == node.out_degree():
-                out_neighbor_dp_sum = numpy.sum([graph.vp.dp[v] for v in vs])
-
-            curr_dp = graph.vp.dp[node]
-            inflow = numpy.sum([graph.ep.flow[e] for e in node.in_edges()])
-            outflow = numpy.sum([graph.ep.flow[e] for e in node.out_edges()])
-            graph.vp.dp[node] = numpy.max([curr_dp, inflow, outflow, in_neighbor_dp_sum, out_neighbor_dp_sum])
-            if curr_dp != graph.vp.dp[node]:
-                has_changes = True
-                print_vertex(graph, node, "changed, prev dp: {0}".format(curr_dp))
-                changed_node.append(node)
-        
-        has_change_total = True
-        while has_change_total:
-            has_change_total = False
-            for curr_node in changed_node:
-                has_change_sub = subfix(graph, curr_node, changed_node)
-                if has_change_sub:
-                    has_change_total = True
-        
-        if not has_changes and not has_change_total:
-            break
-
-    # final evaluation
-    invalid = []
-    for no, node in simp_node_dict.items():
-        curr_dp = graph.vp.dp[node]
-        inflow = numpy.sum([graph.ep.flow[e] for e in node.in_edges()])
-        outflow = numpy.sum([graph.ep.flow[e] for e in node.out_edges()])
-        if (inflow != 0 and curr_dp != inflow) or (outflow != 0 and curr_dp != outflow):
-            invalid.append(int(no))
-    print("Inconsistent node after all: ", invalid)
-
-def coverage_rebalance(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, min_cov, cutoff=125):
-    """
-    rebalance all the node coverage to ensure flow consistency
-    """
-    # helper functions
-    def node_expansion_both(graph: Graph, con_nodes, incon_nodes, curr_node):
-        """
-        from given node, BFS search all the in/out branches, if the curr node is covered by c node layer
-        then return true, if any inconsistent node be found then return false
-        """
-        visited = []
-        queue = [curr_node]
-        while queue:
-            node = queue.pop()
-            id = graph.vp.id[node]
-            visited.append(id)
-            if id in con_nodes:
-                #skip
-                None
-            elif id in incon_nodes:
-                # print("From src node {0} reach in consistent node {1} return false".format(graph.vp.id[curr_node], id))
-                return False
-            else:
-                for u in node.all_neighbors():
-                    if graph.vp.id[u] not in visited:
-                        queue.append(u)
-        return True
-    
-    def subfix(graph: Graph, curr_node, no_changes_in, consistent_node: dict, inconsistent_node: dict, simp_node_dict: dict):
-        no_changes = no_changes_in
-        for edge in curr_node.all_edges():
-            u = graph.vp.id[edge.source()]
-            v = graph.vp.id[edge.target()]
-
-            if u in inconsistent_node and v in inconsistent_node:
-                None
-            elif v in inconsistent_node:
-                # u is consistent
-                u_node = simp_node_dict[u]
-                all_incon_dp = 0
-                incon_edges = []
-                out_flow_remain = graph.vp.dp[u_node]
-                for out_edge in u_node.out_edges():
-                    tgt = out_edge.target()
-                    if graph.ep.flow[out_edge] != 0.0:
-                        out_flow_remain -= graph.ep.flow[out_edge]
-                    else:
-                        all_incon_dp += graph.vp.dp[tgt]
-                        incon_edges.append(out_edge)
-                for incon_edge in incon_edges:
-                    tgt = incon_edge.target()
-                    maxflow =  max(graph.ep.flow[incon_edge], round((graph.vp.dp[tgt]/all_incon_dp) * out_flow_remain, 2))
-                    if maxflow != graph.ep.flow[incon_edge]:
-                        graph.ep.flow[incon_edge] = maxflow
-                        no_changes = False
-            elif u in inconsistent_node:
-                # v is consistent
-                v_node = simp_node_dict[v]
-                all_incon_dp = 0
-                incon_edges = []
-                in_flow_remain = graph.vp.dp[v_node]
-                for in_edge in v_node.in_edges():
-                    src = in_edge.source()
-                    if graph.ep.flow[in_edge] != 0.0:
-                        in_flow_remain -= graph.ep.flow[in_edge]
-                    else:
-                        all_incon_dp += graph.vp.dp[src]
-                        incon_edges.append(in_edge)
-                for incon_edge in incon_edges:
-                    src = incon_edge.source()
-                    maxflow = numpy.max([graph.ep.flow[incon_edge], round((graph.vp.dp[src]/all_incon_dp) * in_flow_remain, 2)])
-                    if maxflow != graph.ep.flow[incon_edge]:
-                        graph.ep.flow[incon_edge] = maxflow
-                        no_changes = False     
-            else:
-                None
-
-        if curr_id in consistent_node:
-            w = graph.vp.dp[curr_node]
-            node_in_edges = list(curr_node.in_edges())
-            if len(node_in_edges) < 1:
-                None
-            elif len(node_in_edges) == 1:
-                e = node_in_edges[0]
-                src = e.source()
-                if src.out_degree() == 1:
-                    if graph.vp.id[src] in consistent_node:
-                        maxflow = numpy.max([graph.ep.flow[e], w, graph.vp.dp[src]])
-                        if graph.ep.flow[e] != maxflow:
-                            graph.ep.flow[e] = maxflow
-                            no_changes = False
-                    else:
-                        maxflow = numpy.max([graph.ep.flow[e], w])
-                        if graph.ep.flow[e] != maxflow:
-                            graph.ep.flow[e] = maxflow
-                            no_changes = False
-            else:
-                # mutliple in edges
-                total_dp = numpy.sum([graph.vp.dp[u] for u in curr_node.in_neighbors()])
-                for e in node_in_edges:
-                    src = e.source()
-                    maxflow = numpy.max([graph.ep.flow[e], round((graph.vp.dp[src]/total_dp) * w)])
-                    if graph.ep.flow[e] != maxflow:
-                        graph.ep.flow[e] = maxflow
-                        no_changes = False                            
-
-            node_out_edges = list(curr_node.out_edges())
-            if len(node_out_edges) < 1:
-                None
-            elif len(node_out_edges) == 1:
-                e = node_out_edges[0]
-                tgt = e.target()
-                if tgt.in_degree() == 1:
-                    if graph.vp.id[tgt] in consistent_node:
-                        maxflow = numpy.max([graph.ep.flow[e], w, graph.vp.dp[tgt]])
-                        if graph.ep.flow[e] != maxflow:
-                            graph.ep.flow[e] = maxflow
-                            no_changes = False
-                    else:
-                        maxflow = numpy.max([graph.ep.flow[e], w])
-                        if graph.ep.flow[e] != maxflow:
-                            graph.ep.flow[e] = maxflow
-                            no_changes = False
-            else:
-                # mutliple in edges
-                total_dp = numpy.sum([graph.vp.dp[u] for u in curr_node.out_neighbors()])
-                for e in node_out_edges:
-                    tgt = e.target()
-                    maxflow = numpy.max([graph.ep.flow[e], round((graph.vp.dp[tgt]/total_dp) * w)])
-                    if graph.ep.flow[e] != maxflow:
-                        graph.ep.flow[e] = maxflow
-                        no_changes = False
-        return no_changes
-    #### Helper functions
-    print("-------------------------coverage rebalance----------------------")
-    print("Total node: ", len(simp_node_dict))
-    consistent_count = 0
-
-    consistent_node = {}
-    inconsistent_node = {}
-    untracked_node = {}
-
-    # select the most confident nodes
-    for no, node in simp_node_dict.items():
-        dp = graph.vp.dp[node]
-        untracked = False
-
-        us = list(node.in_neighbors())
-        u_out_degrees = numpy.sum([u.out_degree() for u in us]) 
-        out_consistent = False
-        if u_out_degrees == 0:
-            out_consistent = False
-        else:
-            if u_out_degrees == node.in_degree():
-                u_sum = numpy.sum([graph.vp.dp[u] for u in us])
-                out_consistent = abs(u_sum - dp) < cutoff
-            else:
-                out_consistent = True
-                untracked = True
-
-        vs = list(node.out_neighbors())
-        v_in_degrees = numpy.sum([v.in_degree() for v in vs]) 
-        in_consistent = False
-        if v_in_degrees == 0:
-            in_consistent = False
-        else:
-            if v_in_degrees == node.out_degree():
-                v_sum = numpy.sum([graph.vp.dp[v] for v in vs])
-                in_consistent = abs(v_sum - dp) < cutoff
-            else:
-                in_consistent = True
-                untracked = True
-
-        if in_consistent and out_consistent:
-            if untracked:
-                untracked_node[graph.vp.id[node]] = node
-            else:
-                consistent_node[graph.vp.id[node]] = node
-                consistent_count += 1
-        else:
-            inconsistent_node[graph.vp.id[node]] = node
-    
-    print("Total consistent node after most confident extraction: ", consistent_count, len(simp_node_dict))
-    print([int(n) for n in consistent_node.keys()])
-    print([int(n) for n in inconsistent_node.keys()]) 
-    print([int(n) for n in untracked_node.keys()])
-
-    # deal with untracked node
-    # from current untracked node, BFS to both end, for every branch, stop until non-untracked
-    # node be found, if found a in-consistent node during the search, then keep it untracked/mark it
-    # inconsistent, otherwise mark it consistent.
-    for no, node in list(untracked_node.items()):
-        untracked_node.pop(no)
-        if node_expansion_both(graph, consistent_node, inconsistent_node, node):
-            dp = graph.vp.dp[node]
-
-            us = list(node.in_neighbors())
-            u_out_degrees = numpy.sum([u.out_degree() for u in us]) 
-            out_consistent = False
-            out_amb = False
-            if u_out_degrees == 0:
-                out_consistent = False
-            else:
-                if u_out_degrees == node.in_degree():
-                    u_sum = numpy.sum([graph.vp.dp[u] for u in us])
-                    out_consistent = abs(u_sum - dp) < cutoff
-                else:
-                    out_amb = True
-
-            vs = list(node.out_neighbors())
-            v_in_degrees = numpy.sum([v.in_degree() for v in vs]) 
-            in_consistent = False
-            in_amb = False
-            if v_in_degrees == 0:
-                in_consistent = False
-            else:
-                if v_in_degrees == node.out_degree():
-                    v_sum = numpy.sum([graph.vp.dp[v] for v in vs])
-                    in_consistent = abs(v_sum - dp) < cutoff
-                else:
-                    in_amb = True
-            
-            if out_amb and in_amb:
-                # no way to determine its consistency
-                inconsistent_node[no] = node
-            else:
-                if in_consistent and out_consistent:
-                    consistent_node[no] = node
-                    consistent_count += 1
-                elif in_consistent and out_amb:
-                    consistent_node[no] = node
-                    consistent_count += 1
-                elif out_consistent and in_amb:
-                    consistent_node[no] = node
-                    consistent_count += 1
-                else:
-                    inconsistent_node[no] = node
-        else:
-            inconsistent_node[no] = node
-    print("Total consistent node after untracked classification: ", consistent_count, len(simp_node_dict))
-    print([int(n) for n in consistent_node])
-    print([int(n) for n in inconsistent_node]) 
-    print([int(n) for n in untracked_node])
-
-    # assign edge flow only to consistent node related edge
-    assign_edge_flow(graph, simp_node_dict, simp_edge_dict, consistent_node, inconsistent_node)
-    
-    sorted_consistent_node = sorted(consistent_node.items(), key=lambda x: graph.vp.dp[x[1]], reverse=True)
-    # fix the inconsistent node depth, and also try to 
-    # increment all the imbalance consistent node
-    i = 0
-    break_point = consistent_count
-    no_changes = False
-    cyclic = not is_DAG(graph)
-
-    while len(inconsistent_node) != 0 or not no_changes:
-        no_changes = True
-        no, node = sorted_consistent_node[i]
-        print("Current iteration: ", i, "Total consistent node: ", consistent_count)
-        print([int(n) for n in inconsistent_node])
-        print("Current solid node: ", no)
-
-        queue = [node]
-        visited = []
-        while queue:
-            curr_node = queue.pop()
-            curr_id = graph.vp.id[curr_node]
-            curr_dp = graph.vp.dp[curr_node]
-            visited.append(curr_id)
-            # fix the curr node if is in consistent
-            if curr_id in inconsistent_node:
-                fix = True
-                vtotal = 0
-                for e in curr_node.in_edges():
-                    if graph.ep.flow[e] != 0.0:
-                        vtotal += graph.ep.flow[e]
-                    else:
-                        # there exist an unassigned edge around the curr node
-                        fix = False
-                        break
-                # perform fix
-                if fix:
-                    graph.vp.dp[curr_node] = vtotal
-                    if DEBUG_MODE:
-                        print(curr_id, "inconsistent node depth from {0} to {1}".format(curr_dp, graph.vp.dp[curr_node]))
-                    inconsistent_node.pop(curr_id)
-                    consistent_node[curr_id] = curr_node
-                    consistent_count += 1
-                    no_changes = False
-            else:
-                us = list(curr_node.in_neighbors())
-                u_out_degrees = numpy.sum([u.out_degree() for u in us]) 
-                in_neighbor_dp_sum = -1
-                if u_out_degrees == curr_node.in_degree():
-                    in_neighbor_dp_sum = numpy.sum([graph.vp.dp[u] for u in us])
-
-                vs = list(curr_node.out_neighbors())
-                v_in_degrees = numpy.sum([v.in_degree() for v in vs]) 
-                out_neighbor_dp_sum = -1
-                if v_in_degrees == curr_node.out_degree():
-                    out_neighbor_dp_sum = numpy.sum([graph.vp.dp[v] for v in vs])
-                
-                in_eflows = numpy.sum([graph.ep.flow[e] for e in curr_node.in_edges()])
-                out_eflows = numpy.sum([graph.ep.flow[e] for e in curr_node.out_edges()])
-                maxdp = numpy.max([curr_dp, in_neighbor_dp_sum, out_neighbor_dp_sum, in_eflows, out_eflows])
-                if curr_dp != maxdp:
-                    graph.vp.dp[curr_node] = maxdp
-                    no_changes = False
-            
-            no_changes = subfix(graph, curr_node, no_changes, consistent_node, inconsistent_node, simp_node_dict)
-            # append all the out neighbors
-            for n in curr_node.out_neighbors():
-                if graph.vp.id[n] not in visited:
-                    queue.append(n)
-
-        queue = [node]
-        visited = []
-        while queue:
-            curr_node = queue.pop()
-            curr_id = graph.vp.id[curr_node]
-            curr_dp = graph.vp.dp[curr_node]
-            visited.append(curr_id)
-            # fix the curr node if is in consistent
-            if curr_id in inconsistent_node:
-                fix = True
-                vtotal = 0
-                for e in curr_node.out_edges():
-                    if graph.ep.flow[e] != 0.0:
-                        vtotal += graph.ep.flow[e]
-                    else:
-                        # there exist an unassigned edge around the curr node
-                        fix = False
-                        break
-                # perform fix
-                if fix:
-                    graph.vp.dp[curr_node] = vtotal
-                    if DEBUG_MODE:
-                        print(curr_id, "inconsistent node depth from {0} to {1}".format(curr_dp, graph.vp.dp[curr_node]))
-                    inconsistent_node.pop(curr_id)
-                    consistent_node[curr_id] = curr_node
-                    consistent_count += 1
-                    no_changes = False
-            else:
-                us = list(curr_node.in_neighbors())
-                u_out_degrees = numpy.sum([u.out_degree() for u in us]) 
-                in_neighbor_dp_sum = -1
-                if u_out_degrees == curr_node.in_degree():
-                    in_neighbor_dp_sum = numpy.sum([graph.vp.dp[u] for u in us])
-
-                vs = list(curr_node.out_neighbors())
-                v_in_degrees = numpy.sum([v.in_degree() for v in vs]) 
-                out_neighbor_dp_sum = -1
-                if v_in_degrees == curr_node.out_degree():
-                    out_neighbor_dp_sum = numpy.sum([graph.vp.dp[v] for v in vs])
-                
-                in_eflows = numpy.sum([graph.ep.flow[e] for e in curr_node.in_edges()])
-                out_eflows = numpy.sum([graph.ep.flow[e] for e in curr_node.out_edges()])
-                maxdp = numpy.max([curr_dp, in_neighbor_dp_sum, out_neighbor_dp_sum, in_eflows, out_eflows])
-                if curr_dp != maxdp:
-                    graph.vp.dp[curr_node] = maxdp
-                    no_changes = False
-            
-            no_changes = subfix(graph, curr_node, no_changes, consistent_node, inconsistent_node, simp_node_dict)
-            # append all the in neighbors
-            for n in curr_node.in_neighbors():
-                if graph.vp.id[n] not in visited:
-                    queue.append(n)        
-        i += 1
-        if i >= len(sorted_consistent_node):
-            if break_point == consistent_count and (no_changes or cyclic):
-                # no more changes
-                break
-            else:
-                i = 0
-                break_point = consistent_count
-
-    print("Total consistent node after solid fix: ", consistent_count, len(simp_node_dict))
-    print([int(n) for n in consistent_node])
-    print([int(n) for n in inconsistent_node]) 
-    print([int(n) for n in untracked_node])
-    if DEBUG_MODE:
-        for edge in simp_edge_dict.values():
-            print_edge(graph, edge, "")
-    return
+    return prev_dp_dict
 
 def graph_simplification(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, node_to_contig_dict: dict, edge_to_contig_dict: dict, min_cov):
     """
@@ -857,250 +364,76 @@ def graph_simplification(graph: Graph, simp_node_dict: dict, simp_edge_dict: dic
     removed_node_dict = {}
     removed_edge_dict = {}
     # iterate until no more node be removed from the graph
-    while True:
-        changed = False
-        for id, node in list(simp_node_dict.items()):
-            if graph.vp.dp[node] < min_cov:
-                if id in node_to_contig_dict:
-                    if DEBUG_MODE:
-                        print("node: {0} should not be removed although with ccov: {1}".format(id, graph.vp.dp[node]))
-                    continue
-
+    for id, node in list(simp_node_dict.items()):
+        if graph.vp.dp[node] < min_cov:
+            if id in node_to_contig_dict:
                 if DEBUG_MODE:
-                    print_vertex(graph, node, "Node removed by graph simplification -")
-                
-                changed = True
+                    print("node: {0} should not be removed although with ccov: {1}".format(id, graph.vp.dp[node]))
+                continue
+            if DEBUG_MODE:
+                print_vertex(graph, node, "Node removed by graph simplification -")
 
-                # delete the node
-                simp_node_dict.pop(id)
-                graph.vp.color[node] = 'gray'
-                removed_node_dict[id] = node
-                total_reduce_depth = graph.vp.dp[node]
-                # delete related edges
-                total_out_depth = numpy.sum([graph.vp.dp[u] for u in node.out_neighbors()])
-                for out_node in node.out_neighbors():
-                    out_id = graph.vp.id[out_node]
-                    curr_dp = graph.vp.dp[out_node]
-                    graph.vp.dp[out_node] -= round((curr_dp/total_out_depth) * total_reduce_depth)
-                    if (id, out_id) in edge_to_contig_dict:
-                        if DEBUG_MODE:
-                            print("edge: {0} should not be removed".format((id, out_id)))
-                        continue
-                    if (id, out_id) in simp_edge_dict:
-                        e = simp_edge_dict[(id, out_id)]
-                        graph.ep.color[e] = 'gray'
-                        simp_edge_dict.pop((id, out_id))
-                        removed_edge_dict[(id, out_id)] = e
+            # delete the node
+            simp_node_dict.pop(id)
+            graph.vp.color[node] = 'gray'
+            removed_node_dict[id] = node
+            total_reduce_depth = graph.vp.dp[node]
+            # delete related edges
+            for out_node in node.out_neighbors():
+                out_id = graph.vp.id[out_node]
+                if (id, out_id) in edge_to_contig_dict:
+                    if DEBUG_MODE:
+                        print("edge: {0} should not be removed".format((id, out_id)))
+                    continue
+                if (id, out_id) in simp_edge_dict:
+                    e = simp_edge_dict[(id, out_id)]
+                    graph.ep.color[e] = 'gray'
+                    simp_edge_dict.pop((id, out_id))
+                    removed_edge_dict[(id, out_id)] = e
 
-                total_in_depth = numpy.sum([graph.vp.dp[u] for u in node.in_neighbors()])
-                for in_node in node.in_neighbors():
-                    in_id = graph.vp.id[in_node]
-                    curr_dp = graph.vp.dp[in_node]
-                    graph.vp.dp[in_node] -= round((curr_dp/total_in_depth) * total_reduce_depth)
-                    if (in_id, id) in edge_to_contig_dict:
-                        if DEBUG_MODE:
-                            print("edge: {0} should not be removed".format((in_id, id)))
-                        continue
-                    if (in_id, id) in simp_edge_dict:
-                        e = simp_edge_dict[(in_id, id)]
-                        graph.ep.color[e] = 'gray'
-                        simp_edge_dict.pop((in_id, id))
-                        removed_edge_dict[(in_id, id)] = e
-        if not changed:
-            break
+            for in_node in node.in_neighbors():
+                in_id = graph.vp.id[in_node]
+                if (in_id, id) in edge_to_contig_dict:
+                    if DEBUG_MODE:
+                        print("edge: {0} should not be removed".format((in_id, id)))
+                    continue
+                if (in_id, id) in simp_edge_dict:
+                    e = simp_edge_dict[(in_id, id)]
+                    graph.ep.color[e] = 'gray'
+                    simp_edge_dict.pop((in_id, id))
+                    removed_edge_dict[(in_id, id)] = e
     print("Remain: Total nodes: ", len(simp_node_dict), " Total edges: ", len(simp_edge_dict))
     print("-------------------------graph simplification end----------------------")
     return removed_node_dict, removed_edge_dict
 
-def assign_edge_flow(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, consistent_node: dict, inconsistent_node: dict):
+def assign_edge_flow(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict):
     """
     Assign the edge flow based on node weight and contig alignment.
     """
-    un_assigned_edge = len(simp_edge_dict)
-    print("-------------------------assign edge flow----------------------")
-    # print("Assign edge flow: Total unassigned edges: ", un_assigned_edge)
-    # it is necessary to distinguish two phase to avoid assembly graph mistake, or do we ignore the mistake?
-    # init iteration
-    for no, node in simp_node_dict.items():
-        if no in inconsistent_node:
-            continue
-        w = graph.vp.dp[node]
-
-        node_in_edges = list(node.in_edges())
-        if len(node_in_edges) == 1:
-            e = node_in_edges[0]
-            src = e.source()
-            if (graph.vp.id[src], no) in simp_edge_dict:
-                if graph.vp.id[src] in consistent_node and src.out_degree() == 1:
-                    graph.ep.flow[e] = numpy.max([graph.ep.flow[e], w, graph.vp.dp[src]])
-                else:
-                    graph.ep.flow[e] = w
-                un_assigned_edge -= 1
-
-        node_out_edges = list(node.out_edges())
-        if len(node_out_edges) == 1:
-            e = node_out_edges[0]
-            tgt = e.target()
-            if (no, graph.vp.id[tgt]) in simp_edge_dict:
-                if graph.vp.id[tgt] in consistent_node and tgt.in_degree() == 1:
-                    graph.ep.flow[e] = numpy.max([graph.ep.flow[e], w, graph.vp.dp[tgt]])
-                else:
-                    graph.ep.flow[e] = w
-                un_assigned_edge -= 1
-    if DEBUG_MODE:
-        print("un-assigned edges after init iteration : ", un_assigned_edge)
-
-    # coverage iteration
-    converage_flag = 0
-    while True:          
-        for no, node in simp_node_dict.items():
-            if no in inconsistent_node:
-                continue
-            in_w = graph.vp.dp[node]
-            in_e = []
-            for e in node.in_edges():
-                f = graph.ep.flow[e]
-                if f != 0.0:
-                    in_w = in_w - f
-                else:
-                    in_e.append(e)
-            if len(in_e) == 1:
-                e = in_e[0]
-                if (graph.vp.id[e.source()], no) in simp_edge_dict:
-                    if in_w <= 0:
-                        print("in low edge flow error: ", graph.vp.id[e.source()], " -> ", graph.vp.id[e.target()], in_w)
-                    graph.ep.flow[e] = max(in_w, graph.ep.flow[e])
-                    un_assigned_edge -= 1
-
-            out_w = graph.vp.dp[node]
-            out_e = []
-            for e in node.out_edges():
-                f = graph.ep.flow[e]
-                if f != 0.0:
-                    out_w = out_w - f
-                else:
-                    out_e.append(e)
-            if len(out_e) == 1:
-                e = out_e[0]
-                if (no, graph.vp.id[e.target()]) in simp_edge_dict:
-                    if out_w <= 0:
-                        print_vertex(graph, node, "Current node")
-                        print("out low edge flow error: ", graph.vp.id[e.source()], " -> ", graph.vp.id[e.target()], out_w)
-                    graph.ep.flow[e] = max(out_w, graph.ep.flow[e])
-                    un_assigned_edge -= 1
-        if converage_flag == un_assigned_edge:
-            break
+    for (u,v),e in simp_edge_dict.items():
+        u_node = simp_node_dict[u]
+        v_node = simp_node_dict[v]
+        flow = 0
+        if u_node.out_degree() == 1 and v_node.in_degree() == 1:
+            flow = max(graph.vp.dp[u_node], graph.vp.dp[v_node])
+        elif u_node.out_degree() > 1 and v_node.in_degree() == 1:
+            u_out_sum = numpy.sum([graph.vp.dp[n] for n in u_node.out_neighbors()])
+            flow = max(graph.vp.dp[v_node], (graph.vp.dp[v_node]/u_out_sum)*graph.vp.dp[u_node])
+        elif u_node.out_degree() == 1 and v_node.in_degree() > 1:
+            v_in_sum = numpy.sum([graph.vp.dp[n] for n in v_node.in_neighbors()])
+            flow = max(graph.vp.dp[u_node], (graph.vp.dp[u_node]/v_in_sum)*graph.vp.dp[v_node])
         else:
-            converage_flag = un_assigned_edge  
-    if DEBUG_MODE:
-        print("un-assigned edges after node-weight coverage iteration : ", un_assigned_edge)
-
-    # double cross consistent node assign
-    for (u,v), e in simp_edge_dict.items():
-        if u in inconsistent_node or v in inconsistent_node:
-            continue
-        if graph.ep.flow[e] != 0.0:
-            continue
-        src = e.source()
-        tgt = e.target()
-
-        u_flow_remain = graph.vp.dp[src]
-        u_degree = src.out_degree()
-        for ue in src.out_edges():
-            if graph.ep.flow[ue] != 0.0:
-                # assigned edge
-                u_degree = u_degree - 1
-                u_flow_remain = u_flow_remain - graph.ep.flow[ue]
-
-        v_flow_remain = graph.vp.dp[tgt]
-        v_degree = tgt.in_degree()
-        for ve in tgt.in_edges():
-            if graph.ep.flow[ve] != 0.0:
-                # assigned edge
-                v_degree = v_degree - 1
-                v_flow_remain = v_flow_remain - graph.ep.flow[ve]
-
-        udiv = (u_flow_remain / u_degree) if u_degree != 0 else 0
-        vdiv = (v_flow_remain / v_degree) if v_degree != 0 else 0
-        if udiv < 0 or vdiv < 0:
-            print("low edge flow error: ", graph.vp.id[src], " -> ", graph.vp.id[tgt])
-            print("u_flow_remain: ", u_flow_remain, " u_degree: ", u_degree)
-            print("v_flow_remain: ", v_flow_remain, " v_degree: ", v_degree)
-        elif udiv != 0 and vdiv != 0:
-            assign_flow = (udiv + vdiv) / 2
-        elif udiv != 0:
-            assign_flow = udiv
-        elif vdiv != 0:
-            assign_flow = vdiv
-        else:
-            assign_flow = 0
-
-        if DEBUG_MODE:
-            print("manual assigned edge: ", graph.vp.id[src], " -> ", graph.vp.id[tgt], assign_flow)
-        un_assigned_edge -= 1
-        graph.ep.flow[e] = max(assign_flow, graph.ep.flow[e])
-
-    if DEBUG_MODE:
-        print("un-assigned edges after manual assign iteration : ", un_assigned_edge)
-
-    # assign incon-con branch node
-    for (u,v), e in simp_edge_dict.items():
-        if u in inconsistent_node and v in inconsistent_node:
-            None
-        elif v in inconsistent_node:
-            # u is consistent
-            u_node = simp_node_dict[u]
-            all_incon_dp = 0
-            incon_edges = []
-            out_flow_remain = graph.vp.dp[u_node]
-            for out_edge in u_node.out_edges():
-                tgt = out_edge.target()
-                if graph.ep.flow[out_edge] != 0.0:
-                    out_flow_remain -= graph.ep.flow[out_edge]
-                else:
-                    all_incon_dp += graph.vp.dp[tgt]
-                    incon_edges.append(out_edge)
-            for incon_edge in incon_edges:
-                tgt = incon_edge.target()
-                graph.ep.flow[incon_edge] = round((graph.vp.dp[tgt]/all_incon_dp) * out_flow_remain, 2)
-                un_assigned_edge -= 1
-        elif u in inconsistent_node:
-            # v is consistent
-            v_node = simp_node_dict[v]
-            all_incon_dp = 0
-            incon_edges = []
-            in_flow_remain = graph.vp.dp[v_node]
-            for in_edge in v_node.in_edges():
-                src = in_edge.source()
-                if graph.ep.flow[in_edge] != 0.0:
-                    in_flow_remain -= graph.ep.flow[in_edge]
-                else:
-                    all_incon_dp += graph.vp.dp[src]
-                    incon_edges.append(in_edge)
-            for incon_edge in incon_edges:
-                src = incon_edge.source()
-                graph.ep.flow[incon_edge] = round((graph.vp.dp[src]/all_incon_dp) * in_flow_remain, 2)   
-                un_assigned_edge -= 1     
-        else:
-            None
-
-    print("un-assigned edges after incon-con branch assign iteration : ", un_assigned_edge)
-
-    u_nodes = []
-    for (u,v), e in simp_edge_dict.items():
-        if graph.ep.flow[e] == 0.0:
-            u_nodes.append(int(u))
-            u_nodes.append(int(v))
-    if DEBUG_MODE:
-        print("unassigned related node: ", u_nodes)
-    print("-----------------------assign edge flow end--------------------")
+            u_out_sum = numpy.sum([graph.vp.dp[n] for n in u_node.out_neighbors()])
+            v_in_sum = numpy.sum([graph.vp.dp[n] for n in v_node.in_neighbors()])
+            flow = max((graph.vp.dp[v_node] / u_out_sum) * graph.vp.dp[u_node], (graph.vp.dp[u_node] / v_in_sum) * graph.vp.dp[v_node])
+        graph.ep.flow[e] = max(graph.ep.flow[e], flow)
+    return
 
 def contig_reduction(graph: Graph, contig, cno, clen, ccov, simp_node_dict: dict, simp_edge_dict: dict, min_cov):
     """
     reduce and update the graph by given contig
     """
-    if DEBUG_MODE:
-        print("*---Contig: ", cno, clen, ccov)
+    print("*---Contig reduction: ", cno, clen, ccov)
     next_node_index = 1
     for node in contig:
         if next_node_index >= len(contig):
@@ -1188,7 +521,6 @@ def distance_search(graph: Graph, simp_node_dict: dict, node_usage_dict: dict, s
                     visited[v] = True
                     cmp_path = dfs_helper(graph, v, sink, visited)
                     if cmp_path != None:
-
                         # path lead to sink
                         cmp_path.insert(0, u)
                         if ss_path == None:

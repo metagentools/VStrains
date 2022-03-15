@@ -1362,3 +1362,58 @@ def coverage_rebalance(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict,
         for edge in simp_edge_dict.values():
             print_edge(graph, edge, "")
     return
+
+######
+
+
+    # pairwise_contig_concatenation(graph_iter, simp_node_dict_iter, simp_edge_dict_iter, contig_node_dict, contig_concat_plans)
+    # strain_dict = {}
+    # iter_condition = set()
+    # concat_contig_dict_iter = contig_dict.copy()
+    # concat_strain_dict_iter = {}
+    # contig pair-wise concatenation iteration
+    # with iteration stopped when no further concatenation occurred
+    # while True:
+    #     print("Current iteration: ", level_no)
+    #     graph_iter, simp_node_dict_iter, simp_edge_dict_iter = flipped_gfa_to_graph("{0}graph_L{1}.gfa".format(TEMP_DIR, str(level_no)))
+    #     graph_simplification(graph_iter, simp_node_dict_iter, simp_edge_dict_iter, {}, {}, args.min_cov/2)
+    #     assign_edge_flow(graph_iter, simp_node_dict_iter, simp_edge_dict_iter)
+    #     output_file = "{0}graph_L{1}.gfa".format(TEMP_DIR, str(level_no+1))
+    #     # contig pair-wise concatenation
+    #     concat_strain_dict_iter, concat_contig_dict_iter = contig_merge(graph_iter, simp_node_dict_iter, simp_edge_dict_iter, concat_contig_dict_iter, node_to_contig_dict, edge_to_contig_dict, output_file, args.min_cov, args.min_len, args.max_len, args.overlap)
+
+    #     contig_dict_to_fasta(graph_iter, concat_contig_dict_iter, simp_node_dict_iter, args.overlap, "{0}L{1}_contigs.fasta".format(TEMP_DIR, str(level_no)))
+    #     minimap_api(args.ref_file, "{0}L{1}_contigs.fasta".format(TEMP_DIR, str(level_no)), "{0}L{1}_contigs_to_strain.paf".format(TEMP_DIR, str(level_no)))
+
+    #     strain_dict.update(concat_strain_dict_iter.copy())
+    #     level_no += 1
+
+    #     iter_compare = set(concat_contig_dict_iter.keys())
+    #     if iter_condition == iter_compare:
+    #         print("end of contig pair-wise concatenation iteration: ", level_no)
+    #         break
+    #     else:
+    #         iter_condition = iter_compare
+    
+    # # further step to recover the rest of strain from the reduced graph
+
+    # graph_red, simp_node_dict_red, simp_edge_dict_red = flipped_gfa_to_graph("{0}graph_L{1}.gfa".format(TEMP_DIR, str(level_no)))
+    # # graph_simplification(graph_red, simp_node_dict_red, simp_edge_dict_red, node_to_contig_dict, edge_to_contig_dict, args.min_cov)
+    # assign_edge_flow(graph_red, simp_node_dict_red, simp_edge_dict_red)
+    
+    # # extract the last mile paths from the graph
+    # final_strain_dict = path_extraction(graph_red, simp_node_dict_red, simp_edge_dict_red, node_usage_dict, args.overlap, args.min_cov, args.min_len)   
+    
+    # graph_to_gfa(graph_red, simp_node_dict_red, simp_edge_dict_red, "{0}final_graph.gfa".format(TEMP_DIR))
+
+    # strain_dict.update(final_strain_dict)
+
+    # # print strain and minimap overlaps
+    # contig_dict_to_fasta(pre_graph_v2, strain_dict, simp_node_dict_pre_v2, args.overlap, "{0}cand_strains.fasta".format(TEMP_DIR))
+    # contig_dict_to_path(strain_dict, "{0}cand_strains.paths".format(TEMP_DIR))
+    # minimap_api(args.ref_file, "{0}cand_strains.fasta".format(TEMP_DIR), "{0}cand_strain_to_strain.paf".format(TEMP_DIR))
+    
+    # # print out node usage stat
+    # node_usage_pair = sorted(node_usage_dict.items(), key=lambda x: x[1][1] - x[1][0], reverse=True)
+    # for id, used in node_usage_pair:
+    #     print("id: {0} has been used {1} times".format(id, used))

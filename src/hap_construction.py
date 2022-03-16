@@ -14,7 +14,6 @@ import subprocess
 from graph_tool.all import Graph
 from graph_tool.topology import is_DAG
 import argparse
-from matplotlib.cbook import maxdict
 import numpy
 
 from graph_converter import *
@@ -26,6 +25,37 @@ DEBUG_MODE = True
 TEMP_DIR = "acc/"
 
 def main():
+    """
+    overall flow: 
+    Input: Graph, contig
+    operation:
+    -> flip graph
+    -> increment node dp based on contig
+    -> tip removal based on minimap2
+    -> bubble removal based on minimap2
+    —> find the maximum node depth (dp(A)) and its id (named as node A) 
+    that doesn't appear in any cycle.
+    -> node depth rebalance + assign edge flow 
+    -> reassign contig coverage to minimum node depth on the contig if the whole contig 
+    is in cycle xor linear path, contig that appeared in both cycle and linear path is
+    considerred error and should be splited and reassigned.
+    -> compact the reassigned/splitted contig into a single node.
+    -> compact all the simple path if exist.
+    -> remove all the cycle as the cand strains from the graph, also reduce 
+    the stored dp(A) by amount of
+    cycle strain coverage if A is related to the cycle strain.
+    -> reassgin A's depth to dp(A), and perform node depth rebalance
+    -> s-t path to enumerate all the linear strain
+    -> find the best option that used up all the node coverage.
+    -> Done
+
+       and edge flow median 
+    -> compact contig to single node 
+    -> rebalance coverage again 
+    -> compact simple path
+    <-> src/tgt collpase (until no more simple path) 
+    -> ...
+    """
     parser = argparse.ArgumentParser(prog='hap_construction.py', description=usage)
     parser.add_argument('-gfa', '--gfa_file', dest='gfa_file', type=str, required=True, help='assembly graph under gfa format')
     parser.add_argument('-c', '--contig', dest='contig_file', type=str, help='contig file from SPAdes, paths format')
@@ -61,9 +91,8 @@ def main():
     graph_init, simp_node_dict_init, simp_edge_dict_init = flipped_gfa_to_graph("{0}init_graph.gfa".format(TEMP_DIR))
     
     prev_dp_dict = coverage_rebalance_formal(graph_init, simp_node_dict_init, simp_edge_dict_init)
-
-    graph_to_gfa(graph_init, simp_node_dict_init, simp_edge_dict_init, "{0}pre_graph.gfa".format(TEMP_DIR))
     
+    graph_to_gfa(graph_init, simp_node_dict_init, simp_edge_dict_init, "{0}pre_graph.gfa".format(TEMP_DIR))
     # Read in as pre graph, only used for path seq extraction.
     pre_graph, simp_node_dict_pre, simp_edge_dict_pre = flipped_gfa_to_graph("{0}pre_graph.gfa".format(TEMP_DIR))
     assign_edge_flow(pre_graph, simp_node_dict_pre, simp_edge_dict_pre)
@@ -98,30 +127,47 @@ def main():
         print("Ratio: ", curr_dp_sum / prev_dp_sum)
         print("Prev cov: {0} vs median flow: {1}".format(ccov, numpy.median(contig_edge_flow)))
         print("normalised cov: {0} vs normalised median flow (new ccov): {1}".format(ccov/ratio, numpy.median([d/ratio for d in contig_edge_flow])))
-        contig_dict[cno][2] = numpy.median([d/ratio for d in contig_edge_flow])
-
-    # the max depth node on the connected graph must be visited by all the s-t path
-    # proof:
-    # if there exist a s-t path that is not involved by max dp node n
-    # then there exist a node n' other than n such that dp(n') = dp(n) + path_flow(p)
-    # in which n is not the max dp node, contradiction.
-    #
-    # the min depth node on the connected graph must be visited by exactly one s-t path 
-    # store all the overlap/intersection contig case, key can never concat with any contig from the values
+        contig_dict[cno][2] = numpy.min([pre_graph.vp.dp[simp_node_dict_pre[n]] for n in contig])
     
-    # contig_concat_plans = get_concat_plan(contig_dict, args.max_len)
     contig_compactification(pre_graph, simp_node_dict_pre, simp_edge_dict_pre, contig_dict, args.overlap)
-
     graph_to_gfa(pre_graph, simp_node_dict_pre, simp_edge_dict_pre, "{0}red_graph.gfa".format(TEMP_DIR))
     
     pre_graph_v2, simp_node_dict_pre_v2, simp_edge_dict_pre_v2 = flipped_gfa_to_graph("{0}red_graph.gfa".format(TEMP_DIR))
-    coverage_rebalance_formal(pre_graph_v2, simp_node_dict_pre_v2, simp_edge_dict_pre_v2)
+    assign_edge_flow(pre_graph_v2, simp_node_dict_pre_v2, simp_edge_dict_pre_v2)
+
+    simple_path = simp_path(pre_graph_v2, simp_node_dict_pre_v2, simp_edge_dict_pre_v2)
+    is_collapsed = True
+    while True:
+        if not is_collapsed or simple_path == None:
+            break
+        simp_path_dict = simple_paths_to_dict(pre_graph_v2, simp_node_dict_pre_v2, simp_edge_dict_pre_v2, simple_path, args.overlap)
+        contig_compactification(pre_graph_v2, simp_node_dict_pre_v2, simp_edge_dict_pre_v2, simp_path_dict, args.overlap)
+        is_collapsed = src_tgt_collapse(pre_graph_v2, simp_node_dict_pre_v2, simp_edge_dict_pre_v2, TEMP_DIR, args.overlap)
+        simple_path = simp_path(pre_graph_v2, simp_node_dict_pre_v2, simp_edge_dict_pre_v2)
     
-    graph_compactification(pre_graph_v2, simp_node_dict_pre_v2, simp_edge_dict_pre_v2, args.overlap)
-    src_tgt_collapse(pre_graph_v2, simp_node_dict_pre_v2, simp_edge_dict_pre_v2, args.overlap)
-    
+    # print_out all the unmerged end node:
     graph_to_gfa(pre_graph_v2, simp_node_dict_pre_v2, simp_edge_dict_pre_v2, "{0}graph_L0.gfa".format(TEMP_DIR))
 
+    graph_L0, simp_node_dict_L0, simp_edge_dict_L0 = flipped_gfa_to_graph("{0}graph_L0.gfa".format(TEMP_DIR))
+    graph_simplification(graph_L0, simp_node_dict_L0, simp_edge_dict_L0, {}, {}, args.min_cov)
+    
+    simple_path = simp_path(graph_L0, simp_node_dict_L0, simp_edge_dict_L0)
+    if simple_path != None:
+        simp_path_dict = simple_paths_to_dict(graph_L0, simp_node_dict_L0, simp_edge_dict_L0, simple_path, args.overlap)
+        contig_compactification(graph_L0, simp_node_dict_L0, simp_edge_dict_L0, simp_path_dict, args.overlap)
+    
+    graph_to_gfa(graph_L0, simp_node_dict_L0, simp_edge_dict_L0, "{0}graph_L1.gfa".format(TEMP_DIR))
+    
+    graph_L1, simp_node_dict_L1, simp_edge_dict_L1 = flipped_gfa_to_graph("{0}graph_L1.gfa".format(TEMP_DIR))
+    coverage_rebalance_formal(graph_L1, simp_node_dict_L1, simp_edge_dict_L1)
+    graph_to_gfa(graph_L1, simp_node_dict_L1, simp_edge_dict_L1, "{0}graph_L2.gfa".format(TEMP_DIR))
+
+    if args.ref_file:
+        map_ref_to_graph(args.ref_file, simp_node_dict_L1, "{0}graph_L2.gfa".format(TEMP_DIR), True, "{0}node_to_ref_L0.paf".format(TEMP_DIR), "{0}temp_gfa_to_fasta.fasta".format(TEMP_DIR))
+
+    
+    # graph_to_gfa(graph_L0, simp_node_dict_L0, simp_edge_dict_L0, "{0}graph_L1.gfa".format(TEMP_DIR))
+    
     # TODO extend the strain end length. really high chance
     # map all the final strains back into pre graphs
 
@@ -144,27 +190,98 @@ def get_concat_plan(contig_dict: dict, max_len):
         contig_concat_plans[key] = ps
     return contig_concat_plans
 
-def src_tgt_collapse(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, overlap):
+def src_tgt_collapse(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, temp_dir, overlap):
     """
     retrieve all the source/tail simple path, and merge them into adjacent neighbor path if possible
+    
+    the collapse step can be done before node depeth rebalance, since it only regards to
+    matching score within node seq len
+
+    if is the case, then spades contig may also be modified.
     """
-    def node_collapse(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, from_node, to_path):
+    def node_collapse(graph: Graph, simp_node_dict: dict, from_node, to_path):
         """
         collapse the node with the given path, increment given path depth, remove related information
         about the node.
         """
+        graph.vp.color[from_node] = 'gray'
+        pending_dp = graph.vp.dp[from_node]
+        for node in to_path:
+            graph.vp.dp[node] += pending_dp
+        simp_node_dict.pop(graph.vp.id[from_node])
+        for e in from_node.all_edges():
+            graph.ep.color[e] = 'gray'
+        print("Node {0} be collapsed to path: {1}".format(graph.vp.id[from_node], [graph.vp.id[n] for n in to_path]))
         return
-    def cand_collapse_path(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, from_node, to_paths, accept_rate = 0.999):
+
+    def cand_collapse_path(graph: Graph, from_node, to_paths, temp_dir, overlap, accept_rate = 0.95):
         """
         use minimap2 -c to evaluation the node-path similarity, sort based on matching score in DESC order
         
         return: the most similar path if there exist a path with score >= accept rate, else return None
         """
-        return
+        ref_loc = "{0}ref.fa".format(temp_dir)
+        query_loc = "{0}query.fa".format(temp_dir)
+        overlap_loc = "{0}overlap.paf".format(temp_dir)
+        subprocess.check_call('touch {0}; touch {1}'.format(ref_loc, query_loc), shell=True)
+        
+        id_path_dict = {}
+        for id, path in list(enumerate(to_paths)):
+            id_path_dict[id] = path
+
+        # retrieve all the path information and save into ref.fa
+        with open(ref_loc, 'w') as ref_file:
+            for id, path in id_path_dict.items():
+                name = ">" + str(id) + "\n"
+                seq = path_to_seq(graph, path, id, overlap) + "\n"
+                ref_file.write(name)
+                ref_file.write(seq)
+            ref_file.close()
+
+        # save from node info to query.fa
+        with open(query_loc, 'w') as query_file:
+            name = ">" + graph.vp.id[from_node] + "\n"
+            seq = path_to_seq(graph, [from_node], name, overlap) + "\n"
+            query_file.write(name)
+            query_file.write(seq)
+            query_file.close()
+
+        # minimap to obtain matching score for all node-path
+        id_evalscore = {}
+        minimap_api(ref_loc, query_loc, overlap_loc)
+        with open(overlap_loc, 'r') as overlap_file:
+            for Line in overlap_file:
+                splited = Line.split('\t')
+                path_no = int(splited[5])
+                nmatch = int(splited[9])
+                nblock = int(splited[10])
+                if path_no not in id_evalscore:
+                    id_evalscore[path_no] = [nmatch/nblock]
+                else:
+                    id_evalscore[path_no].append(nmatch/nblock)
+            overlap_file.close()
+        
+        # remove temp file
+        subprocess.check_call('rm {0}; rm {1}; rm {2}'.format(ref_loc, query_loc, overlap_loc), shell=True)
+        
+        id_evalscore_sum = []
+        for id, scores in id_evalscore.items():
+            mean_score = numpy.mean(scores) if len(scores) != 0 else 0
+            id_evalscore_sum.append((id, mean_score))
+        
+        best_match = sorted(id_evalscore_sum, key=lambda t: t[1], reverse=True)
+        print(graph.vp.id[from_node], best_match)
+        if len(best_match) == 0:
+            return None
+        elif best_match[0][1] >= accept_rate:
+            return id_path_dict[best_match[0][0]]
+        else:
+            return None
     
+    is_collapsed = False
     # get all the source simple path
     src_nodes = []
-    sink_nodes = []
+    tgt_nodes = []
     isolated_node = []
     for node in simp_node_dict.values():
         if node.in_degree() + node.out_degree() == 0:
@@ -175,19 +292,21 @@ def src_tgt_collapse(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, o
             src_nodes.append(node)
         elif node.out_degree() == 0:
             print_vertex(graph, node, "sink node")
-            sink_nodes.append(node) 
+            tgt_nodes.append(node) 
         else:
-            print_vertex(graph, node, "contiguous node") 
+            None
     
     # src node collapse
-    src_nodes = sorted(src_nodes, lambda x: graph.vp.dp[x])
+    src_nodes = sorted(src_nodes, key=lambda x: graph.vp.dp[x])
     for src in src_nodes:
+        print("--------------------------src: {0} --------------".format(graph.vp.id[src]))
         src_len = path_len(graph, [src], overlap)
         potential_paths = []
         # path retrieve
         for out_branch in src.out_neighbors():
             if graph.vp.id[out_branch] not in simp_node_dict:
                 continue
+            print("current out branch: ", graph.vp.id[out_branch])
             for in_tgt in out_branch.in_neighbors():
                 if graph.vp.id[in_tgt] == graph.vp.id[src]:
                     # coincidence path
@@ -195,26 +314,26 @@ def src_tgt_collapse(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, o
                 if graph.vp.id[in_tgt] not in simp_node_dict:
                     # collapsed path in previous iteration
                     continue
-                if path_len(graph, [in_tgt], overlap) >= src_len:
-                    potential_paths.append([in_tgt])
-                    continue
-                else:
-                    potential_paths.append(paths_to_tgt(graph, simp_node_dict, in_tgt, src_len))
-        
-        cand_path = cand_collapse_path(graph, simp_node_dict, simp_edge_dict, src, potential_paths)
+                print("current in tgt: ", graph.vp.id[in_tgt])
+                potential_paths.extend(paths_to_tgt(graph, simp_node_dict, src, in_tgt, overlap, src_len))
+        cand_path = cand_collapse_path(graph, src, potential_paths, temp_dir, overlap)
         if cand_path != None:
-            node_collapse(graph, simp_node_dict, simp_edge_dict, src, cand_path)
-            print("Node: {0} collapse to path {1}".format(src, cand_path))
+            node_collapse(graph, simp_node_dict, src, cand_path)
+            is_collapsed = True
+        else:
+            print_vertex(graph, src, "No collapse available")
 
     # target node collapse
-    tgt_nodes = sorted(tgt_nodes, lambda x: graph.vp.dp[x])
+    tgt_nodes = sorted(tgt_nodes, key=lambda x: graph.vp.dp[x])
     for tgt in tgt_nodes:
+        print("--------------------------tgt: {0} --------------".format(graph.vp.id[tgt]))
         tgt_len = path_len(graph, [tgt], overlap)
         potential_paths = []
         # path retrieve
         for in_branch in tgt.in_neighbors():
             if graph.vp.id[in_branch] not in simp_node_dict:
                 continue
+            print("current in branch: ", graph.vp.id[in_branch])
             for out_src in in_branch.out_neighbors():
                 if graph.vp.id[out_src] == graph.vp.id[tgt]:
                     # coincidence path
@@ -222,32 +341,74 @@ def src_tgt_collapse(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, o
                 if graph.vp.id[out_src] not in simp_node_dict:
                     # collapsed path in previous iteration
                     continue
-                if path_len(graph, [out_src], overlap) >= tgt_len:
-                    potential_paths.append([out_src])
-                    continue
-                else:
-                    potential_paths.append(paths_from_src(graph, simp_node_dict, out_src, tgt_len))
-        
-        cand_path = cand_collapse_path(graph, simp_node_dict, simp_edge_dict, tgt, potential_paths)
+                print("current out src: ", graph.vp.id[out_src])
+                potential_paths.extend(paths_from_src(graph, simp_node_dict, tgt, out_src, overlap, tgt_len))
+        cand_path = cand_collapse_path(graph, tgt, potential_paths, temp_dir, overlap)
         if cand_path != None:
-            node_collapse(graph, simp_node_dict, simp_edge_dict, tgt, cand_path)
-            print("Node: {0} collapse to path {1}".format(tgt, cand_path))
+            node_collapse(graph, simp_node_dict, tgt, cand_path)
+            is_collapsed = True
+        else:
+            print_vertex(graph, tgt, "No collapse available")
 
-    return
+    return is_collapsed
 
-def paths_to_tgt(graph: Graph, simp_node_dict: dict, tgt, maxlen):
+def paths_to_tgt(graph: Graph, simp_node_dict: dict, self_node, tgt, overlap, maxlen):
     """
     retrieve all the path from any node to tgt node
     within maxlen restriction, in reverse direction
     """
-    return
+    def dfs_rev(graph: Graph, v, curr_path: list, maxlen, visited, all_path):
+        visited[v] = True
+        curr_path.insert(0, v)
+        curr_len = path_len(graph, curr_path, overlap)
+        if curr_len >= maxlen:
+            all_path.append(list(curr_path))
+        else:
+            for u in v.in_neighbors():
+                if not visited[u]:
+                    dfs_rev(graph, u, curr_path, maxlen, visited, all_path)
+        curr_path.pop(0)
+        visited[v] = False
+        return
+    visited = {}
+    for u in graph.vertices():
+        if graph.vp.id[u] not in simp_node_dict:
+            visited[u] = True
+        else:
+            visited[u] = False
+    visited[self_node] = True
+    all_path = []
+    dfs_rev(graph, tgt, [], maxlen, visited, all_path)   
+    return all_path
 
-def paths_from_src(graph: Graph, simp_node_dict: dict, src, maxlen):
+def paths_from_src(graph: Graph, simp_node_dict: dict, self_node, src, overlap, maxlen):
     """
     retrieve all the path from src node to any node 
     within maxlen restriction, in straight direction
     """
-    return
+    def dfs_rev(graph: Graph, u, curr_path: list, maxlen, visited, all_path):
+        visited[u] = True
+        curr_path.append(u)
+        curr_len = path_len(graph, curr_path, overlap)
+        if curr_len >= maxlen:
+            all_path.append(list(curr_path))
+        else:
+            for v in u.out_neighbors():
+                if not visited[v]:
+                    dfs_rev(graph, v, curr_path, maxlen, visited, all_path)
+        curr_path.pop(-1)
+        visited[u] = False
+        return
+    visited = {}
+    for u in graph.vertices():
+        if graph.vp.id[u] not in simp_node_dict:
+            visited[u] = True
+        else:
+            visited[u] = False
+    visited[self_node] = True
+    all_path = []
+    dfs_rev(graph, src, [], maxlen, visited, all_path)
+    return all_path
 
 def contig_compactification(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, contig_dict: dict, overlap):
     """
@@ -257,7 +418,6 @@ def contig_compactification(graph: Graph, simp_node_dict: dict, simp_edge_dict: 
     simp_node_dict_backup = simp_node_dict.copy()
 
     contig_info = []
-    contig_node_dict = {}
     # reduce all the contig to a single node from the graph
     for cno, (contig, clen, ccov) in list(contig_dict.items()):
         src = contig[0]
@@ -279,7 +439,6 @@ def contig_compactification(graph: Graph, simp_node_dict: dict, simp_edge_dict: 
         simp_node_dict[id] = cv
 
         contig_info.append([src, tgt, cno, cv, in_edges, out_edges])
-        contig_node_dict[cno] = cv
     
     # recover all the in-out edges surrounding the contigs
     for [_, _, _, node, in_edges, out_edges] in contig_info:
@@ -857,7 +1016,7 @@ def contig_merge(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, temp_
     print("--------------------contig pair-wise concatenaton end--------------------")
     return concat_strain_dict, concat_contig_dict
 
-def simp_path(graph: Graph, simp_edge_dict: dict):
+def simp_path(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict):
     """
     find simple edges, simple edge is the only edge between its source and sink
     """
@@ -869,6 +1028,8 @@ def simp_path(graph: Graph, simp_edge_dict: dict):
         src_out_d = len([u for u in src.out_neighbors() if graph.vp.color[u] == 'black'])
         target = e.target()
         target_in_d = len([u for u in target.in_neighbors() if graph.vp.color[u] == 'black'])
+        if graph.vp.id[src] not in simp_node_dict or graph.vp.id[target] not in simp_node_dict:
+            continue
         if src_out_d == 1 and target_in_d == 1:
             assert src != target
             simple_edges.append([src, target])
@@ -888,95 +1049,19 @@ def simp_path(graph: Graph, simp_edge_dict: dict):
         if v not in out_edge:
             p = extend_path([e.source(), e.target()])
             simple_paths.append(p) 
-    return simple_paths
+    return simple_paths if len(simple_paths) != 0 else None
 
-def graph_compactification(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, overlap):
-    """
-    Compactify the reduced De Bruijin graph
-    """
-    print("--------------------graph compactification--------------------")
-    simple_paths = simp_path(graph, simp_edge_dict)
-    
-    path_dict = {}
-    path_src = {}
-    path_sink = {}
-    for p in simple_paths:
+def simple_paths_to_dict(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, simple_paths, overlap):
+    simple_paths = simp_path(graph, simp_node_dict, simp_edge_dict)
+    cand_contig_dict = {}
+    for id, p in enumerate(simple_paths):
         print("path: ", [int(graph.vp.id[u]) for u in p])
-        pid = str(graph.vp.id[p[0]]) + "00" + str(graph.vp.id[p[-1]])
-        plen = path_len(graph, p, overlap)
-        pseq = path_to_seq(graph, p, pid, overlap)
-        pdp = numpy.mean([graph.vp.dp[u] for u in p])
-        pkc = numpy.mean([graph.vp.kc[u] for u in p])
-
-        # recolor the used node to gray
-        for i in range(len(p)):
-            u = p[i]
-            v = p[i+1] if (i + 1) < len(p) else None
-            graph.vp.color[u] = 'gray'
-            if v != None:
-                graph.vp.color[v] = 'gray'
-            if u != None and v != None:
-                graph.ep.color[graph.edge(u,v)] = 'gray'
-        
-        # add the path to graph and dict
-        pv = graph.add_vertex()
-        graph.vp.seq[pv] = pseq
-        graph.vp.dp[pv] = pdp
-        graph.vp.kc[pv] = pkc
-        graph.vp.id[pv] = pid
-        graph.vp.color[pv] = 'black'
-        
-        uid = graph.vp.id[p[0]]
-        vid = graph.vp.id[p[-1]]
-        path_dict[(pid, uid, vid)] = pv
-        path_src[uid] = pv
-        path_sink[vid] = pv
-        simp_node_dict[pid] = pv
-    
-    # re-append path edges
-    for (pid, uid, vid), pv in path_dict.items():
-        u_in_neighbors = simp_node_dict[uid].in_neighbors()
-        for u_neighbor in u_in_neighbors:
-            un_id = graph.vp.id[u_neighbor]
-            if graph.vp.color[u_neighbor] == 'black':
-                e = graph.add_edge(u_neighbor, pv)
-                graph.ep.overlap[e] = overlap
-                graph.ep.color[e] = 'black'
-                simp_edge_dict[(un_id, pid)] = e
-            else:
-                if un_id in path_sink:
-                    u_alternative = path_sink[un_id]
-                    e = graph.add_edge(u_alternative, pv)
-                    graph.ep.overlap[e] = overlap
-                    graph.ep.color[e] = 'black'
-                    simp_edge_dict[(graph.vp.id[u_alternative], pid)] = e
-                
-        v_out_neighbors = simp_node_dict[vid].out_neighbors()
-        for v_neighbor in v_out_neighbors:
-            vn_id = graph.vp.id[v_neighbor]
-            if graph.vp.color[v_neighbor] == 'black':
-                e = graph.add_edge(pv, v_neighbor)
-                graph.ep.overlap[e] = overlap
-                graph.ep.color[e] = 'black'
-                simp_edge_dict[(pid, vn_id)] = e
-            else:
-                if vn_id in path_src:
-                    v_alternative = path_src[vn_id]
-                    e = graph.add_edge(pv, v_alternative)
-                    graph.ep.overlap[e] = overlap
-                    graph.ep.color[e] = 'black'
-                    simp_edge_dict[(pid, graph.vp.id[v_alternative])] = e    
-    
-    for no in list(simp_node_dict.keys()):
-        if graph.vp.color[simp_node_dict[no]] != 'black':
-            simp_node_dict.pop(no)
-
-    for (u,v) in list(simp_edge_dict.keys()):
-        if graph.ep.color[simp_edge_dict[(u,v)]] != 'black':
-            simp_edge_dict.pop((u,v))   
-
-    print("------------------graph compactification end------------------")
-    return
+        name = "0" + str(id) + "0"
+        clen = path_len(graph, p, overlap)
+        cov = numpy.min([graph.vp.dp[n] for n in p])
+        pids = [graph.vp.id[n] for n in p]
+        cand_contig_dict[name] = [pids, clen, cov]
+    return cand_contig_dict
 
 def path_extraction(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, node_usage_dict: dict, overlap, min_cov, min_len):
     """

@@ -398,9 +398,11 @@ def map_ref_to_graph(ref_file, simp_node_dict: dict, graph_file, store_mapping=F
             seg_s = int(splited[2])
             seg_f = int(splited[3])
             ref_no = splited[5]
+            nmatch = int(splited[9])
+            nblock = int(splited[10])
             if seg_no not in simp_node_dict:
                 continue
-            if ((seg_f - seg_s) / seg_l) >= 0.5:
+            if ((seg_f - seg_s) / seg_l) >= 0.5 and (nmatch/nblock) >= 0.5:
                 if ref_no not in strain_dict:
                     strain_dict[ref_no] = []
                 strain_dict[ref_no].append(seg_no_int)

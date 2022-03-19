@@ -43,6 +43,11 @@ example/
 benchmark/*
 quast*/
 acc*/
+*.fa
+*.fq
+*.fasta
+*.fastq
+*.gfa
 
 # pycache #
 ###########

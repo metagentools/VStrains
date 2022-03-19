@@ -124,14 +124,29 @@ def main():
     print("-------------------------------COVERAGE REBALANCE-----------------------------------")
     # all the previous depth use been store in the dict
     # ratio: normalised balanced node depth / previous node depth
-    if noncyc_nodes != None and simple_paths != None:
-        graphnc, simp_node_dictnc, simp_edge_dictnc = gfa_to_graph("{0}nc_graph_L3p.gfa".format(TEMP_DIR))
-
-    prev_dp_dict, node_ratio_dict = coverage_rebalance_formal(graph2, simp_node_dict2, simp_edge_dict2)
+    prev_dp_dictori, curr_dp_dictori, node_ratio_dictori = coverage_rebalance_formal(graph2, simp_node_dict2, simp_edge_dict2)
+    # for no, r in node_ratio_dictori.items():
+    #     # ratio less than 0.5 may considerred as error-balanced node.
+    #     print("No: ", no, " Ratio: ", r)
     
-    for no, r in node_ratio_dict.items():
-        # ratio less than 0.5 may considerred as error-balanced node.
-        print("No: ", no, " Ratio: ", r)
+    if noncyc_nodes != None and simple_paths != None:
+        print("rebalance linear subgraph now..")
+        graphnc, simp_node_dictnc, simp_edge_dictnc = gfa_to_graph("{0}nc_graph_L3p.gfa".format(TEMP_DIR))
+        prev_dp_dictnc, curr_dp_dictnc, node_ratio_dictnc = coverage_rebalance_formal(graphnc, simp_node_dictnc, simp_edge_dictnc)
+        print("Done, start coverage merge")
+
+        for no, node in simp_node_dictnc.items():
+            cnode = simp_node_dict2[no]
+            ratio = node_ratio_dictori[no]
+            merge_dp = graphnc.vp.dp[node] + graph2.vp.dp[cnode] * (1 - ratio)
+            print("No: {0} linear dp: {1}, cyc dp: {2}, merged dp: {3}".format(no, graphnc.vp.dp[node], graph2.vp.dp[cnode], merge_dp))
+            graph2.vp.dp[cnode] = merge_dp
+            
+        coverage_rebalance_formal(graph2, simp_node_dict2, simp_edge_dict2, single_iter=True)
+        ## one more rebalance
+    else:
+        print("no linear subgraph available..")
+
 
     graph_to_gfa(graph2, simp_node_dict2, simp_edge_dict2, "{0}dbt_graph_L3.gfa".format(TEMP_DIR))
     graph3, simp_node_dict3, simp_edge_dict3 = flipped_gfa_to_graph("{0}dbt_graph_L3.gfa".format(TEMP_DIR))
@@ -613,7 +628,7 @@ def contig_node_cov_rise(graph: Graph, simp_node_dict: dict, contig_dict: dict, 
             graph.vp.dp[node] = sum_covs
     return
 
-def coverage_rebalance_formal(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict):
+def coverage_rebalance_formal(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, single_iter=False):
     def expectation_edge_flow(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict):
         for (u,v),e in simp_edge_dict.items():
             u_node = simp_node_dict[u]
@@ -634,7 +649,7 @@ def coverage_rebalance_formal(graph: Graph, simp_node_dict: dict, simp_edge_dict
             graph.ep.flow[e] = max(graph.ep.flow[e], flow)
             # print_edge(graph, e, "{0}".format(flow))
         return
-    def maximization_node_depth(graph: Graph, simp_node_dict: dict, usage_dict: dict):
+    def maximization_node_depth(graph: Graph, simp_node_dict: dict):
         is_update = False
         for no, node in simp_node_dict.items():
             us = list(node.in_neighbors())
@@ -657,10 +672,10 @@ def coverage_rebalance_formal(graph: Graph, simp_node_dict: dict, simp_edge_dict
             # print_vertex(graph, node, "prev dp: {0}".format(curr_dp))
             # print("inflow: ", inflow, "outflow: ", outflow, "in n sum: ", in_neighbor_dp_sum, " out n sum: ", out_neighbor_dp_sum)
             if curr_dp != graph.vp.dp[node]:
-                usage_dict[no] += 1
                 is_update = True
         return is_update
-    
+
+
     cutoff = 0.001 * len(simp_node_dict)
     sum_delta = 0
     sum_depth_before = numpy.sum([graph.vp.dp[u] for u in simp_node_dict.values()])
@@ -669,12 +684,12 @@ def coverage_rebalance_formal(graph: Graph, simp_node_dict: dict, simp_edge_dict
     prev_dp_dict = {}
     for no, v in simp_node_dict.items():
         prev_dp_dict[no] = graph.vp.dp[v]
-
+    if single_iter:
+        expectation_edge_flow(graph, simp_node_dict, simp_edge_dict)
+        maximization_node_depth(graph, simp_node_dict)
+        return prev_dp_dict, {}, {}
     print(cutoff)
     is_update = True
-    usage_dict = {}
-    for no in simp_node_dict.keys():
-        usage_dict[no] = 0
     while is_update:
         # E Step
         expectation_edge_flow(graph, simp_node_dict, simp_edge_dict)
@@ -690,7 +705,7 @@ def coverage_rebalance_formal(graph: Graph, simp_node_dict: dict, simp_edge_dict
         if round(sum_delta, 2) < cutoff:
             break
         # M Step
-        is_update = maximization_node_depth(graph, simp_node_dict, usage_dict)
+        is_update = maximization_node_depth(graph, simp_node_dict)
 
     # final evaluation
     sum_ratio = (numpy.sum([graph.vp.dp[u] for u in simp_node_dict.values()]) / sum_depth_before)
@@ -700,7 +715,11 @@ def coverage_rebalance_formal(graph: Graph, simp_node_dict: dict, simp_edge_dict
     node_ratio_dict = {}
     for no in prev_dp_dict.keys():
         node_ratio_dict[no] = (graph.vp.dp[simp_node_dict[no]] / prev_dp_dict[no])
-    return prev_dp_dict, node_ratio_dict
+    curr_dp_dict = {}
+    for no, v in simp_node_dict.items():
+        curr_dp_dict[no] = graph.vp.dp[v]
+
+    return prev_dp_dict, curr_dp_dict, node_ratio_dict
 
 def graph_simplification(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, node_to_contig_dict: dict, edge_to_contig_dict: dict, min_cov):
     """

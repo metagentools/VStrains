@@ -469,13 +469,14 @@ def contig_dict_to_path(contig_dict: dict, output_file):
             paths.write(path_ids)
         paths.close()
 
-def get_contig(graph: Graph, contig_file, simp_node_dict: dict, simp_edge_dict: dict, min_cov, min_len, overlap, min_node=2):
+def get_contig(graph: Graph, contig_file, simp_node_dict: dict, simp_edge_dict: dict, min_len):
     """
     Map SPAdes's contig to the graph, return all the contigs.
     if nodes of contig have coverage less than min_cov, try to shrink the contig.
     
     Also fix the graph by adding removed node&edge if is supported by contigs
     """
+    print("-----------------get contig-----------------------")
     if not contig_file:
         print("contig file not imported")
         return -1
@@ -532,7 +533,6 @@ def get_contig(graph: Graph, contig_file, simp_node_dict: dict, simp_edge_dict: 
                         # still not pick until last edge
                         print("all the edge is removed, no pick until last point")
                         break
-                # fixed = True
 
                 if not pick:
                     # whole contig is reduced already, no split chance, potential error
@@ -572,18 +572,18 @@ def get_contig(graph: Graph, contig_file, simp_node_dict: dict, simp_edge_dict: 
     for cno, (c, _, _) in contig_dict.items():
         for n in c:
             if n not in node_to_contig_dict:
-                node_to_contig_dict[n] = [{cno},graph.vp.dp[simp_node_dict[n]], simp_node_dict[n]]
+                node_to_contig_dict[n] = {cno}
             else:
-                node_to_contig_dict[n][0].add(cno)
+                node_to_contig_dict[n].add(cno)
         for i in range(len(c)):
             c_i = c[i]
             c_i_1 = c[i+1] if (i < len(c) - 1) else None
             if c_i_1 != None:
                 if (c_i, c_i_1) not in edge_to_contig_dict:
-                    edge_to_contig_dict[(c_i, c_i_1)] = [{cno}, graph.ep.flow[simp_edge_dict[(c_i, c_i_1)]], simp_edge_dict[(c_i, c_i_1)]]
+                    edge_to_contig_dict[(c_i, c_i_1)] = {cno}
                 else:
-                    edge_to_contig_dict[(c_i, c_i_1)][0].add(cno)
-
+                    edge_to_contig_dict[(c_i, c_i_1)].add(cno)
+    print("-----------------get contig end-----------------------")
     return contig_dict, node_to_contig_dict, edge_to_contig_dict
 
 def contig_preprocess(graph:Graph, simp_node_dict: dict, simp_edge_dict: dict, overlap, min_cov, contig_dict: dict):
@@ -820,6 +820,21 @@ def graph_stat(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict):
     
     print("-----------------------graph stat end--------------------")
 
+def graph_to_dict(graph: Graph):
+    simp_node_dict = {}
+    simp_edge_dict = {}
+    for node in graph.vertices():
+        simp_node_dict[graph.vp.id[node]] = node
+    for edge in graph.edges():
+        simp_edge_dict[(graph.vp.id[edge.source()], graph.vp.id[edge.target()])] = edge
+    return simp_node_dict, simp_edge_dict
+
+def graph_color_other_to_gray(graph: Graph, simp_node_dict: dict, ids: set):
+    gray_ids = set(simp_node_dict.keys()).difference(ids)
+    for id in gray_ids:
+        graph.vp.color[simp_node_dict[id]] = 'gray'
+
+        
 def print_edge(graph, e, s=""):
     print(s, " edge: ", graph.vp.id[e.source()], "->", graph.vp.id[e.target()], graph.ep.flow[e], graph.ep.color[e])
 
@@ -828,3 +843,12 @@ def print_vertex(graph, v, s=""):
 
 def print_contig(cno, clen, ccov, contig, s=""):
     print(s, " Contig: ", cno, ", length: ", clen, ", cov: ", ccov, "Path: ", [int(v) for v in contig])
+
+def list_to_string(ids: list, s=""):
+    string = s + " - "
+    for id in ids:
+        string += str(id) + ", "
+    return string[:-2] if len(string) >= 2 else ""
+
+def path_to_id_string(graph: Graph, path, s=""):
+    return list_to_string([graph.vp.id[node] for node in path], s)

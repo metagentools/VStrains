@@ -400,9 +400,10 @@ def map_ref_to_graph(ref_file, simp_node_dict: dict, graph_file, store_mapping=F
             ref_no = splited[5]
             nmatch = int(splited[9])
             nblock = int(splited[10])
+            mark = int(splited[11])
             if seg_no not in simp_node_dict:
                 continue
-            if ((seg_f - seg_s) / seg_l) >= 0.5 and (nmatch/nblock) >= 0.5:
+            if (((seg_f - seg_s) / seg_l) >= 0.5 and (nmatch/nblock) >= 0.5 and mark > 0):
                 if ref_no not in strain_dict:
                     strain_dict[ref_no] = []
                 strain_dict[ref_no].append(seg_no_int)
@@ -567,6 +568,11 @@ def get_contig(graph: Graph, contig_file, simp_node_dict: dict, simp_edge_dict: 
                     print("only left up node is picked for contig: ", cno)
         contigs_file.close()
     
+    node_to_contig_dict, edge_to_contig_dict = contig_map_node(contig_dict)
+    print("-----------------get contig end-----------------------")
+    return contig_dict, node_to_contig_dict, edge_to_contig_dict
+
+def contig_map_node(contig_dict: dict):
     node_to_contig_dict = {}
     edge_to_contig_dict = {}
     for cno, (c, _, _) in contig_dict.items():
@@ -583,12 +589,11 @@ def get_contig(graph: Graph, contig_file, simp_node_dict: dict, simp_edge_dict: 
                     edge_to_contig_dict[(c_i, c_i_1)] = {cno}
                 else:
                     edge_to_contig_dict[(c_i, c_i_1)].add(cno)
-    print("-----------------get contig end-----------------------")
-    return contig_dict, node_to_contig_dict, edge_to_contig_dict
+    return node_to_contig_dict, edge_to_contig_dict
 
 def contig_preprocess(graph:Graph, simp_node_dict: dict, simp_edge_dict: dict, overlap, min_cov, contig_dict: dict):
     """
-    Remove and split the unsatisfied contigs.
+    Remove and split the unsatisfied contigs. legacy
     """
     for cno, [contig, clen, ccov] in list(contig_dict.items()):
         contig_dict.pop(cno)
@@ -768,6 +773,7 @@ def contig_flow(graph: Graph, edge_dict: dict, contig):
     for i in range(len(contig)-1):
         e = edge_dict[(contig[i],contig[i+1])]
         f = graph.ep.flow[e]
+        print_edge(graph, e, "check edge flow")
         edge_flow.append(f)
     return edge_flow
 

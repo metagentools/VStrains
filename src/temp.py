@@ -1417,3 +1417,25 @@ def coverage_rebalance(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict,
     # node_usage_pair = sorted(node_usage_dict.items(), key=lambda x: x[1][1] - x[1][0], reverse=True)
     # for id, used in node_usage_pair:
     #     print("id: {0} has been used {1} times".format(id, used))
+
+
+
+
+# def get_concat_plan(contig_dict: dict, max_len):
+#     contig_impossible_dict = {}
+#     all_contig_ids = contig_dict.keys()
+#     for no in contig_dict.keys():
+#         contig_impossible_dict[no] = set()
+#     for tail_cno, [tail_contig, tail_clen, _] in contig_dict.items():
+#         for head_cno, [head_contig, head_clen, _] in contig_dict.items():
+#             if tail_cno != head_cno:
+#                 if tail_clen + head_clen > max_len:
+#                     contig_impossible_dict[tail_cno].add(head_cno)
+#                 if list(set(tail_contig) & set(head_contig)) != []:
+#                     contig_impossible_dict[tail_cno].add(head_cno)
+#     contig_concat_plans = {}
+#     for key, item in contig_impossible_dict.items():
+#         ps = all_contig_ids - item
+#         print("cno: ", key, " can concat with following: ", ps)
+#         contig_concat_plans[key] = ps
+#     return contig_concat_plans

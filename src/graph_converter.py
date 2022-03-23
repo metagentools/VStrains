@@ -800,10 +800,10 @@ def simp_path(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict):
             simple_paths.append(p) 
     return simple_paths
 
-def simple_paths_to_dict(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, contig_node_dict: dict, overlap):
+def simple_paths_to_dict(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, contig_nodes, overlap):
     simple_paths = simp_path(graph, simp_node_dict, simp_edge_dict)
     simp_path_dict = {}
-    contig_node_ids = set(contig_node_dict.values())
+    contig_node_ids = set(contig_nodes)
 
     for id, p in enumerate(simple_paths):
         print("path: ", [int(graph.vp.id[u]) for u in p])

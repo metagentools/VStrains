@@ -214,6 +214,85 @@ def flipped_gfa_to_graph(gfa_file):
     
     return graph, red_node_dict, red_edge_dict
 
+def assign_edge_flow(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict):
+    """
+    Assign the edge flow based on node weight and contig alignment.
+    """
+    for (u,v),e in simp_edge_dict.items():
+        u_node = simp_node_dict[u]
+        v_node = simp_node_dict[v]
+        flow = 0
+        if u_node.out_degree() == 1 and v_node.in_degree() == 1:
+            flow = max(graph.vp.dp[u_node], graph.vp.dp[v_node])
+        elif u_node.out_degree() > 1 and v_node.in_degree() == 1:
+            u_out_sum = numpy.sum([graph.vp.dp[n] for n in u_node.out_neighbors()])
+            flow = max(graph.vp.dp[v_node], (graph.vp.dp[v_node]/u_out_sum)*graph.vp.dp[u_node])
+        elif u_node.out_degree() == 1 and v_node.in_degree() > 1:
+            v_in_sum = numpy.sum([graph.vp.dp[n] for n in v_node.in_neighbors()])
+            flow = max(graph.vp.dp[u_node], (graph.vp.dp[u_node]/v_in_sum)*graph.vp.dp[v_node])
+        else:
+            u_out_sum = numpy.sum([graph.vp.dp[n] for n in u_node.out_neighbors()])
+            v_in_sum = numpy.sum([graph.vp.dp[n] for n in v_node.in_neighbors()])
+            flow = max((graph.vp.dp[v_node] / u_out_sum) * graph.vp.dp[u_node], (graph.vp.dp[u_node] / v_in_sum) * graph.vp.dp[v_node])
+        graph.ep.flow[e] = round(max(graph.ep.flow[e], flow), 2)
+    return
+
+def graph_simplification(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, node_to_contig_dict: dict, edge_to_contig_dict: dict, min_cov):
+    """
+    Directly remove all the vertex with coverage less than minimum coverage and related edge
+
+    Node belongs to any contigs should not be removed
+    return:
+        removed_node_dict
+        removed_edge_dict
+    """
+    print("-------------------------graph simplification----------------------")
+    print("Total nodes: ", len(simp_node_dict), " Total edges: ", len(simp_edge_dict))
+    removed_node_dict = {}
+    removed_edge_dict = {}
+    # iterate until no more node be removed from the graph
+    for id, node in list(simp_node_dict.items()):
+        if graph.vp.dp[node] < min_cov:
+            if id in node_to_contig_dict:
+                if DEBUG_MODE:
+                    print("node: {0} should not be removed although with ccov: {1}".format(id, graph.vp.dp[node]))
+                continue
+            if DEBUG_MODE:
+                print_vertex(graph, node, "Node removed by graph simplification -")
+
+            # delete the node
+            simp_node_dict.pop(id)
+            graph.vp.color[node] = 'gray'
+            removed_node_dict[id] = node
+            total_reduce_depth = graph.vp.dp[node]
+            # delete related edges
+            for out_node in node.out_neighbors():
+                out_id = graph.vp.id[out_node]
+                if (id, out_id) in edge_to_contig_dict:
+                    if DEBUG_MODE:
+                        print("edge: {0} should not be removed".format((id, out_id)))
+                    continue
+                if (id, out_id) in simp_edge_dict:
+                    e = simp_edge_dict[(id, out_id)]
+                    graph.ep.color[e] = 'gray'
+                    simp_edge_dict.pop((id, out_id))
+                    removed_edge_dict[(id, out_id)] = e
+
+            for in_node in node.in_neighbors():
+                in_id = graph.vp.id[in_node]
+                if (in_id, id) in edge_to_contig_dict:
+                    if DEBUG_MODE:
+                        print("edge: {0} should not be removed".format((in_id, id)))
+                    continue
+                if (in_id, id) in simp_edge_dict:
+                    e = simp_edge_dict[(in_id, id)]
+                    graph.ep.color[e] = 'gray'
+                    simp_edge_dict.pop((in_id, id))
+                    removed_edge_dict[(in_id, id)] = e
+    print("Remain: Total nodes: ", len(simp_node_dict), " Total edges: ", len(simp_edge_dict))
+    print("-------------------------graph simplification end----------------------")
+    return removed_node_dict, removed_edge_dict
+
 def graph_to_gfa(graph: Graph, simp_node_dict: dict, edge_dict: dict, filename):
     """
     store the swapped graph in simplifed_graph.
@@ -238,7 +317,7 @@ def graph_to_gfa(graph: Graph, simp_node_dict: dict, edge_dict: dict, filename):
                 continue
             if graph.ep.color[e] != 'black':
                 continue
-
+            # print_edge(graph, e, "adding edge to graph")
             gfa.write("L\t{0}\t{1}\t{2}\t{3}\t{4}M\n".format
             (u, "+", 
             v, "+", 
@@ -686,6 +765,58 @@ def contig_split(graph: Graph, cno, contig: list, simp_node_dict: dict, simp_edg
         # s will end up to not-removed node
     return contig_list
 
+def simp_path(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict):
+    """
+    find simple edges, simple edge is the only edge between its source and sink
+    """
+    simple_edges = []
+    out_edge = {}
+    in_edge = {}
+    for e in simp_edge_dict.values():
+        src = e.source()
+        src_out_d = len([u for u in src.out_neighbors()])
+        target = e.target()
+        target_in_d = len([u for u in target.in_neighbors()])
+        if graph.vp.id[src] not in simp_node_dict or graph.vp.id[target] not in simp_node_dict:
+            continue
+        if src_out_d == 1 and target_in_d == 1:
+            assert src != target
+            simple_edges.append([src, target])
+            in_edge[int(src)] = e
+            out_edge[int(target)] = e
+
+    # build simple paths from simple edges
+    def extend_path(p):
+        v = int(p[-1])
+        if v in in_edge:
+            p.append(in_edge[v].target())
+            return extend_path(p)
+        else:
+            return p
+    simple_paths = []
+    for v, e in in_edge.items():
+        if v not in out_edge:
+            p = extend_path([e.source(), e.target()])
+            simple_paths.append(p) 
+    return simple_paths
+
+def simple_paths_to_dict(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, contig_node_dict: dict, overlap):
+    simple_paths = simp_path(graph, simp_node_dict, simp_edge_dict)
+    simp_path_dict = {}
+    contig_node_ids = set(contig_node_dict.values())
+
+    for id, p in enumerate(simple_paths):
+        print("path: ", [int(graph.vp.id[u]) for u in p])
+        pids = [graph.vp.id[n] for n in p]
+        if contig_node_ids.intersection(set(pids)):
+            print("simple path forbidden, contig is involved")
+            continue
+        name = "0" + str(id) + "0"
+        clen = path_len(graph, p, overlap)
+        cov = numpy.min([graph.vp.dp[n] for n in p])
+        simp_path_dict[name] = [pids, clen, cov]
+    return simp_path_dict
+
 def graph_grouping(graph: Graph, simp_node_dict: dict, forward="", reverse="", partition_length_cut_off=0):
     """
     Maximimize graph connectivity by minimizing node with 0 in-degree or out-degree, detect and remove all the cycles.
@@ -848,7 +979,12 @@ def print_vertex(graph, v, s=""):
     print(s, " vertex: ", graph.vp.id[v], ", dp: ", graph.vp.dp[v], ", kc: ", graph.vp.kc[v], ", in_degree: ", v.in_degree(), ", out_degree: ", v.out_degree(), graph.vp.color[v])
 
 def print_contig(cno, clen, ccov, contig, s=""):
-    print(s, " Contig: ", cno, ", length: ", clen, ", cov: ", ccov, "Path: ", [int(v) for v in contig])
+    path = ""
+    for v in contig:
+        path += v + ", "
+    path = path[:-2]
+    print(s, " Contig: ", cno, ", length: ", clen, ", cov: ", ccov, "Path: ", path)
+
 
 def list_to_string(ids: list, s=""):
     string = s + " - "

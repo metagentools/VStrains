@@ -35,7 +35,7 @@ def quast_eval(c=None, ref=None, o=None, id=0):
 
     ref_file_list = sep_ref(ref, id)
 
-    command = "/Users/luorunpeng/bio_tools/quast-5.1.0rc1/metaquast.py {0} -t 8 -o {1} -R ".format(c, o)
+    command = "/Users/luorunpeng/bio_tools/quast-5.1.0rc1/metaquast.py -m 100 {0} -t 8 -o {1} -R ".format(c, o)
 
     for file in ref_file_list:
         command = command + file + ","

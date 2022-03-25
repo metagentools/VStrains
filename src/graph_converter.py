@@ -893,6 +893,19 @@ def decrement_node_usage_dict(node_usage_dict: dict, path_ids, cov):
     for id in path_ids:
         node_usage_dict[id][0] -= cov
 
+def contig_node_cov_rise(graph: Graph, simp_node_dict: dict, contig_dict: dict, node_to_contig_dict: dict):
+    """
+    for any node that involved in one or more contigs, rise the depth if less than the sum of related contig cov
+    """
+    for no, cnos in node_to_contig_dict.items():
+        sum_covs = numpy.sum([contig_dict[cno][2] for cno in cnos])
+        node = simp_node_dict[no]
+        if sum_covs > graph.vp.dp[node]:
+            if DEBUG_MODE:
+                print("Node: {0} dp is really low: {1} vs {2}, rise it up".format(no, graph.vp.dp[node], sum_covs))
+            graph.vp.dp[node] = sum_covs
+    return
+
 def contig_flow(graph: Graph, edge_dict: dict, contig):
     """
     edge flow for the contig
@@ -904,7 +917,6 @@ def contig_flow(graph: Graph, edge_dict: dict, contig):
     for i in range(len(contig)-1):
         e = edge_dict[(contig[i],contig[i+1])]
         f = graph.ep.flow[e]
-        print_edge(graph, e, "check edge flow")
         edge_flow.append(f)
     return edge_flow
 
@@ -970,8 +982,82 @@ def graph_color_other_to_gray(graph: Graph, simp_node_dict: dict, ids: set):
     gray_ids = set(simp_node_dict.keys()).difference(ids)
     for id in gray_ids:
         graph.vp.color[simp_node_dict[id]] = 'gray'
+    return 
 
-        
+def graph_add_vertex(graph: Graph, simp_node_dict: dict, id, dp, seq, kc, s="add vertex", color='black'):
+    node = graph.add_vertex()
+    graph.vp.id[node] = id
+    graph.vp.dp[node] = dp
+    graph.vp.seq[node] = seq
+    graph.vp.kc[node] = kc
+    graph.vp.color[node] = color
+    simp_node_dict[id] = node
+    print_vertex(graph, node, s)
+    return node
+
+def graph_add_edge(graph: Graph, simp_edge_dict: dict, src, src_id, tgt, tgt_id, overlap, s="add edge", color='black'):
+    edge = graph.add_edge(src, tgt)
+    graph.ep.overlap[edge] = overlap
+    graph.ep.color[edge] = color
+    simp_edge_dict[(src_id, tgt_id)] = edge
+    print_edge(graph, edge, s)
+    return edge
+
+def graph_recolor_edge(graph: Graph, simp_edge_dict: dict, src, src_id, tgt, tgt_id, s="edge recolor", color='black'):
+    """
+    recolour edge to black as default
+    """
+    edge = graph.edge(src, tgt)
+    graph.ep.color[edge] = color
+    simp_edge_dict[(src_id, tgt_id)] = edge
+    print_edge(graph, edge, s)
+    return
+
+def graph_remove_edge(graph: Graph, simp_edge_dict: dict, src_id, tgt_id, color='gray'):
+    edge = simp_edge_dict.pop((src_id, tgt_id))
+    graph.ep.color[edge] = color
+    print_edge(graph, edge, "removed edge")
+    return ((src_id, tgt_id))
+
+def graph_is_DAG(graph: Graph, simp_node_dict: dict):
+    """
+    check if the graph is a DAG, advanced to check all the isolated subgraph by all mean
+    """
+    def isCyclicUtil(graph: Graph, v, visited, recStack):
+        # Mark current node as visited and
+        # adds to recursion stack
+        visited[v] = True
+        recStack[v] = True
+ 
+        # Recur for all neighbours
+        # if any neighbour is visited and in
+        # recStack then graph is cyclic
+        for neighbour in v.out_neighbors():
+            if not visited[neighbour]:
+                if isCyclicUtil(graph, neighbour, visited, recStack):
+                    return True
+            elif recStack[neighbour]:
+                return True
+ 
+        # The node needs to be poped from
+        # recursion stack before function ends
+        recStack[v] = False
+        return False
+    
+    #init
+    visited = {}
+    recStack = {}
+    for id, node in simp_node_dict.items():
+        visited[node] = False
+        recStack[node] = False
+    for id, node in simp_node_dict.items():
+        if not visited[node]:
+            if isCyclicUtil(graph, node, visited, recStack):
+                print("graph is cyclic")
+                return False
+    print("graph is not cyclic")
+    return True            
+
 def print_edge(graph, e, s=""):
     print(s, " edge: ", graph.vp.id[e.source()], "->", graph.vp.id[e.target()], graph.ep.flow[e], graph.ep.color[e])
 

@@ -672,8 +672,10 @@ def coverage_rebalance(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict,
     sum_ratio = (numpy.sum([graph.vp.dp[u] for u in simp_node_dict.values()]) / sum_depth_before)
     print("Sum Ratio: ", sum_ratio, "Ave Ratio: ", numpy.mean(ratios), "Max Ratio: ", numpy.max(ratios), "Min Ratio: ", numpy.min(ratios), "Delta: ", sum_delta)
 
+    ratio_div = sum_ratio if numpy.min(ratios) != 1.0 else 1.0
+    print("selected ratio: ", ratio_div)
     for node in simp_node_dict.values():
-        graph.vp.dp[node] = graph.vp.dp[node] / sum_ratio
+        graph.vp.dp[node] = graph.vp.dp[node] / ratio_div
 
     node_ratio_dict = {}
     for no in prev_dp_dict.keys():
@@ -683,7 +685,7 @@ def coverage_rebalance(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict,
     for no, v in simp_node_dict.items():
         curr_dp_dict[no] = graph.vp.dp[v]
 
-    return prev_dp_dict, curr_dp_dict, node_ratio_dict, sum_ratio
+    return prev_dp_dict, curr_dp_dict, node_ratio_dict, ratio_div
 
 def allowed_concat_init(graph: Graph, contig_dict: dict, simp_node_dict: dict, max_len, overlap):
     
@@ -792,7 +794,10 @@ def contig_clique_graph_build(graph: Graph, simp_node_dict: dict, simp_edge_dict
             
             cliq_edge_dict[(tail_cno, head_cno)] = contig_edge
 
-    graph_draw(g=cliq_graph, output="{0}cliq_graph.png".format(tempdir), bg_color="white", vertex_text=cliq_graph.vp.text, vertex_size=20, vertex_font_size=15, edge_text=cliq_graph.ep.slen, edge_font_size=15, output_size=(900, 900))
+    output_size = 100 * (len(cliq_edge_dict) + len(cliq_node_dict))
+    vsize= 30
+    esize = 30
+    graph_draw(g=cliq_graph, output="{0}cliq_graph.png".format(tempdir), bg_color="white", vertex_text=cliq_graph.vp.text, vertex_size=vsize, vertex_font_size=int(vsize * 0.8), edge_text=cliq_graph.ep.slen, edge_font_size= int(esize * 0.8), output_size=(output_size, output_size))
 
     return cliq_graph, cliq_node_dict, cliq_edge_dict, rand_path_dict, sp_path_dict
 

@@ -1811,3 +1811,77 @@ def contig_reduction(graph: Graph, contig, cno, clen, ccov, simp_node_dict: dict
 
         next_node_index = next_node_index + 1
     return
+
+
+ss_path = None
+cmp_path = None
+def distance_search(graph: Graph, simp_node_dict: dict, contig_covered_node_ids: set, source, sink, overlap: int):
+    """
+    Compute minimal distance and its path between source node and sink node
+    optimise the function with contig overlap check TODO
+    FIXME re-define shortest path
+    """
+    def dfs_helper(graph: graph, u, sink, visited):
+        """
+        Return None if no shortest path is founded
+        """
+        if graph.vp.id[u] == sink:
+            print("found sink")
+            return [u]
+        elif u.out_degree() == 0:
+            return None
+        else:
+            global ss_path
+            global cmp_path
+            for v in u.out_neighbors():
+                if not visited[v] and graph.vp.id[v] in simp_node_dict:
+                    # print_vertex(graph, v, "curr node: ")
+                    visited[v] = True
+                    cmp_path = dfs_helper(graph, v, sink, visited)
+                    if cmp_path != None:
+                        # path lead to sink
+                        cmp_path.insert(0, u)
+                        cmp_len = path_len(graph, cmp_path, overlap)
+                        if ss_path == None:
+                            ss_path = cmp_path
+                        else:
+                            ss_len = path_len(graph, ss_path, overlap)
+                            ss_path = ss_path if ss_len < cmp_len else cmp_path
+                        # print(path_to_id_string(graph, ss_path, "curr sp: "))
+                    visited[v] = False
+        return ss_path
+
+    print("source: ", source, "sink: ", sink)
+    global ss_path
+    ss_path = None
+    global cmp_path
+    cmp_path = None
+
+    s_path = None
+    s_len = 0
+    print("start ssp")
+    visited = {}
+    for u in graph.vertices():
+        visited[u] = False
+    # avoid double contig path
+    for s in contig_covered_node_ids:
+        visited[simp_node_dict[s]] = True
+    # avoid cycle
+    visited[simp_node_dict[source]] = True
+    visited[simp_node_dict[sink]] = False
+
+    u = simp_node_dict[source]
+
+    s_path = dfs_helper(graph, u, sink, visited)
+    print(path_to_id_string(graph, s_path, "path: ") if s_path != None else "path: ")
+    if s_path == None:
+        print("Path not found")
+    elif len(s_path) >= 2:
+        s_path = s_path[1:-1]
+        # compute directed path between ith tail to tth head (distance = len * #nodes in the path - (#nodes in the path - 1) * overlap)
+        s_len = path_len(graph, s_path, overlap)
+        print("shortest path found, len: ", s_len)
+    else:
+        s_path = None
+        print("error path found")
+    return s_path, s_len

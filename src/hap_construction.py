@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
 
 # import re
-# import sys, os
+import sys, os
 # import json
 # import re
-# from graph_tool import GraphView, _in_degree
 # import graph_tool
 # from graph_tool.search import dfs_iterator
 from graph_tool.topology import all_circuits, all_shortest_paths
@@ -718,9 +717,9 @@ def allowed_concat_init(graph: Graph, contig_dict: dict, simp_node_dict: dict, m
             # Final check
             if head_cno not in impossible_concat_dict[tail_cno]:
                 # reachable filter
-                src = contig_dict[tail_cno][0][-1]
-                tgt = contig_dict[head_cno][0][0]
-                reached, rec_path = reachable(graph, simp_node_dict, simp_node_dict[src], tail_cno, simp_node_dict[tgt], head_cno, contig_dict)
+                src = simp_node_dict[contig_dict[tail_cno][0][-1]]
+                tgt = simp_node_dict[contig_dict[head_cno][0][0]]
+                reached, rec_path = reachable(graph, simp_node_dict, src, tail_cno, tgt, head_cno, contig_dict)
                 if not reached:
                     impossible_concat_dict[tail_cno].add(head_cno)
                 else:
@@ -731,14 +730,20 @@ def allowed_concat_init(graph: Graph, contig_dict: dict, simp_node_dict: dict, m
                     # 3 because head-tail contig map just concat without sp in one end.
                     contig_covered_node_ids_curr = list(tail_contig)
                     contig_covered_node_ids_curr.extend(list(head_contig))
-                    sp, plen = distance_search(graph, simp_node_dict, contig_covered_node_ids_curr, src, tgt, overlap)
+                    sp, plen = dijkstra_sp(graph, simp_node_dict, src, tgt, overlap)
                     if sp != None:
                         total_len = 0
                         if head_cno == tail_cno:
-                            total_len = head_clen + plen - 2*overlap
+                            if plen == 0:
+                                total_len = head_clen - overlap
+                            else:
+                                total_len = head_clen + plen - 2*overlap
                             print("total cyclic shortest length: ", total_len)
                         else:
-                            total_len = head_clen + tail_clen + plen - 3*overlap
+                            if plen == 0:
+                                total_len = head_clen + tail_clen - 2*overlap
+                            else:
+                                total_len = head_clen + tail_clen + plen - 3*overlap
                             print("total linear shortest length: ", total_len)
                         if total_len >= max_len:
                             print("even sp exceed the maxlen: ", max_len)
@@ -791,10 +796,30 @@ def contig_clique_graph_build(graph: Graph, simp_node_dict: dict, simp_edge_dict
 
     return cliq_graph, cliq_node_dict, cliq_edge_dict, rand_path_dict, sp_path_dict
 
-
+from graph_tool.topology import all_circuits
+from graph_tool.draw import GraphView
 def contig_pairwise_concatenation(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, contig_dict: dict, 
 cliq_graph: Graph, cliq_node_dict: dict, cliq_edge_dict: dict, rand_path_dict: dict, sp_path_dict: dict, 
 min_cov, min_len, max_len, overlap):
+
+    for no, contig_node in cliq_node_dict.items():
+        if contig_node in list(contig_node.out_neighbors()):
+            if contig_node.in_degree() == 1 and contig_node.out_degree() == 1:
+                # self-cycle single connection priority 1
+                print("cno: ", no, " simple self cycle")
+                sp, plen = sp_path_dict[(no, no)]
+                print(path_to_id_string(graph, sp, "shortest path"))
+            else:
+                print("cno: ", no, " self cycle + outer connection")
+    # cycles = sorted(list(all_circuits(cliq_graph)), key=lambda c: len(c))
+    # for cycle in cycles:
+    #     print("------------")
+    #     print("Cycle: ")
+    #     for c in cycle:
+    #         print(cliq_graph.vp.cno[c])
+    
+
+
     return
 
 def reachable(graph: Graph, simp_node_dict: dict, src, src_cno, tgt, tgt_cno, contig_dict: dict):
@@ -856,67 +881,52 @@ def reachable(graph: Graph, simp_node_dict: dict, src, src_cno, tgt, tgt_cno, co
         print("reachable")
     return reached, rec_path
 
-def distance_search(graph: Graph, simp_node_dict: dict, contig_covered_node_ids: set, source, sink, overlap: int):
+
+def dijkstra_sp(graph: Graph, simp_node_dict: dict, source, sink, overlap: int):
     """
-    Compute minimal distance and its path between source node and sink node
-    optimise the function with contig overlap check TODO
-    FIXME re-define shortest path
+    Use basic dijkstra algorithm to compute the shortest path between source and sink
     """
-    def dfs_helper(graph: graph, u, sink, visited):
-        """
-        Return None if no shortest path is founded
-        """
-        if graph.vp.id[u] == sink:
-            return [u]
-        elif u.out_degree() == 0:
-            return None
-        else:
-            ss_path = None
-            for v in u.out_neighbors():
-                if not visited[v] and graph.vp.id[v] in simp_node_dict:
-                    visited[v] = True
-                    cmp_path = dfs_helper(graph, v, sink, visited)
-                    if cmp_path != None:
-                        # path lead to sink
-                        cmp_path.insert(0, u)
-                        cmp_len = path_len(graph, cmp_path, overlap)
-                        if ss_path == None:
-                            ss_path = cmp_path
-                        else:
-                            ss_len = path_len(graph, ss_path, overlap)
-                            ss_path = ss_path if ss_len < cmp_len else cmp_path
-                    visited[v] = False
-        return ss_path
+    dist = {}
+    prev = {}
+    Q = set()
+    for node in simp_node_dict.values():
+        dist[node] = sys.maxsize
+        prev[node] = None
+        Q.add(node)
+    dist[source] = 0
 
-    print("source: ", source, "sink: ", sink)
-    s_path = None
-    s_len = 0
-    print("start ssp")
-    visited = {}
-    for u in graph.vertices():
-        visited[u] = False
-    # avoid double contig path
-    for s in contig_covered_node_ids:
-        visited[simp_node_dict[s]] = True
-    # avoid cycle
-    visited[simp_node_dict[source]] = True
-    visited[simp_node_dict[sink]] = False
+    while Q:
+        u = None
+        for n, d in sorted(dist.items(), key=lambda x: x[1]):
+            if n in Q:
+                u = n
+                break
 
-    u = simp_node_dict[source]
+        Q.remove(u)
+        if u == sink:
+            break
 
-    s_path = dfs_helper(graph, u, sink, visited)
-    print(path_to_id_string(graph, s_path, "path: ") if s_path != None else "path: ")
-    if s_path == None:
-        print("Path not found")
-    elif len(s_path) >= 2:
-        s_path = s_path[1:-1]
-        # compute directed path between ith tail to tth head (distance = len * #nodes in the path - (#nodes in the path - 1) * overlap)
-        s_len = path_len(graph, s_path, overlap)
-        print("shortest path found, len: ", s_len)
+        for v in u.out_neighbors():
+            if v in Q:
+                alt = dist[u] + path_len(graph, [u, v], overlap)
+                if alt < dist[v]:
+                    dist[v] = alt
+                    prev[v] = u
+    
+    node = sink
+    sp = []
+    while prev[node]:
+        sp.insert(0, node)
+        node = prev[node]
+    sp.insert(0, source)
+    if not sp:
+        print("SP not found")
+        return None, None
     else:
-        s_path = None
-        print("error path found")
-    return s_path, s_len
+        print(path_to_id_string(graph, sp, "SP be found: "))
+        print("plen: ", path_len(graph, sp[1:-1], overlap))
+
+        return sp[1:-1], path_len(graph, sp[1:-1], overlap)
 
 curr_simp_path = []
 def simple_paths(graph: Graph, simp_node_dict: dict, src, tgt, previsited: list):

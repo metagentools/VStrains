@@ -799,31 +799,41 @@ def contig_dict_fix(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, co
                 contig_dict[cno + "_" + str(i)] = [subc, sublen, subcov]
     return
 
-def EM_max_graph_breadth(graph: Graph, simp_node_dict: dict):
-    def E_step(graph: Graph, simp_node_dict: dict, node_breadth: dict):
-        updated = False
-        for no, node in simp_node_dict.items():
-            sum_in = 0
-            for in_node in node.in_neighbors():
-                sum_in += node_breadth[graph.vp.id[in_node]]
-            sum_out = 0
-            for out_node in node.out_neighbors():
-                sum_out += node_breadth[graph.vp.id[out_node]]
-            max_breadth = max (sum_in, node_breadth[no], sum_out)
-            if max_breadth != node_breadth[no]:
-                updated = True
-                node_breadth[no] = max_breadth
-                print(no, max_breadth)
-        return updated
+def contig_cov_fix(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, contig_dict: dict):
+    for cno, [contig, clen, ccov] in contig_dict.items():
+        print("---------------------------------------------------------------")
+        if len(contig) > 1:
+            contig_dict[cno][2] = numpy.min(contig_flow(graph, simp_edge_dict, contig))
+        else:
+            contig_dict[cno][2] = graph.vp.dp[simp_node_dict[contig[0]]]
+        print_contig(cno, clen, contig_dict[cno][2], contig)
+    return
 
-    node_breadth = {}
-    # init
-    for no, node in simp_node_dict.items():
-        node_breadth[no] = max(node.in_degree(), node.out_degree())
-    updated = True
-    while updated:
-        updated = E_step(graph, simp_node_dict, node_breadth)
-    return 0
+# def EM_max_graph_breadth(graph: Graph, simp_node_dict: dict):
+#     def E_step(graph: Graph, simp_node_dict: dict, node_breadth: dict):
+#         updated = False
+#         for no, node in simp_node_dict.items():
+#             sum_in = 0
+#             for in_node in node.in_neighbors():
+#                 sum_in += node_breadth[graph.vp.id[in_node]]
+#             sum_out = 0
+#             for out_node in node.out_neighbors():
+#                 sum_out += node_breadth[graph.vp.id[out_node]]
+#             max_breadth = max (sum_in, node_breadth[no], sum_out)
+#             if max_breadth != node_breadth[no]:
+#                 updated = True
+#                 node_breadth[no] = max_breadth
+#                 print(no, max_breadth)
+#         return updated
+
+#     node_breadth = {}
+#     # init
+#     for no, node in simp_node_dict.items():
+#         node_breadth[no] = max(node.in_degree(), node.out_degree())
+#     updated = True
+#     while updated:
+#         updated = E_step(graph, simp_node_dict, node_breadth)
+#     return 0
 
 def graph_splitting(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, contig_dict: dict, overlap, temp_dir, threshold):
     """
@@ -1078,8 +1088,6 @@ def contig_flow(graph: Graph, edge_dict: dict, contig):
         f = graph.ep.flow[e]
         edge_flow.append(f)
         edges.append(e)
-
-    [print_edge(graph, e) for e in edges]
 
     return edge_flow
 

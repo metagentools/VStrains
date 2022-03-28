@@ -841,6 +841,7 @@ def graph_splitting(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, co
     """
     # print("Max node depth: ")
     print("Threshold: ", threshold)
+    nofsplit = 0
     node_to_contig_dict, edge_to_contig_dict = contig_map_node(contig_dict)
     for no, node in list(simp_node_dict.items()):
         ind = len([e for e in node.in_edges() if graph.ep.color[e] == 'black'])
@@ -890,11 +891,12 @@ def graph_splitting(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, co
                         print("- current branch split forbidden, no supporting contig path", prev_no, no, next_no)
                     else:
                         print("- branch split performed")
+                        nofsplit += 1
                         used_edge.add(ie)
                         used_edge.add(ie)
 
                         subid = "0" + no + "0" + str(i)
-                        subdp = numpy.mean([graph.ep.flow[ie], graph.ep.flow[oe]])
+                        subdp = numpy.max([graph.ep.flow[ie], graph.ep.flow[oe]])
                         sub_node = graph_add_vertex(graph, simp_node_dict, subid, subdp, graph.vp.seq[node], graph.vp.kc[node])
 
                         graph.vp.dp[node] -= subdp
@@ -925,12 +927,14 @@ def graph_splitting(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, co
                                 else:
                                     node_to_contig_dict[subid].add(icno)
     
+    # remove all the isolated low cov node
     for node in list(graph.vertices()):
         ind = len([e for e in node.in_edges() if graph.ep.color[e] == 'black'])
         outd = len([e for e in node.out_edges() if graph.ep.color[e] == 'black'])
         if ind == 0 and outd == 0 and graph.vp.dp[node] < threshold:
             graph_remove_vertex(graph, simp_node_dict, graph.vp.id[node], "remove isolated low cov node")
-            
+    
+    print("No of branch be removed: ", nofsplit)
 
     return
 
@@ -1087,7 +1091,7 @@ def contig_flow(graph: Graph, edge_dict: dict, contig):
         e = edge_dict[(contig[i],contig[i+1])]
         f = graph.ep.flow[e]
         edge_flow.append(f)
-        edges.append(e)
+        print_edge(graph, e, "contig edge ")
 
     return edge_flow
 

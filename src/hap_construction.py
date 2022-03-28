@@ -147,7 +147,7 @@ def main():
     print("-------------------------------GRAPH SIMPLIFICATION AND REBALANCE-----------------------------------")
     maxdp = numpy.max([graph2.vp.dp[node] for node in simp_node_dict2.values()])
     print("MAX NODE DEPTH: ", maxdp)
-    THRESHOLD= maxdp/200
+    THRESHOLD= maxdp/100
     ids = []
     for no, node in simp_node_dict2.items():
         if graph2.vp.dp[node] < THRESHOLD:
@@ -770,6 +770,7 @@ def contig_clique_graph_build(graph: Graph, simp_node_dict: dict, simp_edge_dict
     cliq_graph.vp.text = cliq_graph.new_vertex_property("string")
 
     cliq_graph.ep.slen = cliq_graph.new_edge_property("int32_t")
+    cliq_graph.ep.text = cliq_graph.new_edge_property("string")
 
     cliq_node_dict = {}
     cliq_edge_dict = {}
@@ -788,25 +789,36 @@ def contig_clique_graph_build(graph: Graph, simp_node_dict: dict, simp_edge_dict
         print("------> tail cno: ", tail_cno, " can concat with following head cnos: ", head_cnos)
         src_node = cliq_node_dict[tail_cno]
         for head_cno in head_cnos:
+            # print("------>all simple path from {0} to {1}".format(tail_cno, head_cno))
+            # src = simp_node_dict[contig_dict[tail_cno][0][-1]]
+            # tgt = simp_node_dict[contig_dict[head_cno][0][0]]       
+            # previsited = list(contig_dict[tail_cno][0])
+            # previsited.extend(list(contig_dict[head_cno][0]))
+            # curr_max_len = predict_sp_max_len(graph, simp_node_dict, contig_dict, tail_cno, head_cno, max_len, overlap)
+            # spaths = retrieve_simple_paths(graph, simp_node_dict, src, tgt, previsited, curr_max_len, overlap)
+            # print("------> number of simple paths be found: ", len(spaths))
+            spaths = []
             tgt_node = cliq_node_dict[head_cno]
             contig_edge = cliq_graph.add_edge(src_node, tgt_node)
             cliq_graph.ep.slen[contig_edge] = int(sp_path_dict[(tail_cno, head_cno)][1])
+            cliq_graph.ep.text[contig_edge] = str(cliq_graph.ep.slen[contig_edge]) + ":" + str(len(spaths))
             
             cliq_edge_dict[(tail_cno, head_cno)] = contig_edge
 
-    output_size = 100 * (len(cliq_edge_dict) + len(cliq_node_dict))
+    output_size = 120 * (len(cliq_edge_dict) + len(cliq_node_dict))
     vsize= 30
     esize = 30
-    graph_draw(g=cliq_graph, output="{0}cliq_graph.png".format(tempdir), bg_color="white", vertex_text=cliq_graph.vp.text, vertex_size=vsize, vertex_font_size=int(vsize * 0.8), edge_text=cliq_graph.ep.slen, edge_font_size= int(esize * 0.8), output_size=(output_size, output_size))
+    graph_draw(g=cliq_graph, output="{0}cliq_graph.png".format(tempdir), bg_color="white", 
+    vertex_text=cliq_graph.vp.text, vertex_size=vsize, vertex_font_size=int(vsize * 0.8), 
+    edge_text=cliq_graph.ep.text, edge_font_size= int(esize * 0.8), output_size=(output_size, output_size))
 
     return cliq_graph, cliq_node_dict, cliq_edge_dict, rand_path_dict, sp_path_dict
 
-from graph_tool.topology import all_circuits
-from graph_tool.draw import GraphView
 def contig_pairwise_concatenation(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, contig_dict: dict, 
 cliq_graph: Graph, cliq_node_dict: dict, cliq_edge_dict: dict, rand_path_dict: dict, sp_path_dict: dict, 
 min_cov, min_len, max_len, overlap):
 
+    self_cycles = []
     for no, contig_node in cliq_node_dict.items():
         if contig_node in list(contig_node.out_neighbors()):
             if contig_node.in_degree() == 1 and contig_node.out_degree() == 1:
@@ -816,14 +828,8 @@ min_cov, min_len, max_len, overlap):
                 print(path_to_id_string(graph, sp, "shortest path"))
             else:
                 print("cno: ", no, " self cycle + outer connection")
-    # cycles = sorted(list(all_circuits(cliq_graph)), key=lambda c: len(c))
-    # for cycle in cycles:
-    #     print("------------")
-    #     print("Cycle: ")
-    #     for c in cycle:
-    #         print(cliq_graph.vp.cno[c])
-    
-
+        else:
+            print("cno: ", no, " no self cycle")
 
     return
 
@@ -902,6 +908,7 @@ def dijkstra_sp(graph: Graph, simp_node_dict: dict, source, sink, overlap: int):
 
     while Q:
         u = None
+        # retrieve min
         for n, d in sorted(dist.items(), key=lambda x: x[1]):
             if n in Q:
                 u = n
@@ -913,11 +920,11 @@ def dijkstra_sp(graph: Graph, simp_node_dict: dict, source, sink, overlap: int):
 
         for v in u.out_neighbors():
             if v in Q:
+                # relax
                 alt = dist[u] + path_len(graph, [u, v], overlap)
                 if alt < dist[v]:
                     dist[v] = alt
                     prev[v] = u
-    
     node = sink
     sp = []
     while prev[node]:
@@ -934,7 +941,8 @@ def dijkstra_sp(graph: Graph, simp_node_dict: dict, source, sink, overlap: int):
         return sp[1:-1], path_len(graph, sp[1:-1], overlap)
 
 curr_simp_path = []
-def simple_paths(graph: Graph, simp_node_dict: dict, src, tgt, previsited: list):
+def retrieve_simple_paths(graph: Graph, simp_node_dict: dict, src, tgt, previsited: list, max_len, overlap):
+    print("src: {0}, tgt: {1}, max_len: {2}".format(graph.vp.id[src], graph.vp.id[tgt], max_len))
     simple_path = []
     visited = {}
     for v in graph.vertices():
@@ -948,8 +956,10 @@ def simple_paths(graph: Graph, simp_node_dict: dict, src, tgt, previsited: list)
         global curr_simp_path
         visited[u] = True
         curr_simp_path.append(u)
-        # print(path_to_id_string(graph, curr_path, graph.vp.id[u]))
-        if u == v:
+        # print(path_to_id_string(graph, curr_simp_path, "temp path"))
+        if path_len(graph, curr_simp_path, overlap) >= max_len:
+            print("max len reached, drop the path")
+        elif u == v:
             print(path_to_id_string(graph, curr_simp_path, "path found"))
             simple_path.append(curr_simp_path[:])
         else:
@@ -960,10 +970,19 @@ def simple_paths(graph: Graph, simp_node_dict: dict, src, tgt, previsited: list)
         visited[u] = False
         return
     dfs(src, tgt)
+
     return simple_path
 
-
-
+def predict_sp_max_len(graph: Graph, simp_node_dict: dict, contig_dict: dict, tail_cno, head_cno, max_len, overlap):
+    tail_contig, tail_clen, _ = contig_dict[tail_cno]
+    src_len = len(graph.vp.seq[simp_node_dict[tail_contig[-1]]])
+    head_contig, head_clen, _ = contig_dict[head_cno]
+    tgt_len = len(graph.vp.seq[simp_node_dict[head_contig[0]]])
+    if head_cno == tail_cno:
+        return max_len - tail_clen + src_len + tgt_len
+    else:
+        return max_len - head_clen - tail_clen + src_len + tgt_len + overlap 
+    
 def strain_extension(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, strain_dict: dict, min_cov, max_len, overlap):
     """
     Extend the strain length

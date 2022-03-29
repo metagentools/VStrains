@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 
 # import re
+from calendar import c
+from pydoc import cli
 import sys, os
-# import json
 # import re
 # import graph_tool
-# from graph_tool.search import dfs_iterator
 from graph_tool.topology import all_circuits, all_shortest_paths
 from graph_tool.draw import graph_draw
 
@@ -145,9 +145,10 @@ def main():
     assign_edge_flow(graph2, simp_node_dict2, simp_edge_dict2)
 
     print("-------------------------------GRAPH SIMPLIFICATION AND REBALANCE-----------------------------------")
-    maxdp = numpy.max([graph2.vp.dp[node] for node in simp_node_dict2.values()])
-    print("MAX NODE DEPTH: ", maxdp)
-    THRESHOLD= maxdp/100
+    mediandp = numpy.median([graph2.vp.dp[node] for node in simp_node_dict2.values()])
+    print("MEDIAN NODE DEPTH: ", mediandp)
+    ## TODO more 
+    THRESHOLD= mediandp/20
     ids = []
     for no, node in simp_node_dict2.items():
         if graph2.vp.dp[node] < THRESHOLD:
@@ -194,10 +195,11 @@ def main():
     if args.ref_file:
         map_ref_to_graph(args.ref_file, simp_node_dict5, "{0}cbsdt_graph_L5.gfa".format(TEMP_DIR), True, "{0}node_to_ref_red.paf".format(TEMP_DIR), "{0}temp_gfa_to_fasta.fasta".format(TEMP_DIR))
     
-    cliq_graph, cliq_node_dict, cliq_edge_dict, rand_path_dict, sp_path_dict = contig_clique_graph_build(graph5, simp_node_dict5, simp_edge_dict5, contig_dict, args.max_len, args.overlap, TEMP_DIR)
-    
+    cliq_graph, cliq_node_dict, cliq_edge_dict, rand_path_dict, sp_path_dict = contig_clique_graph_build(graph5, simp_node_dict5, simp_edge_dict5, contig_dict, args.max_len, args.overlap)
+    # draw_cliq_graph(cliq_graph, cliq_node_dict, cliq_edge_dict, TEMP_DIR, "cliq_graphL1.png")
+
     print("-------------------------------CONTIG PAIRWISE CONCATENATION-----------------------------------")
-    contig_pairwise_concatenation(graph5, simp_node_dict5, simp_edge_dict5, contig_dict, cliq_graph, cliq_node_dict, cliq_edge_dict, rand_path_dict, sp_path_dict, args.min_cov, args.min_len, args.max_len, args.overlap)
+    # contig_pairwise_concatenation(graph5, simp_node_dict5, simp_edge_dict5, contig_dict, cliq_graph, cliq_node_dict, cliq_edge_dict, rand_path_dict, sp_path_dict, args.min_cov, args.min_len, args.max_len, args.overlap)
 
     return 0
 
@@ -762,13 +764,16 @@ def allowed_concat_init(graph: Graph, contig_dict: dict, simp_node_dict: dict, m
         contig_concat_plans[key] = all_contig_ids - item
     return contig_concat_plans, rand_path_dict, sp_path_dict
 
-def contig_clique_graph_build(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, contig_dict: dict, max_len, overlap, tempdir):
+def contig_clique_graph_build(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, contig_dict: dict, max_len, overlap):
+
     cliq_graph = Graph(directed=True)
     cliq_graph.vp.cno = cliq_graph.new_vertex_property("string", val="")
     cliq_graph.vp.clen = cliq_graph.new_vertex_property("int32_t")
     cliq_graph.vp.ccov = cliq_graph.new_vertex_property("double")
     cliq_graph.vp.text = cliq_graph.new_vertex_property("string")
-
+    cliq_graph.vp.color = cliq_graph.new_vertex_property("string")
+    
+    cliq_graph.ep.color = cliq_graph.new_edge_property("string")
     cliq_graph.ep.slen = cliq_graph.new_edge_property("int32_t")
     cliq_graph.ep.text = cliq_graph.new_edge_property("string")
 
@@ -780,6 +785,7 @@ def contig_clique_graph_build(graph: Graph, simp_node_dict: dict, simp_edge_dict
         cliq_graph.vp.cno[contig_node] = cno
         cliq_graph.vp.clen[contig_node] = clen
         cliq_graph.vp.ccov[contig_node] = ccov
+        cliq_graph.vp.color[contig_node] = 'black'
         cliq_graph.vp.text[contig_node] = cno + ":" + str(clen) + ":" + str(round(ccov))
         cliq_node_dict[cno] = contig_node
 
@@ -789,28 +795,13 @@ def contig_clique_graph_build(graph: Graph, simp_node_dict: dict, simp_edge_dict
         print("------> tail cno: ", tail_cno, " can concat with following head cnos: ", head_cnos)
         src_node = cliq_node_dict[tail_cno]
         for head_cno in head_cnos:
-            # print("------>all simple path from {0} to {1}".format(tail_cno, head_cno))
-            # src = simp_node_dict[contig_dict[tail_cno][0][-1]]
-            # tgt = simp_node_dict[contig_dict[head_cno][0][0]]       
-            # previsited = list(contig_dict[tail_cno][0])
-            # previsited.extend(list(contig_dict[head_cno][0]))
-            # curr_max_len = predict_sp_max_len(graph, simp_node_dict, contig_dict, tail_cno, head_cno, max_len, overlap)
-            # spaths = retrieve_simple_paths(graph, simp_node_dict, src, tgt, previsited, curr_max_len, overlap)
-            # print("------> number of simple paths be found: ", len(spaths))
-            spaths = []
             tgt_node = cliq_node_dict[head_cno]
             contig_edge = cliq_graph.add_edge(src_node, tgt_node)
             cliq_graph.ep.slen[contig_edge] = int(sp_path_dict[(tail_cno, head_cno)][1])
-            cliq_graph.ep.text[contig_edge] = str(cliq_graph.ep.slen[contig_edge]) + ":" + str(len(spaths))
+            cliq_graph.ep.color[contig_edge] = 'black'
+            cliq_graph.ep.text[contig_edge] = str(cliq_graph.ep.slen[contig_edge])
             
             cliq_edge_dict[(tail_cno, head_cno)] = contig_edge
-
-    output_size = 120 * (len(cliq_edge_dict) + len(cliq_node_dict))
-    vsize= 30
-    esize = 30
-    graph_draw(g=cliq_graph, output="{0}cliq_graph.png".format(tempdir), bg_color="white", 
-    vertex_text=cliq_graph.vp.text, vertex_size=vsize, vertex_font_size=int(vsize * 0.8), 
-    edge_text=cliq_graph.ep.text, edge_font_size= int(esize * 0.8), output_size=(output_size, output_size))
 
     return cliq_graph, cliq_node_dict, cliq_edge_dict, rand_path_dict, sp_path_dict
 
@@ -819,19 +810,73 @@ cliq_graph: Graph, cliq_node_dict: dict, cliq_edge_dict: dict, rand_path_dict: d
 min_cov, min_len, max_len, overlap):
 
     self_cycles = []
-    for no, contig_node in cliq_node_dict.items():
+    processed_contig = []
+    for no, contig_node in list(cliq_node_dict.items()):
         if contig_node in list(contig_node.out_neighbors()):
-            if contig_node.in_degree() == 1 and contig_node.out_degree() == 1:
-                # self-cycle single connection priority 1
-                print("cno: ", no, " simple self cycle")
-                sp, plen = sp_path_dict[(no, no)]
-                print(path_to_id_string(graph, sp, "shortest path"))
+            if len(list(contig_node.all_edges())) > 2:
+                if cliq_graph.vp.clen[contig_node] < min_len:
+                    # remove self cycle edge with self cycle + outer connection feature when clen < minlen
+                    self_edge = cliq_graph.edge(contig_node, contig_node)
+                    cliq_graph.ep.color[self_edge] = 'gray'
+                    cliq_edge_dict.pop((no, no))
+                    print("remove self edge+outer connection {0} -> {0} with node length < minlen".format(no))
             else:
-                print("cno: ", no, " self cycle + outer connection")
+                print("definite self cycle")
+                self_cycles.append(contig_node)
+                processed_contig.append(contig_node)
+                cliq_node_dict.pop(no)
+
         else:
             print("cno: ", no, " no self cycle")
 
+    # process all the contig until all finished
+    # direct pair two adjacent contig only if coverage difference is within pairwise coefficient
+    pairwise_coe = 5
+    while cliq_node_dict:
+        # all the src contig
+        L1_contigs = {}
+        for no, contig_node in list(cliq_node_dict.items()):
+            ind = len([e for e in contig_node.in_edges() if cliq_graph.ep.color[e] == 'black'])
+            if ind == 0:
+                # src node
+                L1_contigs[no] = contig_node
+        L2_contigs = {}
+        L2_contigs_to_src = {}
+        L1_contigs_to_tgt = {}
+        for no, contig_node in list(L1_contigs.items()):
+            L2_contigs_to_src[no] = {}
+            for out_contig_node in [outn for outn in contig_node.out_neighbors() if graph.vp.color[outn] == 'black']:
+                outid = cliq_graph.vp.cno[out_contig_node]
+                if not outid in L2_contigs:
+                    L2_contigs[outid] = out_contig_node
+                if not outid in L1_contigs_to_tgt:
+                    L1_contigs_to_tgt[outid] = {}
+                
+                L1_contigs_to_tgt[outid][no] = contig_node
+                L2_contigs_to_src[no][outid] = out_contig_node
+        
+        print("L1: ", [no for no in L1_contigs.keys()])
+        print("L2: ", [no for no in L2_contigs.keys()])
+        
+        # detect the most confident contig pair first
+        # detail..
+
+        # for all decided contig pair, do the actual concatenation on the graph
+
+        # merge the concated contig pair into single contig node
+
+        # re-iterate...
+        
+        break
+        # all the secondary contig where each src can reach
+
+
+
     return
+
+#######################################################################################################
+#######################################PATH FINDING ALGORITHM##########################################
+#######################################################################################################
 
 def reachable(graph: Graph, simp_node_dict: dict, src, src_cno, tgt, tgt_cno, contig_dict: dict):
     """
@@ -930,11 +975,11 @@ def dijkstra_sp(graph: Graph, simp_node_dict: dict, source, sink, overlap: int):
     while prev[node]:
         sp.insert(0, node)
         node = prev[node]
-    sp.insert(0, source)
     if not sp:
         print("SP not found")
         return None, None
     else:
+        sp.insert(0, source)
         print(path_to_id_string(graph, sp, "SP be found: "))
         print("plen: ", path_len(graph, sp[1:-1], overlap))
 

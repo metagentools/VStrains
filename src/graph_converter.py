@@ -2,6 +2,7 @@
 
 # from concurrent.futures import thread
 from graph_tool.all import Graph
+from graph_tool.draw import graph_draw
 import gfapy
 import subprocess
 
@@ -803,7 +804,7 @@ def contig_cov_fix(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, con
     for cno, [contig, clen, ccov] in contig_dict.items():
         print("---------------------------------------------------------------")
         if len(contig) > 1:
-            contig_dict[cno][2] = numpy.min(contig_flow(graph, simp_edge_dict, contig))
+            contig_dict[cno][2] = numpy.median(contig_flow(graph, simp_edge_dict, contig))
         else:
             contig_dict[cno][2] = graph.vp.dp[simp_node_dict[contig[0]]]
         print_contig(cno, clen, contig_dict[cno][2], contig)
@@ -1091,7 +1092,6 @@ def contig_flow(graph: Graph, edge_dict: dict, contig):
         e = edge_dict[(contig[i],contig[i+1])]
         f = graph.ep.flow[e]
         edge_flow.append(f)
-        print_edge(graph, e, "contig edge ")
 
     return edge_flow
 
@@ -1240,6 +1240,14 @@ def graph_is_DAG(graph: Graph, simp_node_dict: dict):
                 return False
     print("graph is not cyclic")
     return True            
+
+def draw_cliq_graph(cliq_graph: Graph, cliq_node_dict: dict, cliq_edge_dict: dict, tempdir, output_file):
+    output_size = 120 * (len(cliq_edge_dict) + len(cliq_node_dict))
+    vsize= 30
+    esize = 30
+    graph_draw(g=cliq_graph, output="{0}{1}".format(tempdir, output_file), bg_color="white", 
+    vertex_text=cliq_graph.vp.text, vertex_size=vsize, vertex_font_size=int(vsize * 0.8), 
+    edge_text=cliq_graph.ep.text, edge_font_size= int(esize * 0.8), output_size=(output_size, output_size))
 
 def print_edge(graph, e, s=""):
     print(s, " edge: ", graph.vp.id[e.source()], "->", graph.vp.id[e.target()], graph.ep.flow[e], graph.ep.color[e])

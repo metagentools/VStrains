@@ -810,32 +810,6 @@ def contig_cov_fix(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, con
         print_contig(cno, clen, contig_dict[cno][2], contig)
     return
 
-# def EM_max_graph_breadth(graph: Graph, simp_node_dict: dict):
-#     def E_step(graph: Graph, simp_node_dict: dict, node_breadth: dict):
-#         updated = False
-#         for no, node in simp_node_dict.items():
-#             sum_in = 0
-#             for in_node in node.in_neighbors():
-#                 sum_in += node_breadth[graph.vp.id[in_node]]
-#             sum_out = 0
-#             for out_node in node.out_neighbors():
-#                 sum_out += node_breadth[graph.vp.id[out_node]]
-#             max_breadth = max (sum_in, node_breadth[no], sum_out)
-#             if max_breadth != node_breadth[no]:
-#                 updated = True
-#                 node_breadth[no] = max_breadth
-#                 print(no, max_breadth)
-#         return updated
-
-#     node_breadth = {}
-#     # init
-#     for no, node in simp_node_dict.items():
-#         node_breadth[no] = max(node.in_degree(), node.out_degree())
-#     updated = True
-#     while updated:
-#         updated = E_step(graph, simp_node_dict, node_breadth)
-#     return 0
-
 def graph_splitting(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, contig_dict: dict, overlap, temp_dir, threshold):
     """
     for any N-N branch, if see if any contig is going through that
@@ -1278,6 +1252,36 @@ def cliq_graph_init(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict):
             cliq_edge_dict[(icno, jcno)] = edge
 
     return cliq_graph, cliq_node_dict, cliq_edge_dict
+
+def cliq_graph_add_node(cliq_graph: Graph, cliq_node_dict: dict, cno, clen, ccov, text, color='black'):
+    cnode = cliq_graph.add_vertex()
+    cliq_graph.vp.cno[cnode] = cno
+    cliq_graph.vp.clen[cnode] = clen
+    cliq_graph.vp.ccov[cnode] = ccov
+    cliq_graph.vp.text[cnode] = text
+    cliq_graph.vp.color[cnode] = color
+
+    cliq_node_dict[cno] = cnode
+
+    return cnode
+
+def cliq_graph_remove_node(cliq_graph: Graph, cliq_node_dict: dict, cno, cnode, color='gray'):
+    cliq_graph.vp.color[cnode] = color
+    cliq_node_dict.pop(cno)
+    return cnode
+
+def cliq_graph_add_edge(cliq_graph: Graph, cliq_edge_dict: dict, cno1, cnode1, cno2, cnode2, slen, text, color='black'):
+    edge = cliq_graph.add_edge(cnode1, cnode2)
+    cliq_graph.ep.color[edge] = color
+    cliq_graph.ep.slen[edge] = slen
+    cliq_graph.ep.text[edge] = text
+    cliq_edge_dict[(cno1, cno2)] = edge
+    return edge
+
+def cliq_graph_remove_edge(cliq_graph: Graph, cliq_edge_dict: dict, cno1, cno2, edge, color='gray'):
+    cliq_graph.ep.color[edge] = color
+    cliq_edge_dict.pop((cno1, cno2))
+    return edge
 
 def draw_cliq_graph(cliq_graph: Graph, nnodes, nedges, tempdir, output_file):
     output_size = 120 * (nnodes + nedges)

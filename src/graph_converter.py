@@ -8,7 +8,7 @@ import subprocess
 
 import numpy
 
-from hap_construction import DEBUG_MODE, TEMP_DIR
+from hap_construction import DEBUG_MODE
 
 
 def gfa_to_graph(gfa_file, init_ori=1):
@@ -1174,46 +1174,7 @@ def graph_remove_edge(graph: Graph, simp_edge_dict: dict, src_id, tgt_id, s="rem
     edge = simp_edge_dict.pop((src_id, tgt_id))
     graph.ep.color[edge] = color
     print_edge(graph, edge, s)
-    return ((src_id, tgt_id))
-
-def graph_is_DAG(graph: Graph, simp_node_dict: dict):
-    """
-    check if the graph is a DAG, advanced to check all the isolated subgraph by all mean
-    """
-    def isCyclicUtil(graph: Graph, v, visited, recStack):
-        # Mark current node as visited and
-        # adds to recursion stack
-        visited[v] = True
-        recStack[v] = True
- 
-        # Recur for all neighbours
-        # if any neighbour is visited and in
-        # recStack then graph is cyclic
-        for neighbour in v.out_neighbors():
-            if not visited[neighbour]:
-                if isCyclicUtil(graph, neighbour, visited, recStack):
-                    return True
-            elif recStack[neighbour]:
-                return True
- 
-        # The node needs to be poped from
-        # recursion stack before function ends
-        recStack[v] = False
-        return False
-    
-    #init
-    visited = {}
-    recStack = {}
-    for id, node in simp_node_dict.items():
-        visited[node] = False
-        recStack[node] = False
-    for id, node in simp_node_dict.items():
-        if not visited[node]:
-            if isCyclicUtil(graph, node, visited, recStack):
-                print("graph is cyclic")
-                return False
-    print("graph is not cyclic")
-    return True            
+    return ((src_id, tgt_id))            
 
 def cliq_graph_init(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict):
     """
@@ -1235,16 +1196,18 @@ def cliq_graph_init(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict):
 
     for cno, contig in simp_node_dict.items():
         if graph.vp.color[contig] == 'black':
+            # print("appending node: ", cno, " cov: ", graph.vp.ccov[contig])
             node = cliq_graph.add_vertex()
             cliq_graph.vp.cno[node] = cno
             cliq_graph.vp.clen[node] = graph.vp.clen[contig]
             cliq_graph.vp.ccov[node] = graph.vp.ccov[contig]
-            cliq_graph.vp.text[node] = graph.vp.text[contig]
+            cliq_graph.vp.text[node] = cno + ":" + str(cliq_graph.vp.clen[node]) + ":" + str(cliq_graph.vp.ccov[node])
             cliq_graph.vp.color[node] = 'black'
             cliq_node_dict[cno] = node
     
     for (icno, jcno), e in simp_edge_dict.items():
         if graph.ep.color[e] == 'black':
+            # print("appending edge: ", (icno, jcno))
             edge = cliq_graph.add_edge(cliq_node_dict[icno], cliq_node_dict[jcno])
             cliq_graph.ep.color[edge] = 'black'
             cliq_graph.ep.slen[edge] = graph.ep.slen[e]
@@ -1266,8 +1229,9 @@ def cliq_graph_add_node(cliq_graph: Graph, cliq_node_dict: dict, cno, clen, ccov
     return cnode
 
 def cliq_graph_remove_node(cliq_graph: Graph, cliq_node_dict: dict, cno, cnode, color='gray'):
-    cliq_graph.vp.color[cnode] = color
-    cliq_node_dict.pop(cno)
+    if cno in cliq_node_dict:
+        cliq_graph.vp.color[cnode] = color
+        cliq_node_dict.pop(cno)
     return cnode
 
 def cliq_graph_add_edge(cliq_graph: Graph, cliq_edge_dict: dict, cno1, cnode1, cno2, cnode2, slen, text, color='black'):
@@ -1279,8 +1243,9 @@ def cliq_graph_add_edge(cliq_graph: Graph, cliq_edge_dict: dict, cno1, cnode1, c
     return edge
 
 def cliq_graph_remove_edge(cliq_graph: Graph, cliq_edge_dict: dict, cno1, cno2, edge, color='gray'):
-    cliq_graph.ep.color[edge] = color
-    cliq_edge_dict.pop((cno1, cno2))
+    if (cno1, cno2) in cliq_edge_dict:
+        cliq_graph.ep.color[edge] = color
+        cliq_edge_dict.pop((cno1, cno2))
     return edge
 
 def draw_cliq_graph(cliq_graph: Graph, nnodes, nedges, tempdir, output_file):

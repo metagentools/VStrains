@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 
 # import re
-from calendar import c
-from pydoc import cli
 import sys, os
 # import re
 # import graph_tool
@@ -20,6 +18,7 @@ import heapq
 from collections import deque
 
 from graph_converter import *
+from search_algos import *
 
 usage = "Construct viral strains under deno vo approach"
 author = "Runpeng Luo"
@@ -798,19 +797,20 @@ def contig_clique_graph_build(graph: Graph, simp_node_dict: dict, simp_edge_dict
             cliq_edge_dict[(tail_cno, head_cno)] = contig_edge
 
     # graph transitive reduction
-    print("total edges: ", len(cliq_edge_dict))
-    for xcno in cliq_node_dict.keys():
-        for ycno in cliq_node_dict.keys():
-            for zcno in cliq_node_dict.keys():
-                if (xcno, ycno) != (xcno, zcno) and (xcno, ycno) != (ycno, zcno):
-                    if (xcno, ycno) in cliq_edge_dict and (ycno, zcno) in cliq_edge_dict and (xcno, zcno) in cliq_edge_dict:
-                        print("transitive edge detected")
-                        graph.ep.color[cliq_edge_dict[(xcno, zcno)]] = 'gray'
-                        cliq_edge_dict.pop((xcno, zcno))
+    # print("total edges: ", len(cliq_edge_dict))
+    # for xcno in cliq_node_dict.keys():
+    #     for ycno in cliq_node_dict.keys():
+    #         for zcno in cliq_node_dict.keys():
+    #             if (xcno, ycno) != (xcno, zcno) and (xcno, ycno) != (ycno, zcno):
+    #                 if (xcno, ycno) in cliq_edge_dict and (ycno, zcno) in cliq_edge_dict and (xcno, zcno) in cliq_edge_dict:
+    #                     print("transitive edge detected")
+    #                     graph.ep.color[cliq_edge_dict[(xcno, zcno)]] = 'gray'
+    #                     cliq_edge_dict.pop((xcno, zcno))
 
-    print("total edges after reduction: ", len(cliq_edge_dict))
-    cliq_graph_r, cliq_node_dict_r, cliq_edge_dict_r = cliq_graph_init(cliq_graph, cliq_node_dict, cliq_edge_dict)
-    return cliq_graph_r, cliq_node_dict_r, cliq_edge_dict_r, sp_path_dict
+    # print("total edges after reduction: ", len(cliq_edge_dict))
+    # cliq_graph_r, cliq_node_dict_r, cliq_edge_dict_r = cliq_graph_init(cliq_graph, cliq_node_dict, cliq_edge_dict)
+    # return cliq_graph_r, cliq_node_dict_r, cliq_edge_dict_r, sp_path_dict
+    return cliq_graph, cliq_node_dict, cliq_edge_dict, sp_path_dict
 
 def contig_pairwise_concatenation(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, contig_dict: dict, 
 cliq_graph: Graph, cliq_node_dict: dict, cliq_edge_dict: dict, sp_path_dict: dict, 
@@ -857,22 +857,21 @@ min_cov, min_len, max_len, overlap, threshold, tempdir):
                 
         return None, None
 
-    def contig_pair_reduction(cno1, cno2, redcov):
+    def contig_pair_reduction(cno1, cno2, redcov, cand_path, cand_len):
         """
         1. reduce the graph and cliq graph via founded path and redcov, 
         for cliq graph, then duplicate/remove
         the cno1/2 node and merge into a single node with redcov, keep 
         all the connections other than 1-2
         """
-        src_contig_nodes = contig_dict[cno1][0]
-        tgt_contig_nodes = contig_dict[cno2][0]
-        src = simp_node_dict[src_contig_nodes[-1]]
-        tgt = simp_node_dict[tgt_contig_nodes[0]]
-        all_paths, cand_path, cand_len, num_similarity = optim_path(cno1, cno2, src, tgt, redcov)
-        
-        # original graph udp reduction
-        for node in cand_path:
-            graph.vp.udp[node] -= redcov
+        # original graph udp/edge flow reduction
+        for i in range(len(cand_path) - 1):
+            u = cand_path[i]
+            v = cand_path[i + 1]
+            graph.vp.udp[u] -= redcov
+            graph.vp.udp[v] -= redcov
+            graph.ep.flow[graph.edge(u, v)] -= redcov
+
         
         # cliq graph reduction
         cnode1 = cliq_node_dict[cno1]
@@ -882,12 +881,12 @@ min_cov, min_len, max_len, overlap, threshold, tempdir):
         cliq_graph.vp.ccov[cnode2] -= redcov
         print("L2 node cov after deduction: ", cliq_graph.vp.ccov[cnode2])
 
-        if cliq_graph.vp.ccov[cnode1] <= 0 and cliq_graph.vp.ccov[cnode2] <= 0:
+        if cliq_graph.vp.ccov[cnode1] <= threshold and cliq_graph.vp.ccov[cnode2] <= threshold:
             print("both node be used up, merge L1 to L2, keep the L2 out edges only")
-            cno_merged = cno1 + "_" + cno2
+            cno_merged = cno1 + "->" + cno2
             cnode_merged = cliq_graph_add_node(cliq_graph, cliq_node_dict, 
             cno_merged, cand_len, redcov, 
-            cliq_graph.vp.text[cnode1] + "_" + cliq_graph.vp.text[cnode2])
+            cno_merged + ":" + str(cand_len) + ":" + str(redcov))
 
             # removed the used up contig node
             cliq_graph_remove_node(cliq_graph, cliq_node_dict, cno1, cnode1)
@@ -912,16 +911,16 @@ min_cov, min_len, max_len, overlap, threshold, tempdir):
                 cliq_graph_add_edge(cliq_graph, cliq_edge_dict, cno_merged, cnode_merged,
                 cliq_graph.vp.cno[tgt2], tgt2, cliq_graph.ep.slen[edge2out], cliq_graph.ep.text[edge2out])
 
-        elif cliq_graph.vp.ccov[cnode1] <= 0:
+        elif cliq_graph.vp.ccov[cnode1] <= threshold:
             print("L1 node be used up, split L2 node, and merge L1 to L2")
             # split L2
-            cno_dup = cno1 + "_" + cno2
+            cno_dup = cno1 + "->" + cno2
             cnode_dup = cliq_graph_add_node(cliq_graph, cliq_node_dict, 
             cno_dup, cand_len, redcov, 
-            cliq_graph.vp.text[cnode1] + "_" + cliq_graph.vp.text[cnode2])
+            cno_dup + ":" + str(cand_len) + ":" + str(redcov))
 
-            # deduct the orignial L2 node ccov
-            cliq_graph.vp.ccov[cnode2] -= redcov
+            # remove the L1 node
+            cliq_graph_remove_node(cliq_graph, cliq_node_dict, cno1, cnode1)
 
             # remove the related L1 edges
             for edge1 in cnode1.all_edges():
@@ -935,16 +934,15 @@ min_cov, min_len, max_len, overlap, threshold, tempdir):
                 cliq_graph_add_edge(cliq_graph, cliq_edge_dict, cno_dup, cnode_dup,
                 cliq_graph.vp.cno[tgt2], tgt2, cliq_graph.ep.slen[edge2out], cliq_graph.ep.text[edge2out])
 
-        elif cliq_graph.vp.ccov[cnode2] <= 0:
+        elif cliq_graph.vp.ccov[cnode2] <= threshold:
             print("L2 node be used up, split L1 node, and merge L1 to L2")  
             # split L1
-            cno_dup = cno1 + "_" + cno2
+            cno_dup = cno1 + "->" + cno2
             cnode_dup = cliq_graph_add_node(cliq_graph, cliq_node_dict, 
             cno_dup, cand_len, redcov, 
-            cliq_graph.vp.text[cnode1] + "_" + cliq_graph.vp.text[cnode2])
+            cno_dup + ":" + str(cand_len) + ":" + str(redcov))
 
-            # deduct the orignial L1 node ccov
-            cliq_graph.vp.ccov[cnode1] -= redcov
+            cliq_graph_remove_node(cliq_graph, cliq_node_dict, cno2, cnode2)
 
             # remove the related L2 inedges
             for edge2 in cnode2.in_edges():
@@ -1004,28 +1002,20 @@ min_cov, min_len, max_len, overlap, threshold, tempdir):
                 # src node
                 L1_contigs[no] = contig_node
         L2_contigs = {}
-        # L2_contigs_from_src = {}
-        # L1_contigs_to_tgt = {}
+        st_pairs = {}
         for no, contig_node in list(L1_contigs.items()):
-            # L2_contigs_from_src[no] = {}
-            for out_contig_node in [outn for outn in contig_node.out_neighbors() if graph.vp.color[outn] == 'black']:
+            for out_contig_node in [outn for outn in contig_node.out_neighbors() if cliq_graph.vp.color[outn] == 'black']:
                 outid = cliq_graph.vp.cno[out_contig_node]
                 if not outid in L2_contigs:
                     L2_contigs[outid] = out_contig_node
-                # if not outid in L1_contigs_to_tgt:
-                #     L1_contigs_to_tgt[outid] = {}
-                
-                # L1_contigs_to_tgt[outid][no] = contig_node
-                # L2_contigs_from_src[no][outid] = out_contig_node
+                st_pairs[(no, outid)] = (contig_node, out_contig_node)
         
         print("L1: ", [no for no in L1_contigs.keys()])
         print("L2: ", [no for no in L2_contigs.keys()])
         
         # detect the most confident contig pair first
         concat_buffer = []
-        used_contig = []
-        for cno1, node1 in L1_contigs.items():
-            for cno2, node2 in L2_contigs.items():
+        for (cno1, cno2), (node1, node2) in st_pairs.items():
                 delta = abs(cliq_graph.vp.ccov[node1] - cliq_graph.vp.ccov[node2])
                 if delta < threshold and (cno1, cno2) in cliq_edge_dict:
                     concat_buffer.append((cno1, cno2, min(cliq_graph.vp.ccov[node1], cliq_graph.vp.ccov[node2]), delta))
@@ -1033,8 +1023,27 @@ min_cov, min_len, max_len, overlap, threshold, tempdir):
         concat_buffer = sorted(concat_buffer, key=lambda tuple: tuple[3])
         print("all most confident sorted concats are: ", concat_buffer)
         for (cno1, cno2, cov, delta) in concat_buffer:
+            if cno1 not in cliq_node_dict or cno2 not in cliq_node_dict:
+                print("contig has been used from previous step: {0} {1}".format(cno1, cno2))
+                continue
             print("PAIR UP {0} - {1}, cov: {2}, diff: {3}".format(cno1, cno2, cov, delta))
-            contig_pair_reduction(cno1, cno2, cov)
+            src = simp_node_dict[contig_dict[cno1][0][-1]]
+            tgt = simp_node_dict[contig_dict[cno2][0][0]]
+            all_paths, cand_path, cand_len, num_similarity = optim_path(cno1, cno2, src, tgt, cov)
+            contig_pair_reduction(cno1, cno2, cov, cand_path, cand_len)
+            # update L1_contig/L2_contig dict
+            if cno1 not in cliq_node_dict:
+                L1_contigs.pop(cno1)
+            if cno2 not in cliq_node_dict:
+                L2_contigs.pop(cno2)
+        
+        for (cno1, cno2), (node1, node2) in st_pairs.items():
+            if cno1 in L1_contigs and cno2 in L2_contigs:
+                print("awaiting to pair up: {0} {1}".format(cno1, cno2))
+        
+        
+
+            
 
         # for all decided contig pair, do the actual concatenation on the graph
 
@@ -1044,184 +1053,10 @@ min_cov, min_len, max_len, overlap, threshold, tempdir):
         
         break
         # all the secondary contig where each src can reach
-    
-    draw_cliq_graph(cliq_graph, len(cliq_node_dict), len(cliq_edge_dict), tempdir, "cliq_graphL2.png")
+    cliq_graph_r, cliq_node_dict_r, cliq_edge_dict_r = cliq_graph_init(cliq_graph, cliq_node_dict, cliq_edge_dict)
+    draw_cliq_graph(cliq_graph_r, len(cliq_node_dict_r), len(cliq_edge_dict_r), tempdir, "cliq_graphL2.png")
 
     return
-
-#######################################################################################################
-#######################################PATH FINDING ALGORITHM##########################################
-#######################################################################################################
-
-def reachable(graph: Graph, simp_node_dict: dict, src, src_cno, tgt, tgt_cno, contig_dict: dict):
-    """
-    determine whether src can possibly reach the tgt
-    """
-    print("reachable check: {0} - {1}".format(graph.vp.id[src], graph.vp.id[tgt]))
-    visited = {}
-    for no in simp_node_dict.keys():
-        visited[no] = False
-    for c in contig_dict[src_cno][0]:
-        visited[c] = True
-    for c in contig_dict[tgt_cno][0]:
-        visited[c] = True
-
-    visited[graph.vp.id[src]] = False
-    visited[graph.vp.id[tgt]] = False
-
-    queue = [src]
-    reached = False
-    while queue:
-        curr = queue.pop()
-        visited[graph.vp.id[curr]] = True
-        if curr == tgt:
-            reached = True
-            break
-        for out in curr.out_neighbors():
-            if not visited[graph.vp.id[out]]:
-                graph.vp.prev[out] = graph.vp.id[curr]
-                queue.append(out)
-    
-    rec_path = None
-
-    if not reached:
-        print("not reachable")
-    else:
-        rec_path = [graph.vp.id[tgt]]
-        node = tgt
-        while graph.vp.prev[node] != graph.vp.id[src]:
-            prev_id = graph.vp.prev[node]
-            rec_path.insert(0, prev_id)
-            node = simp_node_dict[prev_id]
-        rec_path.insert(0, graph.vp.id[src])
-        print("PATH: ", list_to_string(rec_path))
-
-        for cno, (contig, _, _) in contig_dict.items():
-            if cno in [src_cno, tgt_cno]:
-                # self involved, tolerant
-                continue
-            if all(c in rec_path for c in contig):
-                reached = False
-                print("cno: {0} is contained in the path".format(cno))
-
-    # clean prev
-    for node in simp_node_dict.values():
-        graph.vp.prev[node] = ""
-
-    if reached:
-        print("reachable")
-    return reached, rec_path
-
-
-def dijkstra_sp(graph: Graph, simp_node_dict: dict, source, sink, overlap: int):
-    """
-    Use basic dijkstra algorithm to compute the shortest path between source and sink
-    """
-    dist = {}
-    prev = {}
-    Q = set()
-    for node in simp_node_dict.values():
-        dist[node] = sys.maxsize
-        prev[node] = None
-        Q.add(node)
-    dist[source] = 0
-
-    while Q:
-        u = None
-        # retrieve min
-        for n, d in sorted(dist.items(), key=lambda x: x[1]):
-            if n in Q:
-                u = n
-                break
-
-        Q.remove(u)
-        if u == sink:
-            break
-
-        for v in u.out_neighbors():
-            if v in Q:
-                # relax
-                alt = dist[u] + path_len(graph, [u, v], overlap)
-                if alt < dist[v]:
-                    dist[v] = alt
-                    prev[v] = u
-    
-    if dist[sink] == sys.maxsize:
-        # not reachable
-        return None, None
-
-    node = sink
-    sp = []
-    while prev[node]:
-        sp.insert(0, node)
-        node = prev[node]
-    if not sp:
-        print("SP not found")
-        return None, None
-    else:
-        sp.insert(0, source)
-        print(path_to_id_string(graph, sp, "SP be found: "))
-        print("plen: ", path_len(graph, sp[1:-1], overlap))
-
-        return sp[1:-1], path_len(graph, sp[1:-1], overlap)
-
-def get_concat_len(head_cno, head_clen, tail_cno, tail_clen, plen, overlap):
-    total_len = 0
-    if head_cno == tail_cno:
-        if plen == 0:
-            total_len = head_clen - overlap
-        else:
-            total_len = head_clen + plen - 2*overlap
-        print("total cyclic shortest length: ", total_len)
-    else:
-        if plen == 0:
-            total_len = head_clen + tail_clen - overlap
-        else:
-            total_len = head_clen + tail_clen + plen - 2*overlap
-    return total_len
-
-# curr_simp_path = []
-# def retrieve_simple_paths(graph: Graph, simp_node_dict: dict, src, tgt, previsited: list, max_len, overlap):
-#     print("src: {0}, tgt: {1}, max_len: {2}".format(graph.vp.id[src], graph.vp.id[tgt], max_len))
-#     simple_path = []
-#     visited = {}
-#     for v in graph.vertices():
-#         visited[v] = False
-#     for p in previsited:
-#         visited[simp_node_dict[p]] = True
-#     visited[src] = False
-#     visited[tgt] = False
-
-#     def dfs(u, v):
-#         global curr_simp_path
-#         visited[u] = True
-#         curr_simp_path.append(u)
-#         # print(path_to_id_string(graph, curr_simp_path, "temp path"))
-#         if path_len(graph, curr_simp_path, overlap) >= max_len:
-#             print("max len reached, drop the path")
-#         elif u == v:
-#             print(path_to_id_string(graph, curr_simp_path, "path found"))
-#             simple_path.append(curr_simp_path[:])
-#         else:
-#             for next in u.out_neighbors():
-#                 if not visited[next]:
-#                     dfs(next, v)
-#         curr_simp_path = curr_simp_path[:-1]
-#         visited[u] = False
-#         return
-#     dfs(src, tgt)
-
-#     return simple_path
-
-# def predict_sp_max_len(graph: Graph, simp_node_dict: dict, contig_dict: dict, tail_cno, head_cno, max_len, overlap):
-#     tail_contig, tail_clen, _ = contig_dict[tail_cno]
-#     src_len = len(graph.vp.seq[simp_node_dict[tail_contig[-1]]])
-#     head_contig, head_clen, _ = contig_dict[head_cno]
-#     tgt_len = len(graph.vp.seq[simp_node_dict[head_contig[0]]])
-#     if head_cno == tail_cno:
-#         return max_len - tail_clen + src_len + tgt_len
-#     else:
-#         return max_len - head_clen - tail_clen + src_len + tgt_len + overlap 
 
 def strain_extension(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, strain_dict: dict, min_cov, max_len, overlap):
     """

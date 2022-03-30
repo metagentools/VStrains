@@ -1241,13 +1241,59 @@ def graph_is_DAG(graph: Graph, simp_node_dict: dict):
     print("graph is not cyclic")
     return True            
 
-def draw_cliq_graph(cliq_graph: Graph, cliq_node_dict: dict, cliq_edge_dict: dict, tempdir, output_file):
-    output_size = 120 * (len(cliq_edge_dict) + len(cliq_node_dict))
+def cliq_graph_init(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict):
+    """
+    remove all the grayed node/edge and return a new graph.
+    """
+    cliq_graph = Graph(directed=True)
+    cliq_graph.vp.cno = cliq_graph.new_vertex_property("string", val="")
+    cliq_graph.vp.clen = cliq_graph.new_vertex_property("int32_t")
+    cliq_graph.vp.ccov = cliq_graph.new_vertex_property("double")
+    cliq_graph.vp.text = cliq_graph.new_vertex_property("string")
+    cliq_graph.vp.color = cliq_graph.new_vertex_property("string")
+    
+    cliq_graph.ep.color = cliq_graph.new_edge_property("string")
+    cliq_graph.ep.slen = cliq_graph.new_edge_property("int32_t")
+    cliq_graph.ep.text = cliq_graph.new_edge_property("string")
+
+    cliq_node_dict = {}
+    cliq_edge_dict = {}
+
+    for cno, contig in simp_node_dict.items():
+        if graph.vp.color[contig] == 'black':
+            node = cliq_graph.add_vertex()
+            cliq_graph.vp.cno[node] = cno
+            cliq_graph.vp.clen[node] = graph.vp.clen[contig]
+            cliq_graph.vp.ccov[node] = graph.vp.ccov[contig]
+            cliq_graph.vp.text[node] = graph.vp.text[contig]
+            cliq_graph.vp.color[node] = 'black'
+            cliq_node_dict[cno] = node
+    
+    for (icno, jcno), e in simp_edge_dict.items():
+        if graph.ep.color[e] == 'black':
+            edge = cliq_graph.add_edge(cliq_node_dict[icno], cliq_node_dict[jcno])
+            cliq_graph.ep.color[edge] = 'black'
+            cliq_graph.ep.slen[edge] = graph.ep.slen[e]
+            cliq_graph.ep.text[edge] = graph.ep.text[e]
+            cliq_edge_dict[(icno, jcno)] = edge
+
+    return cliq_graph, cliq_node_dict, cliq_edge_dict
+
+def draw_cliq_graph(cliq_graph: Graph, nnodes, nedges, tempdir, output_file):
+    output_size = 120 * (nnodes + nedges)
     vsize= 30
     esize = 30
     graph_draw(g=cliq_graph, output="{0}{1}".format(tempdir, output_file), bg_color="white", 
     vertex_text=cliq_graph.vp.text, vertex_size=vsize, vertex_font_size=int(vsize * 0.8), 
     edge_text=cliq_graph.ep.text, edge_font_size= int(esize * 0.8), output_size=(output_size, output_size))
+
+def draw_graph_api(graph: Graph, output_file):
+    output_size = 120 * (graph.num_edges() + graph.num_vertices())
+    vsize= 30
+    esize = 30
+    graph_draw(g=graph, output=output_file, bg_color="white", 
+    vertex_size=vsize,
+    output_size=(output_size, output_size))  
 
 def print_edge(graph, e, s=""):
     print(s, " edge: ", graph.vp.id[e.source()], "->", graph.vp.id[e.target()], graph.ep.flow[e], graph.ep.color[e])

@@ -1885,3 +1885,40 @@ def distance_search(graph: Graph, simp_node_dict: dict, contig_covered_node_ids:
         s_path = None
         print("error path found")
     return s_path, s_len
+
+
+
+                # reached, rec_path = reachable(graph, simp_node_dict, src, tail_cno, tgt, head_cno, contig_dict)
+                # if not reached:
+                #     impossible_concat_dict[tail_cno].add(head_cno)
+                # else:
+                #     rand_path_dict[(tail_cno, head_cno)] = rec_path
+                #     # Last check, shortest path length filter
+                #     # potential tail-head contig concatentaion
+                #     # further filter, if the ssp length + two contig length > maxlen
+                #     # 3 because head-tail contig map just concat without sp in one end.
+                #     contig_covered_node_ids_curr = list(tail_contig)
+                #     contig_covered_node_ids_curr.extend(list(head_contig))
+                #     sp, plen = dijkstra_sp(graph, simp_node_dict, src, tgt, overlap)
+                #     if sp != None:
+                #         total_len = 0
+                #         if head_cno == tail_cno:
+                #             if plen == 0:
+                #                 total_len = head_clen - overlap
+                #             else:
+                #                 total_len = head_clen + plen - 2*overlap
+                #             print("total cyclic shortest length: ", total_len)
+                #         else:
+                #             if plen == 0:
+                #                 total_len = head_clen + tail_clen - 2*overlap
+                #             else:
+                #                 total_len = head_clen + tail_clen + plen - 3*overlap
+                #             print("total linear shortest length: ", total_len)
+                #         if total_len >= max_len:
+                #             print("even sp exceed the maxlen: ", max_len)
+                #             impossible_concat_dict[tail_cno].add(head_cno)
+                #         else:
+                #             print("SP length within upper bound max len")
+                #             sp_path_dict[(tail_cno, head_cno)] = (sp, plen)
+                #     else:
+                #         print("ERROR")

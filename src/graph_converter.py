@@ -810,27 +810,34 @@ def contig_cov_fix(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, con
         print_contig(cno, clen, contig_dict[cno][2], contig)
     return
 
-def graph_splitting(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, contig_dict: dict, overlap, temp_dir, threshold):
+def graph_splitting(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, contig_dict: dict, threshold, strict_mode=True):
     """
     for any N-N branch, if see if any contig is going through that
     """
-    # print("Max node depth: ")
+    print("-------------------------graph splitting: {0}----------------------".format(("strict" if strict_mode else "")))
     print("Threshold: ", threshold)
-    nofsplit = 0
+    split_branches = []
     node_to_contig_dict, edge_to_contig_dict = contig_map_node(contig_dict)
     for no, node in list(simp_node_dict.items()):
         ind = len([e for e in node.in_edges() if graph.ep.color[e] == 'black'])
         outd = len([e for e in node.out_edges() if graph.ep.color[e] == 'black'])
-        if ind == outd and ind > 1 and no in node_to_contig_dict:
-            support_contigs = node_to_contig_dict[no]
+        if ind == outd and ind > 1 and (no in node_to_contig_dict or not strict_mode):
+            support_contigs = node_to_contig_dict[no] if no in node_to_contig_dict else {}
             print_vertex(graph, node, "---------- branch node, support by contig {0}".format(support_contigs))
-            cproduct = [(ie, oe, abs(graph.ep.flow[ie] - graph.ep.flow[oe])) for ie in node.in_edges() for oe in node.out_edges() if abs(graph.ep.flow[ie] - graph.ep.flow[oe]) < threshold]
+            cproduct = [(ie, oe, numpy.mean([graph.ep.flow[ie], graph.ep.flow[oe]]), abs(graph.ep.flow[ie] - graph.ep.flow[oe])) for ie in node.in_edges() for oe in node.out_edges() if abs(graph.ep.flow[ie] - graph.ep.flow[oe]) < threshold]
             cproduct = sorted(cproduct, key=lambda element: element[2])
+
+            es = [val for _, _, val, _ in cproduct]
+            amb = numpy.max(es) - numpy.min(es) if cproduct else 0
             if cproduct == []:
                 print("no matching edges to split")
+            elif not strict_mode and amb < threshold and no not in node_to_contig_dict:
+                print("ambiguous split under non-strict mode, skip: ", amb)
             else:
                 used_edge = set()
-                for i, (ie, oe, delta) in enumerate(cproduct):
+                cproduct = sorted(cproduct, key=lambda tuple: tuple[2])
+
+                for i, (ie, oe, eval, delta) in enumerate(cproduct):
                     print("---------------")
                     print_edge(graph, ie, "in")
                     print_edge(graph, oe, "out")
@@ -862,11 +869,11 @@ def graph_splitting(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, co
                             None
                     if cross_talk:
                         print("- current branch split forbidden, cross talk", prev_no, no, next_no)
-                    elif not involved_contigs:
+                    elif not involved_contigs and strict_mode:
                         print("- current branch split forbidden, no supporting contig path", prev_no, no, next_no)
                     else:
                         print("- branch split performed")
-                        nofsplit += 1
+                        split_branches.append(no)
                         used_edge.add(ie)
                         used_edge.add(ie)
 
@@ -909,8 +916,10 @@ def graph_splitting(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, co
         if ind == 0 and outd == 0 and graph.vp.dp[node] < threshold:
             graph_remove_vertex(graph, simp_node_dict, graph.vp.id[node], "remove isolated low cov node")
     
-    print("No of branch be removed: ", nofsplit)
-
+    print("No of branch be removed: ", len(set(split_branches)))
+    s = ""
+    print("Split branches: ", list_to_string(set(split_branches)))
+    print("-------------------------graph splitting end----------------------")
     return
 
 def simp_path(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict):
@@ -954,10 +963,10 @@ def simple_paths_to_dict(graph: Graph, simp_node_dict: dict, simp_edge_dict: dic
     contig_node_ids = set(contig_nodes)
 
     for id, p in enumerate(simple_paths):
-        print("path: ", [int(graph.vp.id[u]) for u in p])
+        # print("path: ", [int(graph.vp.id[u]) for u in p])
         pids = [graph.vp.id[n] for n in p]
         if contig_node_ids.intersection(set(pids)):
-            print("simple path forbidden, contig is involved")
+            # print("simple path forbidden, contig is involved")
             continue
         name = "0" + str(id) + "0"
         clen = path_len(graph, p, overlap)

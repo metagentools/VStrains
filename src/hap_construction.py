@@ -97,7 +97,7 @@ def main():
 
     print("----------------------------------INPUT---------------------------------------")
     graph, simp_node_dict, simp_edge_dict = gfa_to_graph(args.gfa_file, init_ori=1)
-    contig_dict, node_to_contig_dict, edge_to_contig_dict = get_contig(graph, args.contig_file, simp_node_dict, simp_edge_dict, args.min_len)
+    contig_dict, node_to_contig_dict, edge_to_contig_dict = get_contig(graph, args.contig_file, simp_node_dict, simp_edge_dict, args.min_len, args.min_cov)
     
     graph_to_gfa(graph, simp_node_dict, simp_edge_dict, "{0}graph_L0.gfa".format(TEMP_DIR))
     graph0, simp_node_dict0, simp_edge_dict0 = flipped_gfa_to_graph("{0}graph_L0.gfa".format(TEMP_DIR))
@@ -195,34 +195,13 @@ def main():
     graph5, simp_node_dict5, simp_edge_dict5 = flipped_gfa_to_graph("{0}cbsdt_graph_L5.gfa".format(TEMP_DIR))
     assign_edge_flow(graph5, simp_node_dict5, simp_edge_dict5)
 
-    # graph_splitting(graph5, simp_node_dict5, simp_edge_dict5, contig_dict, THRESHOLD, strict_mode=False)
-
-    # graph_to_gfa(graph5, simp_node_dict5, simp_edge_dict5, "{0}sbsdt_graph_L6.gfa".format(TEMP_DIR))
-    # graph6, simp_node_dict6, simp_edge_dict6 = flipped_gfa_to_graph("{0}sbsdt_graph_L6.gfa".format(TEMP_DIR))
-
-    # coverage_rebalance(graph6, simp_node_dict6, simp_edge_dict6)
-
-    # contig_cov_fix(graph6, simp_node_dict6, simp_edge_dict6, contig_dict)
-
-    # print("-------------------------------GRAPH COMPACTIFICATION-----------------------------------")
-    # # Compact all the contig into single node and saved to contig_node_dict, Store once, then compact
-    # # the rest of the simple paths.
-
-    # contig_nodes = []
-    # [contig_nodes.extend(contig) for contig, _, _ in contig_dict.values()]
-
-    # simp_path_dict = simple_paths_to_dict(graph6, simp_node_dict6, simp_edge_dict6, contig_nodes, args.overlap)
-    # simp_path_compactification(graph6, simp_node_dict6, simp_edge_dict6, simp_path_dict, args.overlap)
-
-    # graph_to_gfa(graph6, simp_node_dict6, simp_edge_dict6, "{0}cscbsdt_graph_L7.gfa".format(TEMP_DIR))
-
     print("-------------------------------CONTIG CLIQUE GRAPH BUILD-----------------------------------")
     if args.ref_file:
         map_ref_to_graph(args.ref_file, simp_node_dict5, "{0}cbsdt_graph_L5.gfa".format(TEMP_DIR), True, "{0}node_to_ref_red.paf".format(TEMP_DIR), "{0}temp_gfa_to_fasta.fasta".format(TEMP_DIR))
     
-    # cliq_graph, cliq_node_dict, cliq_edge_dict, sp_path_dict = contig_clique_graph_build(graph5, simp_node_dict5, simp_edge_dict5, contig_dict, args.max_len, args.overlap)
-    # draw_cliq_graph(cliq_graph, len(cliq_node_dict), len(cliq_edge_dict), TEMP_DIR, "cliq_graphL1.png")
-    # print("-------------------------------CONTIG PAIRWISE CONCATENATION-----------------------------------")
+    cliq_graph, cliq_node_dict, cliq_edge_dict, sp_path_dict = contig_clique_graph_build(graph5, simp_node_dict5, simp_edge_dict5, contig_dict, args.max_len, THRESHOLD, args.overlap)
+    draw_cliq_graph(cliq_graph, len(cliq_node_dict), len(cliq_edge_dict), TEMP_DIR, "cliq_graphL1.png")
+    print("-------------------------------CONTIG PAIRWISE CONCATENATION-----------------------------------")
     # contig_pairwise_concatenation(graph5, simp_node_dict5, simp_edge_dict5, contig_dict, cliq_graph, cliq_node_dict, cliq_edge_dict, sp_path_dict, args.min_cov, args.min_len, args.max_len, args.overlap, THRESHOLD, TEMP_DIR)
 
     return 0
@@ -777,7 +756,7 @@ def allowed_concat_init(graph: Graph, contig_dict: dict, simp_node_dict: dict, m
         contig_concat_plans[key] = all_contig_ids - item
     return contig_concat_plans, sp_path_dict
 
-def contig_clique_graph_build(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, contig_dict: dict, max_len, overlap):
+def contig_clique_graph_build(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, contig_dict: dict, max_len, threshold, overlap):
 
     cliq_graph = Graph(directed=True)
     cliq_graph.vp.cno = cliq_graph.new_vertex_property("string", val="")
@@ -799,7 +778,7 @@ def contig_clique_graph_build(graph: Graph, simp_node_dict: dict, simp_edge_dict
         cliq_graph.vp.clen[contig_node] = clen
         cliq_graph.vp.ccov[contig_node] = ccov
         cliq_graph.vp.color[contig_node] = 'black'
-        cliq_graph.vp.text[contig_node] = cno + ":" + str(clen) + ":" + str(round(ccov))
+        cliq_graph.vp.text[contig_node] = cno + ":" + str(clen) + ":" + str(round(ccov, 2))
         cliq_node_dict[cno] = contig_node
 
     concat_plan, sp_path_dict = allowed_concat_init(graph, contig_dict, simp_node_dict, max_len, overlap)
@@ -809,6 +788,11 @@ def contig_clique_graph_build(graph: Graph, simp_node_dict: dict, simp_edge_dict
         src_node = cliq_node_dict[tail_cno]
         for head_cno in head_cnos:
             tgt_node = cliq_node_dict[head_cno]
+            # further filter out the edges
+            # if abs(contig_dict[head_cno][2] - contig_dict[tail_cno][2]) > threshold:
+            #     if len(contig_dict[tail_cno][0]) != 1 or len(contig_dict[head_cno][0]) != 1:
+            #         print("High coverage gap between non single node contig: {0} and {1}".format(tail_cno, head_cno))
+            #         continue
             contig_edge = cliq_graph.add_edge(src_node, tgt_node)
             cliq_graph.ep.slen[contig_edge] = int(sp_path_dict[(tail_cno, head_cno)][1])
             cliq_graph.ep.color[contig_edge] = 'black'

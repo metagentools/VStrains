@@ -550,7 +550,7 @@ def contig_dict_to_path(contig_dict: dict, output_file):
             paths.write(path_ids)
         paths.close()
 
-def get_contig(graph: Graph, contig_file, simp_node_dict: dict, simp_edge_dict: dict, min_len):
+def get_contig(graph: Graph, contig_file, simp_node_dict: dict, simp_edge_dict: dict, min_len, min_cov):
     """
     Map SPAdes's contig to the graph, return all the contigs.
     if nodes of contig have coverage less than min_cov, try to shrink the contig.
@@ -588,6 +588,10 @@ def get_contig(graph: Graph, contig_file, simp_node_dict: dict, simp_edge_dict: 
             # contig filter
             if clen < min_len / 10:
                 continue
+            # if clen < min_len / 10 or ccov < min_cov:
+            #     continue
+            # if ccov < min_cov:
+            #     continue
 
             if contig_len > 1:
                 i = 0
@@ -801,13 +805,17 @@ def contig_dict_fix(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, co
     return
 
 def contig_cov_fix(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, contig_dict: dict):
-    for cno, [contig, clen, ccov] in contig_dict.items():
+    for cno, [contig, clen, ccov] in list(contig_dict.items()):
         print("---------------------------------------------------------------")
         if len(contig) > 1:
-            contig_dict[cno][2] = numpy.median(contig_flow(graph, simp_edge_dict, contig))
+            contig_dict[cno][2] = numpy.min(contig_flow(graph, simp_edge_dict, contig))
         else:
-            contig_dict[cno][2] = graph.vp.dp[simp_node_dict[contig[0]]]
-        print_contig(cno, clen, contig_dict[cno][2], contig)
+            if contig[0] not in simp_node_dict:
+                contig_dict.pop(cno)
+            else:
+                contig_dict[cno][2] = graph.vp.dp[simp_node_dict[contig[0]]]
+        if cno in contig_dict:
+            print_contig(cno, clen, contig_dict[cno][2], contig)
     return
 
 def graph_splitting(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, contig_dict: dict, threshold, strict_mode=True):
@@ -834,15 +842,15 @@ def graph_splitting(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, co
             elif not strict_mode and amb < threshold and no not in node_to_contig_dict:
                 print("ambiguous split under non-strict mode, skip: ", amb)
             else:
-                used_edge = set()
                 cproduct = sorted(cproduct, key=lambda tuple: tuple[2])
 
                 for i, (ie, oe, eval, delta) in enumerate(cproduct):
                     print("---------------")
                     print_edge(graph, ie, "in")
                     print_edge(graph, oe, "out")
-                    if ie in used_edge or oe in used_edge:
-                        print("edge has been used from previous iteration")
+                    if ((graph.vp.id[ie.source()], graph.vp.id[ie.target()]) not in simp_edge_dict 
+                    or (graph.vp.id[oe.source()], graph.vp.id[oe.target()]) not in simp_edge_dict):
+                        print("edge has been removed already")
                         continue
                     else:
                         print("Delta: ", delta)
@@ -874,8 +882,6 @@ def graph_splitting(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, co
                     else:
                         print("- branch split performed")
                         split_branches.append(no)
-                        used_edge.add(ie)
-                        used_edge.add(ie)
 
                         subid = "0" + no + "0" + str(i)
                         subdp = numpy.max([graph.ep.flow[ie], graph.ep.flow[oe]])
@@ -1210,7 +1216,7 @@ def cliq_graph_init(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict):
             cliq_graph.vp.cno[node] = cno
             cliq_graph.vp.clen[node] = graph.vp.clen[contig]
             cliq_graph.vp.ccov[node] = graph.vp.ccov[contig]
-            cliq_graph.vp.text[node] = cno + ":" + str(cliq_graph.vp.clen[node]) + ":" + str(cliq_graph.vp.ccov[node])
+            cliq_graph.vp.text[node] = graph.vp.text[contig]
             cliq_graph.vp.color[node] = 'black'
             cliq_node_dict[cno] = node
     

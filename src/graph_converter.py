@@ -472,7 +472,7 @@ def map_ref_to_graph(ref_file, simp_node_dict: dict, graph_file, store_mapping=F
     with open(output_file, 'r') as paf:
         for Line in paf:
             splited = Line.split('\t')
-            seg_no_int = int(splited[0])
+            seg_no = str(splited[0])
             seg_no = splited[0]
             seg_l = int(splited[1])
             seg_s = int(splited[2])
@@ -483,10 +483,10 @@ def map_ref_to_graph(ref_file, simp_node_dict: dict, graph_file, store_mapping=F
             mark = int(splited[11])
             if seg_no not in simp_node_dict:
                 continue
-            if (((seg_f - seg_s) / seg_l) >= 0.5 and (nmatch/nblock) >= 0.5 and mark > 0):
+            if (((seg_f - seg_s) / seg_l) >= 0.8 and (nmatch/nblock) >= 0.8 and mark > 0):
                 if ref_no not in strain_dict:
                     strain_dict[ref_no] = []
-                strain_dict[ref_no].append(seg_no_int)
+                strain_dict[ref_no].append(seg_no)
         paf.close()
         
     subprocess.check_call("rm {0}".format(fasta_file), shell=True)
@@ -495,7 +495,7 @@ def map_ref_to_graph(ref_file, simp_node_dict: dict, graph_file, store_mapping=F
     
     print("strain dict mapping")
     for seg_no, strains in strain_dict.items():
-        print("strains: ", seg_no, " Path: ", strains)
+        print("strains: ", seg_no, " Path: ", list_to_string(strains))
         print("-------------------")
     return strain_dict
 
@@ -586,10 +586,9 @@ def get_contig(graph: Graph, contig_file, simp_node_dict: dict, simp_edge_dict: 
             contig_len = len(contigs)
 
             # contig filter
-            if clen < min_len / 10:
+            # use as less in-confident contigs as possible.
+            if clen < min_len / 10 or ccov < min_cov:
                 continue
-            # if clen < min_len / 10 or ccov < min_cov:
-            #     continue
             # if ccov < min_cov:
             #     continue
 
@@ -808,7 +807,7 @@ def contig_cov_fix(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, con
     for cno, [contig, clen, ccov] in list(contig_dict.items()):
         print("---------------------------------------------------------------")
         if len(contig) > 1:
-            contig_dict[cno][2] = numpy.min(contig_flow(graph, simp_edge_dict, contig))
+            contig_dict[cno][2] = numpy.median(contig_flow(graph, simp_edge_dict, contig))
         else:
             if contig[0] not in simp_node_dict:
                 contig_dict.pop(cno)
@@ -816,6 +815,10 @@ def contig_cov_fix(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, con
                 contig_dict[cno][2] = graph.vp.dp[simp_node_dict[contig[0]]]
         if cno in contig_dict:
             print_contig(cno, clen, contig_dict[cno][2], contig)
+            if len(contig) > 1:
+                print("mean: ", numpy.mean(contig_flow(graph, simp_edge_dict, contig)), 
+                " median: ", numpy.median(contig_flow(graph, simp_edge_dict, contig)), 
+                " min: ", numpy.min(contig_flow(graph, simp_edge_dict, contig)))
     return
 
 def graph_splitting(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, contig_dict: dict, threshold, strict_mode=True):
@@ -969,10 +972,10 @@ def simple_paths_to_dict(graph: Graph, simp_node_dict: dict, simp_edge_dict: dic
     contig_node_ids = set(contig_nodes)
 
     for id, p in enumerate(simple_paths):
-        # print("path: ", [int(graph.vp.id[u]) for u in p])
+        print("path: ", [int(graph.vp.id[u]) for u in p])
         pids = [graph.vp.id[n] for n in p]
         if contig_node_ids.intersection(set(pids)):
-            # print("simple path forbidden, contig is involved")
+            print("simple path forbidden, contig is involved")
             continue
         name = "0" + str(id) + "0"
         clen = path_len(graph, p, overlap)
@@ -1191,7 +1194,7 @@ def graph_remove_edge(graph: Graph, simp_edge_dict: dict, src_id, tgt_id, s="rem
     print_edge(graph, edge, s)
     return ((src_id, tgt_id))            
 
-def cliq_graph_init(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict):
+def cliq_graph_init(graph: Graph):
     """
     remove all the grayed node/edge and return a new graph.
     """
@@ -1209,20 +1212,26 @@ def cliq_graph_init(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict):
     cliq_node_dict = {}
     cliq_edge_dict = {}
 
-    for cno, contig in simp_node_dict.items():
+    for contig in graph.vertices():
         if graph.vp.color[contig] == 'black':
             # print("appending node: ", cno, " cov: ", graph.vp.ccov[contig])
             node = cliq_graph.add_vertex()
-            cliq_graph.vp.cno[node] = cno
+            cliq_graph.vp.cno[node] = graph.vp.cno[contig]
             cliq_graph.vp.clen[node] = graph.vp.clen[contig]
-            cliq_graph.vp.ccov[node] = graph.vp.ccov[contig]
-            cliq_graph.vp.text[node] = graph.vp.text[contig]
+            cliq_graph.vp.ccov[node] = round(graph.vp.ccov[contig],2)
+            cliq_graph.vp.text[node] = cliq_graph.vp.cno[node] + ":" + str(cliq_graph.vp.clen[node]) + ":" + str(cliq_graph.vp.ccov[node])
             cliq_graph.vp.color[node] = 'black'
-            cliq_node_dict[cno] = node
+            cliq_node_dict[cliq_graph.vp.cno[node]] = node
     
-    for (icno, jcno), e in simp_edge_dict.items():
+    for e in graph.edges():
+        i = e.source()
+        icno = graph.vp.cno[i]
+        j = e.target()
+        jcno = graph.vp.cno[j]
+        if graph.vp.color[i] != 'black' or graph.vp.color[j] != 'black':
+            continue
         if graph.ep.color[e] == 'black':
-            # print("appending edge: ", (icno, jcno))
+            print("appending edge: ", (icno, jcno))
             edge = cliq_graph.add_edge(cliq_node_dict[icno], cliq_node_dict[jcno])
             cliq_graph.ep.color[edge] = 'black'
             cliq_graph.ep.slen[edge] = graph.ep.slen[e]
@@ -1255,12 +1264,14 @@ def cliq_graph_add_edge(cliq_graph: Graph, cliq_edge_dict: dict, cno1, cnode1, c
     cliq_graph.ep.slen[edge] = slen
     cliq_graph.ep.text[edge] = text
     cliq_edge_dict[(cno1, cno2)] = edge
+    print("edge {0} {1} has been added".format(cno1, cno2))
     return edge
 
 def cliq_graph_remove_edge(cliq_graph: Graph, cliq_edge_dict: dict, cno1, cno2, edge, color='gray'):
+    cliq_graph.ep.color[edge] = color
     if (cno1, cno2) in cliq_edge_dict:
-        cliq_graph.ep.color[edge] = color
         cliq_edge_dict.pop((cno1, cno2))
+    print("edge {0} {1} has been removed".format(cno1, cno2))
     return edge
 
 def draw_cliq_graph(cliq_graph: Graph, nnodes, nedges, tempdir, output_file):

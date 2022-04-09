@@ -1922,3 +1922,58 @@ def distance_search(graph: Graph, simp_node_dict: dict, contig_covered_node_ids:
                 #             sp_path_dict[(tail_cno, head_cno)] = (sp, plen)
                 #     else:
                 #         print("ERROR")
+
+def optim_path_linear(srccno, tgtcno, src, tgt, cand_cov, bound_length, is_circular=False):
+        """
+        find the optimal path from src tgt, where intermediate nodes with cov ~ cand_cov would be prefered
+        """
+        print("Start path finding: {0} -> {1}, cand cov: {2}, bound: {3}".format(srccno, tgtcno, cand_cov, bound_length))
+        path = [src]
+        pathqueue = deque()
+        pathqueue.append(path)
+        rtn_paths = []
+
+        visited = {}
+        for node in simp_node_dict.values():
+            visited[node] = False
+        if not is_circular:
+            for no in contig_dict[srccno][0][:-1]:
+                visited[simp_node_dict[no]] = True
+            for no in contig_dict[tgtcno][0][1:]:
+                visited[simp_node_dict[no]] = True
+        else:
+            for no in contig_dict[srccno][0][1:-1]:
+                visited[simp_node_dict[no]] = True
+
+        while pathqueue:
+            curr_path = pathqueue.popleft()
+            if curr_path[-1] == tgt:
+                print(path_to_id_string(graph, curr_path[1:-1], "curr path"))
+                rtn_paths.append(curr_path[1:-1])
+                continue
+            if path_len(graph, curr_path[1:-1], overlap) > bound_length:
+                print(path_to_id_string(graph, curr_path[1:-1], "curr path len overbound, skip impossible path: "))
+                continue
+
+            for next in curr_path[-1].out_neighbors():
+                if next not in curr_path and not visited[next]:
+                    # print_vertex(graph, next, "next: ")
+                    split_path = curr_path[:]
+                    split_path.append(next)
+
+                    pathqueue.append(split_path)
+        
+        rtn_paths = sorted(rtn_paths, key=lambda path: numpy.sum([pow(f-cand_cov,2) for f in contig_uflow(graph, simp_edge_dict, [graph.vp.id[n] for n in path])]))
+        for p in rtn_paths:
+            plen = path_len(graph, p, overlap)
+            if not is_circular:
+                total_len = get_concat_len(srccno, contig_dict[srccno][1], tgtcno, contig_dict[tgtcno][1], plen, overlap)
+            else:
+                total_len = contig_dict[srccno][1] + plen - 2*overlap
+            num_similarity = 0
+            for node in p:
+                num_similarity = num_similarity + 1 if abs(graph.vp.udp[node] - cand_cov) < threshold else num_similarity
+            print("total len: ", total_len, " similarity: ", num_similarity, path_to_id_string(graph, p, "--->path: "))
+            if total_len <= max_len:
+                return rtn_paths, p, total_len, num_similarity
+        return None, None, None, None

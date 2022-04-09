@@ -108,10 +108,11 @@ def reachable(graph: Graph, simp_node_dict: dict, src, src_cno, tgt, tgt_cno, co
     return reached, rec_path
 
 
-def dijkstra_sp(graph: Graph, simp_node_dict: dict, source, sink, overlap: int):
+def dijkstra_sp(graph: Graph, simp_node_dict: dict, source, sink, closest_cov, overlap: int):
     """
     Use basic dijkstra algorithm to compute the shortest path between source and sink
     """
+    print("Dijkastra path finding: closest cov guide: ", closest_cov)
     dist = {}
     prev = {}
     Q = set()
@@ -136,7 +137,8 @@ def dijkstra_sp(graph: Graph, simp_node_dict: dict, source, sink, overlap: int):
         for v in u.out_neighbors():
             if v in Q:
                 # relax
-                alt = dist[u] + graph_converter.path_len(graph, [u, v], overlap)
+                alt = dist[u] + pow(graph.ep.flow[graph.edge(u, v)] - closest_cov, 2)
+                # graph_converter.path_len(graph, [u, v], overlap)
                 if alt < dist[v]:
                     dist[v] = alt
                     prev[v] = u
@@ -174,6 +176,16 @@ def get_concat_len(head_cno, head_clen, tail_cno, tail_clen, plen, overlap):
         else:
             total_len = head_clen + tail_clen + plen - 2*overlap
     return total_len
+
+def transitive_graph_reduction(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict):
+    for k in simp_node_dict.keys():
+        for i in simp_node_dict.keys():
+            for j in simp_node_dict.keys():
+                if i != j and i != k and j != k:
+                    if (i, k) in simp_edge_dict and (k, j) in simp_edge_dict and (i, j) in simp_edge_dict:
+                        graph.ep.color[simp_edge_dict[(i, j)]] = 'gray'
+                        simp_edge_dict.pop((i, j))                  
+    return
 
 # curr_simp_path = []
 # def retrieve_simple_paths(graph: Graph, simp_node_dict: dict, src, tgt, previsited: list, max_len, overlap):

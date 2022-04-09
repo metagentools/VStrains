@@ -258,8 +258,7 @@ def graph_simplification(graph: Graph, simp_node_dict: dict, simp_edge_dict: dic
                 if DEBUG_MODE:
                     print("node: {0} should not be removed although with ccov: {1}".format(id, graph.vp.dp[node]))
                 continue
-            if DEBUG_MODE:
-                print_vertex(graph, node, "Node removed by graph simplification -")
+            print_vertex(graph, node, "Node removed by graph simplification -")
 
             # delete the node
             simp_node_dict.pop(id)
@@ -519,7 +518,7 @@ def minimap_api(ref_file, fasta_file, output_file):
         ref_file, fasta_file, output_file), shell=True)
     return  
 
-def contig_dict_to_fasta(graph: Graph, contig_dict: dict, simp_node_dict: dict, overlap_len, output_file, min_len=0):
+def contig_dict_to_fasta(graph: Graph, contig_dict: dict, simp_node_dict: dict, overlap_len, output_file):
     """
     Store contig dict into fastq file
     """
@@ -587,10 +586,10 @@ def get_contig(graph: Graph, contig_file, simp_node_dict: dict, simp_edge_dict: 
 
             # contig filter
             # use as less in-confident contigs as possible.
-            if clen < min_len / 10 or ccov < min_cov:
-                continue
-            # if ccov < min_cov:
+            # if clen < min_len / 10 or ccov < min_cov:
             #     continue
+            if clen < min_len / 10:
+                continue
 
             if contig_len > 1:
                 i = 0
@@ -1079,10 +1078,23 @@ def contig_flow(graph: Graph, edge_dict: dict, contig):
     edge_flow = []
     if len(contig) < 2:
         return edge_flow
-    edges = []
     for i in range(len(contig)-1):
         e = edge_dict[(contig[i],contig[i+1])]
         f = graph.ep.flow[e]
+        edge_flow.append(f)
+
+    return edge_flow
+
+def contig_uflow(graph: Graph, edge_dict: dict, contig):
+    """
+    edge flow for the contig
+    """
+    edge_flow = []
+    if len(contig) < 2:
+        return edge_flow
+    for i in range(len(contig)-1):
+        e = edge_dict[(contig[i],contig[i+1])]
+        f = graph.ep.uflow[e]
         edge_flow.append(f)
 
     return edge_flow
@@ -1281,6 +1293,7 @@ def draw_cliq_graph(cliq_graph: Graph, nnodes, nedges, tempdir, output_file):
     graph_draw(g=cliq_graph, output="{0}{1}".format(tempdir, output_file), bg_color="white", 
     vertex_text=cliq_graph.vp.text, vertex_size=vsize, vertex_font_size=int(vsize * 0.8), 
     edge_text=cliq_graph.ep.text, edge_font_size= int(esize * 0.8), output_size=(output_size, output_size))
+    print("cliq graph has been stored in: {0}{1}".format(tempdir, output_file))
 
 def draw_graph_api(graph: Graph, output_file):
     output_size = 120 * (graph.num_edges() + graph.num_vertices())

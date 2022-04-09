@@ -696,7 +696,7 @@ def coverage_rebalance(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict,
 
     return prev_dp_dict, curr_dp_dict, node_ratio_dict, ratio_div
 
-def allowed_concat_init(graph: Graph, contig_dict: dict, simp_node_dict: dict, max_len, overlap):
+def allowed_concat_init(graph: Graph, contig_dict: dict, simp_node_dict: dict, max_len, threshold, overlap):
     """
     Decide whether any contig pair should be connected
     """
@@ -730,7 +730,7 @@ def allowed_concat_init(graph: Graph, contig_dict: dict, simp_node_dict: dict, m
             if head_cno not in impossible_concat_dict[tail_cno]:
                 src = simp_node_dict[contig_dict[tail_cno][0][-1]]
                 tgt = simp_node_dict[contig_dict[head_cno][0][0]]
-                sp, plen = dijkstra_sp(graph, simp_node_dict, src, tgt, min(tail_ccov, head_ccov), overlap)
+                sp, plen = dijkstra_sp(graph, simp_node_dict, src, tgt, min(tail_ccov, head_ccov), threshold, overlap)
                 if sp != None:
                     total_len = 0
                     if head_cno == tail_cno:
@@ -788,18 +788,13 @@ def contig_clique_graph_build(graph: Graph, simp_node_dict: dict, simp_edge_dict
         cliq_graph.vp.text[contig_node] = cno + ":" + str(clen) + ":" + str(round(ccov, 2))
         cliq_node_dict[cno] = contig_node
 
-    concat_plan, sp_path_dict = allowed_concat_init(graph, contig_dict, simp_node_dict, max_len, overlap)
+    concat_plan, sp_path_dict = allowed_concat_init(graph, contig_dict, simp_node_dict, max_len, threshold, overlap)
     
     for tail_cno, head_cnos in concat_plan.items():
         print("------> tail cno: ", tail_cno, " can concat with following head cnos: ", head_cnos)
         src_node = cliq_node_dict[tail_cno]
         for head_cno in head_cnos:
             tgt_node = cliq_node_dict[head_cno]
-            # further filter out the edges
-            # if abs(contig_dict[head_cno][2] - contig_dict[tail_cno][2]) > threshold:
-            #     if len(contig_dict[tail_cno][0]) != 1 or len(contig_dict[head_cno][0]) != 1:
-            #         print("High coverage gap between non single node contig: {0} and {1}".format(tail_cno, head_cno))
-            #         continue
             contig_edge = cliq_graph.add_edge(src_node, tgt_node)
             cliq_graph.ep.slen[contig_edge] = int(sp_path_dict[(tail_cno, head_cno)][1])
             cliq_graph.ep.color[contig_edge] = 'black'
@@ -1046,6 +1041,12 @@ min_cov, min_len, max_len, overlap, threshold, tempdir):
             if not pairs:
                 print("contig has been used from previous step: {0} {1}".format(cno1, cno2))
                 continue
+
+            if cno1 in contig_usage:
+                contig_usage[cno1] += 1
+            if cno2 in contig_usage:
+                contig_usage[cno2] += 1
+
             cno1m, cno2m = min(pairs, key=lambda p: 
                 pow(cliq_graph.vp.ccov[cliq_node_dict[p[0]]] - cov, 2) + 
                 pow(cliq_graph.vp.ccov[cliq_node_dict[p[1]]] - cov, 2))
@@ -1053,7 +1054,7 @@ min_cov, min_len, max_len, overlap, threshold, tempdir):
             print("-->PAIR UP {0} - {1}, cov: {2}, diff: {3}".format(cno1m, cno2m, cov, delta))
             src = simp_node_dict[contig_dict[cno1m][0][-1]]
             tgt = simp_node_dict[contig_dict[cno2m][0][0]]
-            cand_path, plen = dijkstra_sp(graph, simp_node_dict, src, tgt, cov, overlap)
+            cand_path, plen = dijkstra_sp(graph, simp_node_dict, src, tgt, cov, threshold, overlap)
             cand_len = get_concat_len(cno1m, contig_dict[cno1m][1], cno2m, contig_dict[cno2m][1], plen, overlap)
 
             contig_pair_reduction(cno1m, cno2m, cov, cand_path, cand_len, cno_mapping)
@@ -1068,12 +1069,9 @@ min_cov, min_len, max_len, overlap, threshold, tempdir):
         if no in node_to_contig_dict:
             for cno in node_to_contig_dict[no]:
                 graph.vp.udp[node] -= contig_dict[cno][2]
-    # graph.ep.uflow = graph.new_edge_property("double")
-    # for (u,v), edge in simp_edge_dict.items():
-    #     graph.ep.uflow[edge] = graph.ep.flow[edge]
-    #     if (u,v) in edge_to_contig_dict:
-    #         for cno in edge_to_contig_dict[(u,v)]:
-    #             graph.ep.uflow[edge] -= contig_dict[cno][2]
+    contig_usage = {}
+    for cno in contig_dict.keys():
+        contig_usage[cno] = 0
 
     # retrieve all the self cycle first
     for cno, contig_node in list(cliq_node_dict.items()):
@@ -1088,7 +1086,7 @@ min_cov, min_len, max_len, overlap, threshold, tempdir):
                 cov = cliq_graph.vp.ccov[contig_node]
                 src = simp_node_dict[contig_dict[cno][0][-1]]
                 tgt = simp_node_dict[contig_dict[cno][0][0]]
-                cand_path, plen = dijkstra_sp(graph, simp_node_dict, src, tgt, cov, overlap)
+                cand_path, plen = dijkstra_sp(graph, simp_node_dict, src, tgt, cov, threshold, overlap)
                 cand_len = get_concat_len(cno, contig_dict[cno][1], cno, contig_dict[cno][1], plen, overlap)
 
                 if cand_path != None and cand_len != None:
@@ -1123,6 +1121,29 @@ min_cov, min_len, max_len, overlap, threshold, tempdir):
         print_contig(cno, clen, ccov, contig)
     for (u, v), e in cliq_edge_dict.items():
         print("EDGE: ", u, v)
+
+    if not graph_is_DAG(cliq_graph, cliq_node_dict):
+        print("------>graph contains cycles, cyclic concatenation processing")
+        cliq_graph, cliq_node_dict, cliq_edge_dict = cliq_graph_init(cliq_graph)
+        cycles = all_circuits(cliq_graph, True)
+        for cyc in cycles:
+            print("cycle: ", [cliq_graph.vp.cno[n] for n in cyc])
+            skip_cycle = False
+            all_edges = {}
+            for i in range(len(cyc)):
+                u = cyc[i]
+                v = cyc[(i+1) % len(cyc)]
+                e = cliq_graph.edge(u, v)
+                if graph.ep.color[e] != 'black':
+                    skip_cycle = True
+                    break
+                all_edges[(cliq_graph.vp.cno[u],cliq_graph.vp.cno[v])] = cliq_graph.edge(u, v)
+            if skip_cycle:
+                continue
+            removed_edge_tuple = min(all_edges.items(), key=lambda e_tuple: cliq_graph.ep.slen[e_tuple[1]])
+            print("Removed edge: ", removed_edge_tuple[0][0], "->", removed_edge_tuple[0][1])
+            cliq_graph_remove_edge(cliq_graph, cliq_edge_dict, removed_edge_tuple[0][0], removed_edge_tuple[0][1], removed_edge_tuple[1])
+
     print("--------------Start graduate concatentation------------------")
     for cno, cnos in cno_mapping.items():
         print("cno: ", cno, "maps to: ", cnos)
@@ -1171,22 +1192,46 @@ min_cov, min_len, max_len, overlap, threshold, tempdir):
             delta = abs(cliq_graph.vp.ccov[node1] - cliq_graph.vp.ccov[node2])
             concat_buffer.append((cno1, cno2, min(cliq_graph.vp.ccov[node1], cliq_graph.vp.ccov[node2]), delta))
         
-        concat_buffer = sorted(concat_buffer, key=lambda tuple: tuple[2])
+        concat_buffer = sorted(concat_buffer, key=lambda tuple: tuple[3])
         print("all most confident sorted concats are: ", concat_buffer)
         buffer_concatenation(concat_buffer, cno_mapping)
 
     print("--------------> contig after concatentations...")
-    for cno, contig in cliq_node_dict.items():
+    for cno, contig_node in list(cliq_node_dict.items()):
+        print("--------------------------------------------------------")
+        if cno in contig_usage:
+            count = contig_usage[cno]
+            print("cno: ", cno, "original usage count: ", count)
+            if count > 0:
+                print("original contig has been used, remove it to reduce the potential duplication")
+                cliq_graph_remove_node(cliq_graph, cliq_node_dict, cno, contig_node)
+                contig_dict.pop(cno)
+                continue
         contig, clen, ccov = contig_dict[cno]
+        cflows = contig_flow(graph, simp_edge_dict, contig)
         print_contig(cno, clen, ccov, contig)
+        if len(cflows) > 0:
+            print("mean: ", numpy.mean(cflows), 
+            " median: ", numpy.median(cflows), 
+            " min: ", numpy.min(cflows))
+
+        if simp_node_dict[contig[0]].in_degree() == 0 and simp_node_dict[contig[-1]].out_degree() == 0:
+            print("not extensible")
+        elif simp_node_dict[contig[0]] in list(simp_node_dict[contig[-1]].out_neighbors()):
+            print("self cycle, not entensible")
+        else:
+            print("extensible")
+
     for (u, v), e in cliq_edge_dict.items():
-        print("EDGE: ", u, v)
+        print("potential uncaught error: EDGE: ", u, v)
+
+    for no, node in simp_node_dict.items():
+        print("Node: {0}, full: {1}, left: {2}, usage: {3}".format(no, round(graph.vp.dp[node], 2), round(graph.vp.udp[node], 2), round((graph.vp.dp[node] - graph.vp.udp[node]) * 100 / graph.vp.dp[node]), 2))
+    
     # simplify the graph
     cliq_graph, cliq_node_dict, cliq_edge_dict = cliq_graph_init(cliq_graph)
     draw_cliq_graph(cliq_graph, len(cliq_node_dict), len(cliq_edge_dict), tempdir, "cliq_graphL2.png")
-    if len(cliq_edge_dict) != 0:
-        print("edges left up in the cliq graph, cyclic concatenation processing")
-        # TODO
+
     return contig_dict
 
 def strain_extension(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, strain_dict: dict, min_cov, max_len, overlap):

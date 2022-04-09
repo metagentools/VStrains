@@ -1977,3 +1977,428 @@ def optim_path_linear(srccno, tgtcno, src, tgt, cand_cov, bound_length, is_circu
             if total_len <= max_len:
                 return rtn_paths, p, total_len, num_similarity
         return None, None, None, None
+
+def contig_pairwise_concatenation(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, contig_dict: dict, 
+cliq_graph: Graph, cliq_node_dict: dict, cliq_edge_dict: dict, sp_path_dict: dict, 
+min_cov, min_len, max_len, overlap, threshold, tempdir):
+    """
+    1. concat the self cycle and reduce some self cycles if self len < minlen
+    2. concat the most confident contig pair in order
+    3. if cycle exist within the graph, break the cycle by removing the most weak edge.
+    4. gradually concat from source nodes until all the contig be concated.
+    """
+    # helper functions
+    def graph_reduction_c(cand_path, cand_cov):
+        for i in range(len(cand_path) - 1):
+            u = cand_path[i]
+            v = cand_path[i + 1]
+            e = graph.edge(u, v)
+            graph.vp.udp[u] -= cand_cov
+            graph.vp.udp[v] -= cand_cov
+            graph.ep.flow[e] -= cand_cov
+
+    def contig_pair_reduction(cno1, cno2, cand_cov, cand_path, cand_len, cno_mapping: dict):
+        """
+        1. reduce the graph and cliq graph via founded path and cand_cov, 
+        for cliq graph, then duplicate/remove
+        the cno1/2 node and merge into a single node with cand_cov, keep 
+        all the connections other than 1-2
+        """
+        # original graph udp/edge flow reduction
+        graph_reduction_c(cand_path, cand_cov)
+
+        # cliq graph reduction
+        cnode1 = cliq_node_dict[cno1]
+        cliq_graph.vp.ccov[cnode1] -= cand_cov
+        cnode2 = cliq_node_dict[cno2]
+        cliq_graph.vp.ccov[cnode2] -= cand_cov
+
+        print("L1 node cov after deduction: ", cliq_graph.vp.ccov[cnode1])
+        print("L2 node cov after deduction: ", cliq_graph.vp.ccov[cnode2])
+
+        if cliq_graph.vp.ccov[cnode1] <= threshold and cliq_graph.vp.ccov[cnode2] <= threshold:
+            print("both node be used up, merge L1 to L2, keep the L1 in edges and L2 out edges only")
+            cno_merged = cno1 + "->" + cno2
+
+            if cno1 in cno_mapping:
+                if cno1 in cno_mapping[cno1]:
+                    cno_mapping[cno1].remove(cno1)
+                cno_mapping[cno1].add(cno_merged)
+            else:
+                cno_mapping[cno1] = {cno_merged}
+
+            if cno2 in cno_mapping:
+                if cno2 in cno_mapping[cno2]:
+                    cno_mapping[cno2].remove(cno2)
+                cno_mapping[cno2].add(cno_merged)
+            else:
+                cno_mapping[cno2] = {cno_merged}
+
+            if cno_merged not in cno_mapping:
+                cno_mapping[cno_merged] = {cno_merged}
+
+            prev1 = contig_dict.pop(cno1)
+            prev2 = contig_dict.pop(cno2)
+            contig_dict[cno_merged] = [prev1[0]+[graph.vp.id[v] for v in cand_path]+prev2[0], cand_len, cand_cov]
+            
+            cnode_merged = cliq_graph_add_node(cliq_graph, cliq_node_dict, 
+            cno_merged, cand_len, cand_cov, 
+            cno_merged + ":" + str(cand_len) + ":" + str(cand_cov))
+
+            # removed the used up contig node
+            cliq_graph_remove_node(cliq_graph, cliq_node_dict, cno1, cnode1)
+            cliq_graph_remove_node(cliq_graph, cliq_node_dict, cno2, cnode2)
+
+            # removed the related L1 edges
+            for edge1out in cnode1.out_edges():
+                cliq_graph_remove_edge(cliq_graph, cliq_edge_dict,
+                cliq_graph.vp.cno[edge1out.source()], cliq_graph.vp.cno[edge1out.target()], edge1out)
+
+            # replace the related L1 in edges
+            for edge1in in cnode1.in_edges():
+                if cliq_graph.ep.color[edge1in] != 'black':
+                    continue
+                src1 = edge1in.source()
+                src1cno = cliq_graph.vp.cno[src1]
+                cliq_graph_remove_edge(cliq_graph, cliq_edge_dict, 
+                src1cno, cliq_graph.vp.cno[edge1in.target()], edge1in)
+                
+                # do not add self cycle edges
+                if src1cno != cno_merged:
+                    cliq_graph_add_edge(cliq_graph, cliq_edge_dict, src1cno, src1, 
+                    cno_merged, cnode_merged, cliq_graph.ep.slen[edge1in], cliq_graph.ep.text[edge1in])
+            
+            # removed the related L2 in edges
+            for edge2in in cnode2.in_edges():
+                if cliq_graph.ep.color[edge2in] != 'black':
+                    continue
+                cliq_graph_remove_edge(cliq_graph, cliq_edge_dict, 
+                cliq_graph.vp.cno[edge2in.source()], cliq_graph.vp.cno[edge2in.target()], edge2in)
+            
+            # replace the related L2 out edges
+            for edge2out in cnode2.out_edges():
+                if cliq_graph.ep.color[edge2out] != 'black':
+                    continue
+                tgt2 = edge2out.target()
+                tgt2cno = cliq_graph.vp.cno[tgt2]
+                cliq_graph_remove_edge(cliq_graph, cliq_edge_dict, 
+                cliq_graph.vp.cno[edge2out.source()], tgt2cno, edge2out)
+                if cno_merged != tgt2cno:
+                    cliq_graph_add_edge(cliq_graph, cliq_edge_dict, cno_merged, cnode_merged,
+                    tgt2cno, tgt2, cliq_graph.ep.slen[edge2out], cliq_graph.ep.text[edge2out])
+
+        elif cliq_graph.vp.ccov[cnode1] <= threshold:
+            print("L1 node be used up, split L2 node, and merge L1 to L2")
+            # split L2
+            cno_dup = cno1 + "->" + cno2
+
+            if cno1 in cno_mapping:
+                if cno1 in cno_mapping[cno1]:
+                    cno_mapping[cno1].remove(cno1)
+                cno_mapping[cno1].add(cno_dup)
+            else:
+                cno_mapping[cno1] = {cno_dup}
+                
+            if cno2 in cno_mapping:
+                cno_mapping[cno2].add(cno_dup)
+            else:
+                cno_mapping[cno2] = {cno_dup}
+
+            if cno_dup not in cno_mapping:
+                cno_mapping[cno_dup] = {cno_dup}
+
+            prev1 = contig_dict.pop(cno1)
+            contig_dict[cno_dup] = [prev1[0]+[graph.vp.id[v] for v in cand_path]+contig_dict[cno2][0], cand_len, cand_cov]
+            contig_dict[cno2][2] -= cand_cov
+
+            cnode_dup = cliq_graph_add_node(cliq_graph, cliq_node_dict, 
+            cno_dup, cand_len, cand_cov, 
+            cno_dup + ":" + str(cand_len) + ":" + str(cand_cov))
+
+            # remove the L1 node
+            cliq_graph_remove_node(cliq_graph, cliq_node_dict, cno1, cnode1)
+
+            # remove the related L1 edges
+            for edge1 in cnode1.all_edges():
+                if cliq_graph.ep.color[edge1] != 'black':
+                    continue
+                cliq_graph_remove_edge(cliq_graph, cliq_edge_dict, 
+                cliq_graph.vp.cno[edge1.source()], cliq_graph.vp.cno[edge1.target()], edge1)
+            
+            # append the related L2 out edges to dup node
+            for edge2out in cnode2.out_edges():
+                if cliq_graph.ep.color[edge2out] != 'black':
+                    continue
+                tgt2 = edge2out.target()
+                tgt2cno = cliq_graph.vp.cno[tgt2]
+                if tgt2cno != cno_dup:
+                    cliq_graph_add_edge(cliq_graph, cliq_edge_dict, cno_dup, cnode_dup,
+                    tgt2cno, tgt2, cliq_graph.ep.slen[edge2out], cliq_graph.ep.text[edge2out])
+
+        elif cliq_graph.vp.ccov[cnode2] <= threshold:
+            print("L2 node be used up, split L1 node, and merge L1 to L2")  
+            # split L1
+            cno_dup = cno1 + "->" + cno2
+
+            if cno1 in cno_mapping:
+                cno_mapping[cno1].add(cno_dup)
+            else:
+                cno_mapping[cno1] = {cno_dup}
+
+            if cno2 in cno_mapping:
+                if cno2 in cno_mapping[cno2]:
+                    cno_mapping[cno2].remove(cno2)
+                cno_mapping[cno2].add(cno_dup)
+            else:
+                cno_mapping[cno2] = {cno_dup}
+
+            if cno_dup not in cno_mapping:
+                cno_mapping[cno_dup] = {cno_dup}
+
+            prev2 = contig_dict.pop(cno2)
+            contig_dict[cno_dup] = [contig_dict[cno1][0]+[graph.vp.id[v] for v in cand_path]+prev2[0], cand_len, cand_cov]
+            contig_dict[cno1][2] -= cand_cov
+
+            cnode_dup = cliq_graph_add_node(cliq_graph, cliq_node_dict, 
+            cno_dup, cand_len, cand_cov, 
+            cno_dup + ":" + str(cand_len) + ":" + str(cand_cov))
+
+            cliq_graph_remove_node(cliq_graph, cliq_node_dict, cno2, cnode2)
+
+            # remove the related L2 inedges
+            for edge2 in cnode2.in_edges():
+                if cliq_graph.ep.color[edge2] != 'black':
+                    continue
+                cliq_graph_remove_edge(cliq_graph, cliq_edge_dict, 
+                cliq_graph.vp.cno[edge2.source()], cliq_graph.vp.cno[edge2.target()], edge2)
+            
+            # replace the related L2 out edges to dup node
+            for edge2out in cnode2.out_edges():
+                if cliq_graph.ep.color[edge2out] != 'black':
+                    continue
+                tgt2 = edge2out.target()
+                tgt2cno = cliq_graph.vp.cno[tgt2]
+                cliq_graph_remove_edge(cliq_graph, cliq_edge_dict, 
+                cliq_graph.vp.cno[edge2out.source()], tgt2cno, edge2out)
+                if tgt2cno != cno_dup:
+                    cliq_graph_add_edge(cliq_graph, cliq_edge_dict, cno_dup, cnode_dup,
+                    tgt2cno, tgt2, cliq_graph.ep.slen[edge2out], cliq_graph.ep.text[edge2out])
+        else:
+            print("error: L1 node: ", cliq_graph.vp.ccov[cnode1], ", L2 node: ", cliq_graph.vp.ccov[cnode2])
+
+    def buffer_concatenation(concat_buffer: list, cno_mapping: dict):
+        for (cno1, cno2, cov, delta) in concat_buffer:
+            print("------------------------------------------------------------------------")
+            print("-->Before mapping: {0}: {1} - {2}: {3}".format(cno1, cno_mapping[cno1], cno2, cno_mapping[cno2]))
+            for pcno in list(cno_mapping[cno1]):
+                if pcno not in cliq_node_dict:
+                    cno_mapping[cno1].remove(pcno)
+                    print("pcno removed: ", pcno)
+            for pcno in list(cno_mapping[cno2]):
+                if pcno not in cliq_node_dict:
+                    cno_mapping[cno2].remove(pcno)  
+                    print("pcno removed: ", pcno)
+
+            # cno1m = sorted(cno_mapping[cno1], key=lambda x: abs(cov - cliq_graph.vp.ccov[cliq_node_dict[x]]))[0]
+            # cno2m = sorted(cno_mapping[cno2], key=lambda x: abs(cov - cliq_graph.vp.ccov[cliq_node_dict[x]]))[0]
+            
+            pairs = []
+            for cno1m in cno_mapping[cno1]: 
+                for cno2m in cno_mapping[cno2]:
+                    if (cno1m, cno2m) in cliq_edge_dict:
+                        pairs.append((cno1m, cno2m))
+            if not pairs:
+                print("contig has been used from previous step: {0} {1}".format(cno1, cno2))
+                continue
+
+            if cno1 in contig_usage:
+                contig_usage[cno1] += 1
+            if cno2 in contig_usage:
+                contig_usage[cno2] += 1
+
+            cno1m, cno2m = min(pairs, key=lambda p: 
+                pow(cliq_graph.vp.ccov[cliq_node_dict[p[0]]] - cov, 2) + 
+                pow(cliq_graph.vp.ccov[cliq_node_dict[p[1]]] - cov, 2))
+            
+            print("-->PAIR UP {0} - {1}, cov: {2}, diff: {3}".format(cno1m, cno2m, cov, delta))
+            src = simp_node_dict[contig_dict[cno1m][0][-1]]
+            tgt = simp_node_dict[contig_dict[cno2m][0][0]]
+            cand_path, plen = dijkstra_sp(graph, simp_node_dict, src, tgt, cov, threshold, overlap)
+            cand_len = get_concat_len(cno1m, contig_dict[cno1m][1], cno2m, contig_dict[cno2m][1], plen, overlap)
+
+            contig_pair_reduction(cno1m, cno2m, cov, cand_path, cand_len, cno_mapping)
+
+        return
+    ###################################################################################################
+    # udp, node depth with related contig cov be deducted
+    graph.vp.udp = graph.new_vertex_property("double")
+    node_to_contig_dict, edge_to_contig_dict = contig_map_node(contig_dict)
+    for no, node in simp_node_dict.items():
+        graph.vp.udp[node] = graph.vp.dp[node]
+        if no in node_to_contig_dict:
+            for cno in node_to_contig_dict[no]:
+                graph.vp.udp[node] -= contig_dict[cno][2]
+    contig_usage = {}
+    for cno in contig_dict.keys():
+        contig_usage[cno] = 0
+
+    # retrieve all the self cycle first
+    for cno, contig_node in list(cliq_node_dict.items()):
+        if contig_node in list(contig_node.out_neighbors()):
+            if len(list(contig_node.all_edges())) > 2:
+                if cliq_graph.vp.clen[contig_node] < min_len:
+                    # remove self cycle edge with self cycle + outer connection feature when clen < minlen
+                    cliq_graph_remove_edge(cliq_graph, cliq_edge_dict, cno, cno, cliq_graph.edge(contig_node, contig_node))
+                    print("remove self edge+outer connection {0} -> {0} with node length < minlen".format(cno))
+            else:
+                print("Circular PATH: ", cno)
+                cov = cliq_graph.vp.ccov[contig_node]
+                src = simp_node_dict[contig_dict[cno][0][-1]]
+                tgt = simp_node_dict[contig_dict[cno][0][0]]
+                cand_path, plen = dijkstra_sp(graph, simp_node_dict, src, tgt, cov, threshold, overlap)
+                cand_len = get_concat_len(cno, contig_dict[cno][1], cno, contig_dict[cno][1], plen, overlap)
+
+                if cand_path != None and cand_len != None:
+                    graph_reduction_c(cand_path, cov)
+                    print(path_to_id_string(graph, [simp_node_dict[cno] for cno in contig_dict[cno][0]] + cand_path, "cov: {0}".format(cov)))
+                    contig_dict[cno][0].extend([graph.vp.id[n] for n in cand_path])
+                    contig_dict[cno][1] = cand_len
+                    contig_dict[cno][2] = cov
+                    cliq_graph_remove_edge(cliq_graph, cliq_edge_dict, cno, cno, cliq_edge_dict[(cno, cno)])
+                else:
+                    print("Path not found, error")
+
+    cno_mapping = {}
+    for id, node in cliq_node_dict.items():
+        cno_mapping[id] = {id}
+
+    concat_buffer = []
+    for (cno1, cno2) in cliq_edge_dict.keys():
+        print("---------------------------------------------------------------")
+        delta = abs(cliq_graph.vp.ccov[cliq_node_dict[cno1]] - cliq_graph.vp.ccov[cliq_node_dict[cno2]])
+        cov = min(cliq_graph.vp.ccov[cliq_node_dict[cno1]], cliq_graph.vp.ccov[cliq_node_dict[cno2]])
+        print("{0} - {1}, cov: {2}, diff: {3}".format(cno1, cno2, cov, delta))
+        if delta < threshold:
+            concat_buffer.append((cno1, cno2, cov, delta))
+    
+    concat_buffer = sorted(concat_buffer, key=lambda tuple: tuple[3])
+    print("all most confident sorted concats are: ", concat_buffer)
+    buffer_concatenation(concat_buffer, cno_mapping)
+
+    for cno, contig in cliq_node_dict.items():
+        contig, clen, ccov = contig_dict[cno]
+        print_contig(cno, clen, ccov, contig)
+    for (u, v), e in cliq_edge_dict.items():
+        print("EDGE: ", u, v)
+
+    if not graph_is_DAG(cliq_graph, cliq_node_dict):
+        print("------>graph contains cycles, cyclic concatenation processing")
+        cliq_graph, cliq_node_dict, cliq_edge_dict = cliq_graph_init(cliq_graph)
+        cycles = all_circuits(cliq_graph, True)
+        for cyc in cycles:
+            print("cycle: ", [cliq_graph.vp.cno[n] for n in cyc])
+            skip_cycle = False
+            all_edges = {}
+            for i in range(len(cyc)):
+                u = cyc[i]
+                v = cyc[(i+1) % len(cyc)]
+                e = cliq_graph.edge(u, v)
+                if graph.ep.color[e] != 'black':
+                    skip_cycle = True
+                    break
+                all_edges[(cliq_graph.vp.cno[u],cliq_graph.vp.cno[v])] = cliq_graph.edge(u, v)
+            if skip_cycle:
+                continue
+            removed_edge_tuple = min(all_edges.items(), key=lambda e_tuple: cliq_graph.ep.slen[e_tuple[1]])
+            print("Removed edge: ", removed_edge_tuple[0][0], "->", removed_edge_tuple[0][1])
+            cliq_graph_remove_edge(cliq_graph, cliq_edge_dict, removed_edge_tuple[0][0], removed_edge_tuple[0][1], removed_edge_tuple[1])
+
+    print("--------------Start graduate concatentation------------------")
+    for cno, cnos in cno_mapping.items():
+        print("cno: ", cno, "maps to: ", cnos)
+    # concat 
+    # process all the non self-cycle contig until no isolated node.
+    # direct pair two adjacent contig only if coverage difference is within pairwise threshold
+    while True:
+        # clean up the cno_mapping
+        cno_mapping = {}
+        for id in cliq_node_dict.keys():
+            cno_mapping[id] = {id}
+        # all the src contig
+        L1_contigs = {}
+        for no, contig_node in list(cliq_node_dict.items()):
+            if cliq_graph.vp.color[contig_node] != 'black':
+                continue
+            ind = len([e for e in contig_node.in_edges() if cliq_graph.ep.color[e] == 'black'])
+            outd = len([e for e in contig_node.out_edges() if cliq_graph.ep.color[e] == 'black'])
+            if ind == 0 and outd != 0:
+                # src node
+                L1_contigs[no] = contig_node
+
+        L2_contigs = {}
+        st_pairs = {}
+        for no, contig_node in list(L1_contigs.items()):
+            out_edges = [e for e in contig_node.out_edges() if cliq_graph.ep.color[e] == 'black']
+            for out_e in out_edges:
+                out_contig_node = out_e.target()
+                if cliq_graph.vp.color[out_contig_node] != 'black':
+                    continue
+                outid = cliq_graph.vp.cno[out_contig_node]
+                if not outid in L2_contigs:
+                    L2_contigs[outid] = out_contig_node
+                st_pairs[(no, outid)] = (contig_node, out_contig_node)
+        
+        if not L1_contigs or not L2_contigs:
+            print("no more linear concatentation left, break")
+            break
+
+        print("L1: ", [no for no in L1_contigs.keys()])
+        print("L2: ", [no for no in L2_contigs.keys()])
+        
+        # detect the most confident contig pair first
+        concat_buffer = []
+        for (cno1, cno2), (node1, node2) in st_pairs.items():
+            delta = abs(cliq_graph.vp.ccov[node1] - cliq_graph.vp.ccov[node2])
+            concat_buffer.append((cno1, cno2, min(cliq_graph.vp.ccov[node1], cliq_graph.vp.ccov[node2]), delta))
+        
+        concat_buffer = sorted(concat_buffer, key=lambda tuple: tuple[3])
+        print("all most confident sorted concats are: ", concat_buffer)
+        buffer_concatenation(concat_buffer, cno_mapping)
+
+    print("--------------> contig after concatentations...")
+    for cno, contig_node in list(cliq_node_dict.items()):
+        print("--------------------------------------------------------")
+        if cno in contig_usage:
+            count = contig_usage[cno]
+            print("cno: ", cno, "original usage count: ", count)
+            if count > 0:
+                print("original contig has been used, remove it to reduce the potential duplication")
+                cliq_graph_remove_node(cliq_graph, cliq_node_dict, cno, contig_node)
+                contig_dict.pop(cno)
+                continue
+        contig, clen, ccov = contig_dict[cno]
+        cflows = contig_flow(graph, simp_edge_dict, contig)
+        print_contig(cno, clen, ccov, contig)
+        if len(cflows) > 0:
+            print("mean: ", numpy.mean(cflows), 
+            " median: ", numpy.median(cflows), 
+            " min: ", numpy.min(cflows))
+
+        if simp_node_dict[contig[0]].in_degree() == 0 and simp_node_dict[contig[-1]].out_degree() == 0:
+            print("not extensible")
+        elif simp_node_dict[contig[0]] in list(simp_node_dict[contig[-1]].out_neighbors()):
+            print("self cycle, not entensible")
+        else:
+            print("extensible")
+
+    for (u, v), e in cliq_edge_dict.items():
+        print("potential uncaught error: EDGE: ", u, v)
+
+    for no, node in simp_node_dict.items():
+        print("Node: {0}, full: {1}, left: {2}, usage: {3}".format(no, round(graph.vp.dp[node], 2), round(graph.vp.udp[node], 2), round((graph.vp.dp[node] - graph.vp.udp[node]) * 100 / graph.vp.dp[node]), 2))
+    
+    # simplify the graph
+    cliq_graph, cliq_node_dict, cliq_edge_dict = cliq_graph_init(cliq_graph)
+    draw_cliq_graph(cliq_graph, len(cliq_node_dict), len(cliq_edge_dict), tempdir, "cliq_graphL2.png")
+
+    return contig_dict

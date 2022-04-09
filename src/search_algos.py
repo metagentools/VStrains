@@ -22,7 +22,10 @@ def graph_is_DAG(graph: Graph, simp_node_dict: dict):
         # Recur for all neighbours
         # if any neighbour is visited and in
         # recStack then graph is cyclic
-        for neighbour in v.out_neighbors():
+        for e in v.out_edges():
+            if graph.ep.color[e] != 'black':
+                continue
+            neighbour = e.target()
             if not visited[neighbour]:
                 if isCyclicUtil(graph, neighbour, visited, recStack):
                     return True
@@ -37,10 +40,14 @@ def graph_is_DAG(graph: Graph, simp_node_dict: dict):
     #init
     visited = {}
     recStack = {}
-    for id, node in simp_node_dict.items():
-        visited[node] = False
-        recStack[node] = False
-    for id, node in simp_node_dict.items():
+    for node in simp_node_dict.values():
+        if graph.vp.color[node] == 'black':
+            visited[node] = False
+            recStack[node] = False
+        else:
+            visited[node] = True
+            recStack[node] = True     
+    for node in simp_node_dict.values():
         if not visited[node]:
             if isCyclicUtil(graph, node, visited, recStack):
                 print("graph is cyclic")
@@ -108,7 +115,7 @@ def reachable(graph: Graph, simp_node_dict: dict, src, src_cno, tgt, tgt_cno, co
     return reached, rec_path
 
 
-def dijkstra_sp(graph: Graph, simp_node_dict: dict, source, sink, closest_cov, overlap: int):
+def dijkstra_sp(graph: Graph, simp_node_dict: dict, source, sink, closest_cov, threshold, overlap: int):
     """
     Use basic dijkstra algorithm to compute the shortest path between source and sink
     """
@@ -136,9 +143,17 @@ def dijkstra_sp(graph: Graph, simp_node_dict: dict, source, sink, closest_cov, o
 
         for v in u.out_neighbors():
             if v in Q:
+                # obtain current edge cost
+                edge_flow = graph.ep.flow[graph.edge(u, v)]
+                if abs(edge_flow - closest_cov) < threshold:
+                    alt = dist[u]
+                else:
+                    if edge_flow - closest_cov < 0:
+                        # higher puishment on selecting negative edge
+                        alt = dist[u] + pow(edge_flow - closest_cov, 2)
+                    else:
+                        alt = dist[u] + (edge_flow - closest_cov)
                 # relax
-                alt = dist[u] + pow(graph.ep.flow[graph.edge(u, v)] - closest_cov, 2)
-                # graph_converter.path_len(graph, [u, v], overlap)
                 if alt < dist[v]:
                     dist[v] = alt
                     prev[v] = u

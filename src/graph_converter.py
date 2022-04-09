@@ -806,7 +806,7 @@ def contig_cov_fix(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, con
     for cno, [contig, clen, ccov] in list(contig_dict.items()):
         print("---------------------------------------------------------------")
         if len(contig) > 1:
-            contig_dict[cno][2] = numpy.median(contig_flow(graph, simp_edge_dict, contig))
+            contig_dict[cno][2] = numpy.min(contig_flow(graph, simp_edge_dict, contig))
         else:
             if contig[0] not in simp_node_dict:
                 contig_dict.pop(cno)

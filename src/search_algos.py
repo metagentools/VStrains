@@ -145,6 +145,11 @@ def dijkstra_sp(graph: Graph, simp_node_dict: dict, source, sink, closest_cov, t
             if v in Q:
                 # obtain current edge cost
                 edge_flow = graph.ep.flow[graph.edge(u, v)]
+                # if (edge_flow - closest_cov) < 0:
+                #     alt = sys.maxsize
+                # else:
+                #     alt = dist[u] + pow(edge_flow - closest_cov, 2)
+
                 if abs(edge_flow - closest_cov) < threshold:
                     alt = dist[u]
                 else:
@@ -153,6 +158,7 @@ def dijkstra_sp(graph: Graph, simp_node_dict: dict, source, sink, closest_cov, t
                         alt = dist[u] + pow(edge_flow - closest_cov, 2)
                     else:
                         alt = dist[u] + (edge_flow - closest_cov)
+                        
                 # relax
                 if alt < dist[v]:
                     dist[v] = alt

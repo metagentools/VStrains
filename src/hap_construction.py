@@ -204,9 +204,23 @@ def main():
     cliq_graph, cliq_node_dict, cliq_edge_dict, sp_path_dict = contig_clique_graph_build(graph5, simp_node_dict5, simp_edge_dict5, contig_dict, args.max_len, THRESHOLD, args.overlap)
     draw_cliq_graph(cliq_graph, len(cliq_node_dict), len(cliq_edge_dict), TEMP_DIR, "cliq_graphL1.png")
     print("-------------------------------CONTIG PAIRWISE CONCATENATION-----------------------------------")
-    concat_contig_dict = contig_pairwise_concatenation(graph5, simp_node_dict5, simp_edge_dict5, contig_dict, cliq_graph, cliq_node_dict, cliq_edge_dict, sp_path_dict, args.min_cov, args.min_len, args.max_len, args.overlap, THRESHOLD, TEMP_DIR)
-    contig_dict_to_fasta(graph5, concat_contig_dict, simp_node_dict5, args.overlap, "{0}cand_strain.fasta".format(TEMP_DIR))
-    contig_dict_to_path(concat_contig_dict, "{0}cand_strain.paths".format(TEMP_DIR))
+    concat_contig_dict = contig_pairwise_concatenation(graph5, simp_node_dict5, simp_edge_dict5, contig_dict, 
+    cliq_graph, cliq_node_dict, cliq_edge_dict, sp_path_dict, 
+    args.min_cov, args.min_len, args.max_len, args.overlap, THRESHOLD, TEMP_DIR)
+
+    # partial result
+    contig_dict_to_fasta(graph5, concat_contig_dict, simp_node_dict5, args.overlap, "{0}concat_contig.fasta".format(TEMP_DIR))
+    contig_dict_to_path(concat_contig_dict, "{0}concat_contig.paths".format(TEMP_DIR))
+    minimap_api(args.ref_file, "{0}concat_contig.fasta".format(TEMP_DIR), "{0}concat_contig_to_strain.paf".format(TEMP_DIR))
+
+    print("-------------------------------------STRAIN EXTENSION--------------------------------------")
+    extended_contig_dict = strain_extension(graph5, simp_node_dict5, simp_edge_dict5, concat_contig_dict, args.min_cov, args.max_len, THRESHOLD, args.overlap)
+    contig_dict_to_fasta(graph5, extended_contig_dict, simp_node_dict5, args.overlap, "{0}extended_contig.fasta".format(TEMP_DIR))
+    contig_dict_to_path(extended_contig_dict, "{0}extended_contig.paths".format(TEMP_DIR))
+    minimap_api(args.ref_file, "{0}extended_contig.fasta".format(TEMP_DIR), "{0}extended_contig_to_strain.paf".format(TEMP_DIR))  
+    
+    print("-------------------------------LOCAL SEARCH OPTIMISATION-----------------------------------")
+    # local_search_optimisation(graph5, simp_node_dict5, simp_edge_dict5, concat_contig_dict, args.min_cov, args.min_len, args.max_len, args.overlap, THRESHOLD)
     
     return 0
 
@@ -809,6 +823,19 @@ def contig_clique_graph_build(graph: Graph, simp_node_dict: dict, simp_edge_dict
     cliq_graph_r, cliq_node_dict_r, cliq_edge_dict_r = cliq_graph_init(cliq_graph)
     return cliq_graph_r, cliq_node_dict_r, cliq_edge_dict_r, sp_path_dict
 
+def graph_reduction_c(graph: Graph, cand_path, cand_cov):
+    """
+    reduce the graph coverage based on given path and cov,
+    only applied after udp be deployed in the graph
+    """
+    for i in range(len(cand_path) - 1):
+        u = cand_path[i]
+        v = cand_path[i + 1]
+        e = graph.edge(u, v)
+        graph.vp.udp[u] -= cand_cov
+        graph.vp.udp[v] -= cand_cov
+        graph.ep.flow[e] -= cand_cov
+
 def contig_pairwise_concatenation(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, contig_dict: dict, 
 cliq_graph: Graph, cliq_node_dict: dict, cliq_edge_dict: dict, sp_path_dict: dict, 
 min_cov, min_len, max_len, overlap, threshold, tempdir):
@@ -819,15 +846,6 @@ min_cov, min_len, max_len, overlap, threshold, tempdir):
     4. gradually concat from source nodes until all the contig be concated.
     """
     # helper functions
-    def graph_reduction_c(cand_path, cand_cov):
-        for i in range(len(cand_path) - 1):
-            u = cand_path[i]
-            v = cand_path[i + 1]
-            e = graph.edge(u, v)
-            graph.vp.udp[u] -= cand_cov
-            graph.vp.udp[v] -= cand_cov
-            graph.ep.flow[e] -= cand_cov
-
     def contig_pair_reduction(cno1, cno2, cand_cov, cand_path, cand_len, cno_mapping: dict):
         """
         1. reduce the graph and cliq graph via founded path and cand_cov, 
@@ -836,7 +854,8 @@ min_cov, min_len, max_len, overlap, threshold, tempdir):
         all the connections other than 1-2
         """
         # original graph udp/edge flow reduction
-        graph_reduction_c(cand_path, cand_cov)
+        whole_path = [simp_node_dict[no] for no in contig_dict[cno1][0]] + cand_path + [simp_node_dict[no] for no in contig_dict[cno2][0]] 
+        graph_reduction_c(graph, whole_path, cand_cov)
 
         # cliq graph reduction
         cnode1 = cliq_node_dict[cno1]
@@ -1063,12 +1082,9 @@ min_cov, min_len, max_len, overlap, threshold, tempdir):
     ###################################################################################################
     # udp, node depth with related contig cov be deducted
     graph.vp.udp = graph.new_vertex_property("double")
-    node_to_contig_dict, edge_to_contig_dict = contig_map_node(contig_dict)
     for no, node in simp_node_dict.items():
         graph.vp.udp[node] = graph.vp.dp[node]
-        if no in node_to_contig_dict:
-            for cno in node_to_contig_dict[no]:
-                graph.vp.udp[node] -= contig_dict[cno][2]
+        
     contig_usage = {}
     for cno in contig_dict.keys():
         contig_usage[cno] = 0
@@ -1090,12 +1106,12 @@ min_cov, min_len, max_len, overlap, threshold, tempdir):
                 cand_len = get_concat_len(cno, contig_dict[cno][1], cno, contig_dict[cno][1], plen, overlap)
 
                 if cand_path != None and cand_len != None:
-                    graph_reduction_c(cand_path, cov)
-                    print(path_to_id_string(graph, [simp_node_dict[cno] for cno in contig_dict[cno][0]] + cand_path, "cov: {0}".format(cov)))
                     contig_dict[cno][0].extend([graph.vp.id[n] for n in cand_path])
                     contig_dict[cno][1] = cand_len
                     contig_dict[cno][2] = cov
                     cliq_graph_remove_edge(cliq_graph, cliq_edge_dict, cno, cno, cliq_edge_dict[(cno, cno)])
+                    graph_reduction_c(graph, [simp_node_dict[no] for no in contig_dict[cno][0]], cov)
+                    print(path_to_id_string(graph, [simp_node_dict[cno] for cno in contig_dict[cno][0]] + cand_path, "cov: {0}".format(cov)))
                 else:
                     print("Path not found, error")
 
@@ -1203,7 +1219,7 @@ min_cov, min_len, max_len, overlap, threshold, tempdir):
             count = contig_usage[cno]
             print("cno: ", cno, "original usage count: ", count)
             if count > 0:
-                print("original contig has been used, remove it to reduce the potential duplication")
+                print("original contig has been used, remove it to reduce the potential duplication ratio")
                 cliq_graph_remove_node(cliq_graph, cliq_node_dict, cno, contig_node)
                 contig_dict.pop(cno)
                 continue
@@ -1215,18 +1231,8 @@ min_cov, min_len, max_len, overlap, threshold, tempdir):
             " median: ", numpy.median(cflows), 
             " min: ", numpy.min(cflows))
 
-        if simp_node_dict[contig[0]].in_degree() == 0 and simp_node_dict[contig[-1]].out_degree() == 0:
-            print("not extensible")
-        elif simp_node_dict[contig[0]] in list(simp_node_dict[contig[-1]].out_neighbors()):
-            print("self cycle, not entensible")
-        else:
-            print("extensible")
-
     for (u, v), e in cliq_edge_dict.items():
         print("potential uncaught error: EDGE: ", u, v)
-
-    for no, node in simp_node_dict.items():
-        print("Node: {0}, full: {1}, left: {2}, usage: {3}".format(no, round(graph.vp.dp[node], 2), round(graph.vp.udp[node], 2), round((graph.vp.dp[node] - graph.vp.udp[node]) * 100 / graph.vp.dp[node]), 2))
     
     # simplify the graph
     cliq_graph, cliq_node_dict, cliq_edge_dict = cliq_graph_init(cliq_graph)
@@ -1234,12 +1240,92 @@ min_cov, min_len, max_len, overlap, threshold, tempdir):
 
     return contig_dict
 
-def strain_extension(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, strain_dict: dict, min_cov, max_len, overlap):
+def strain_extension(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, contig_dict: dict, 
+min_cov, max_len, threshold, overlap):
     """
     Extend the strain length
     1. map all the strain back into the graph
     """
+    # find all the srcs-targets
+    src_nodes = [node for node in graph.vertices() if node.in_degree() == 0 and node.out_degree() != 0]
+    tgt_nodes = [node for node in graph.vertices() if node.in_degree() != 0 and node.out_degree() == 0]
+    
+    # create a global source node & sink node, and concat all the curr src to the global source node
+    global_src = graph.add_vertex()
+    graph.vp.id[global_src] = 'global_src'
+    simp_node_dict[graph.vp.id[global_src]] = global_src
+    for src in src_nodes:
+        e = graph.add_edge(global_src, src)
+        graph.ep.flow[e] = graph.vp.dp[src]
+        graph.ep.color[e] = 'black'
+        graph.ep.overlap[e] = overlap
 
+    global_sink = graph.add_vertex()
+    graph.vp.id[global_sink] = 'global_sink'
+    simp_node_dict[graph.vp.id[global_sink]] = global_sink
+    for tgt in tgt_nodes:
+        e = graph.add_edge(tgt, global_sink)
+        graph.ep.flow[e] = graph.vp.dp[tgt]
+        graph.ep.color[e] = 'black'
+        graph.ep.overlap[e] = overlap
+    
+
+    for cno, [contig, clen, ccov] in list(contig_dict.items()):
+        print_contig(cno, clen, ccov, contig, "-----> current extending contig: ")
+        if simp_node_dict[contig[0]].in_degree() == 0 and simp_node_dict[contig[-1]].out_degree() == 0:
+            print("not extensible")
+        elif simp_node_dict[contig[0]] in list(simp_node_dict[contig[-1]].out_neighbors()):
+            print("self cycle, not entensible")
+        else:
+            print("extensible")
+            contig_head = simp_node_dict[contig[0]]
+            if contig_head.in_degree() != 0 and global_src not in contig_head.in_neighbors():
+                print("---> {0} ~~> contig head: {1}".format(graph.vp.id[global_src], graph.vp.id[contig_head]))
+                sp, _ = dijkstra_sp(graph, simp_node_dict, global_src, contig_head, ccov, threshold, overlap)
+                if sp != None:
+                    plen = path_len(graph, sp, overlap)
+                    print("path len: ", plen)
+                    graph_reduction_c(graph, sp, ccov)
+                    contig_dict[cno] = [[graph.vp.id[n] for n in sp] + contig_dict[cno][0], plen + contig_dict[cno][1] - overlap, ccov]
+                else:
+                    print("path not found")
+
+            contig_tail = simp_node_dict[contig[-1]]  
+            if contig_tail.out_degree() != 0 and global_sink not in contig_tail.out_neighbors():
+                print("---> contig tail: {0} ~~> {1}".format(graph.vp.id[contig_tail], graph.vp.id[global_sink]))
+                sp, _ = dijkstra_sp(graph, simp_node_dict, contig_tail, global_sink, ccov, threshold, overlap)
+                if sp != None:
+                    plen = path_len(graph, sp, overlap)
+                    print("path len: ", plen)
+                    graph_reduction_c(graph, sp, ccov)
+                    contig_dict[cno] = [contig_dict[cno][0] + [graph.vp.id[n] for n in sp], plen + contig_dict[cno][1] - overlap, ccov]
+                else:
+                    print("path not found")
+    print("------------------> all the extended contigs: ")
+    for cno, [contig, clen, ccov] in list(contig_dict.items()):
+        print_contig(cno, clen, ccov, contig, "-----> extended contig ")
+        dps = [graph.vp.dp[simp_node_dict[no]] for no in contig]
+        print("mean: ", numpy.mean(dps), 
+        " median: ", numpy.median(dps), 
+        " min: ", numpy.min(dps))
+
+    simp_node_dict.pop(graph.vp.id[global_src])
+    graph.vp.color[global_src] = 'gray'
+    simp_node_dict.pop(graph.vp.id[global_sink])
+    graph.vp.color[global_sink] = 'gray'
+
+    unused_nodes = []
+    for no, node in simp_node_dict.items():
+        print("----------------------------------------------------")
+        ratio = round(((graph.vp.dp[node] - graph.vp.udp[node]) * 100 / graph.vp.dp[node]), 2)
+        print("Node: {0}, full: {1}, left: {2}, usage: {3}".format(no, round(graph.vp.dp[node], 2), round(graph.vp.udp[node], 2), ratio))
+        if ratio < 100:
+            unused_nodes.append(no)
+    print(list_to_string(unused_nodes))
+
+    return contig_dict
+
+def local_search_optimisation(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, contig_dict: dict, min_cov, min_len, max_len, overlap, threshold):
     return
 
 if __name__ == "__main__":

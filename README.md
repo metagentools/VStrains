@@ -1,5 +1,26 @@
 ## The project is aiming to construct full-length haplotype from metagenomic environment, using pair-end reads
 
+
+Step to concat the contig clique graph
+1. remove some self-cycle edge if curr contig len < min_len (due to high concat risk)
+2. for any remaining self-cycle, concat them first.
+3. for any pair of contig (u,v) in E, if abs(cov(u) - cov(v)) < threshold, consider the
+   contig pair as confident pair, and do the concatenation and merge to a single node as u||v, and remove all the out edges(u) and in edges(v), transfer the in edges(u) to in edges(u||v) and out edges (v) to out edges(u||v)
+4. if the cliq graph is cyclic, for any left up cycles, break the cycle by removing the min dist edge among the cycle, only minimum edges be removed until the clique graph is acyclic
+5. gradually concat the contigs until no more concatentation exist:
+   1. pick any source contig and store into L1 contigs
+   2. pick any reachable contigs from L1 contigs and store into L2 contigs, also
+      store the relationship between the L1 vs L2 contigs
+   3. concat the contig pair (L1-L2) in order of coverage similarity with ascending order, path in between is found by modified Dijkstra search algorithm.
+6. for all contigs, if original contig be used within concatenation step but not used up, remove the original contig to reduce the potential duplication ratio.
+
+Step to extend the contig in both end
+1. for all src node from graph, concat with a global src node (similarily for sink node)
+2. for each contig, find path between gloabl src to the contig head and contig tail to global sink, with distinct direction, path is found via modified Dijkstra search algorithm. Do the end concatentation if path exist.
+
+Step to perform local search on the cand contigs.
+1. TODO
+
 Assumption:
 
 No duplicate edges between two nodes

@@ -2,8 +2,8 @@
 
 
 Step to concat the contig clique graph
-1. remove some self-cycle edge if curr contig len < min_len (due to high concat risk)
-2. for any remaining self-cycle, concat them first.
+1. remove any self-cycle edge with curr contig len < min_len (due to high concat risk)
+2. for all remaining self-cycle, concat them first.
 3. for any pair of contig (u,v) in E, if abs(cov(u) - cov(v)) < threshold, consider the
    contig pair as confident pair, and do the concatenation and merge to a single node as u||v, and remove all the out edges(u) and in edges(v), transfer the in edges(u) to in edges(u||v) and out edges (v) to out edges(u||v)
 4. if the cliq graph is cyclic, for any left up cycles, break the cycle by removing the min dist edge among the cycle, only minimum edges be removed until the clique graph is acyclic

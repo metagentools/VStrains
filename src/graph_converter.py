@@ -820,11 +820,24 @@ def contig_cov_fix(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, con
                 " min: ", numpy.min(contig_flow(graph, simp_edge_dict, contig)))
     return
 
+def graph_reduction_c(graph: Graph, cand_path, cand_cov):
+    """
+    reduce the graph coverage based on given path and cov,
+    only applied after udp be deployed in the graph
+    """
+    for i in range(len(cand_path) - 1):
+        u = cand_path[i]
+        v = cand_path[i + 1]
+        e = graph.edge(u, v)
+        graph.vp.udp[u] -= cand_cov
+        graph.vp.udp[v] -= cand_cov
+        graph.ep.flow[e] -= cand_cov
+
 def graph_splitting(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, contig_dict: dict, threshold, strict_mode=True):
     """
-    for any N-N branch, if see if any contig is going through that
+    n-n branch splitting
     """
-    print("-------------------------graph splitting: {0}----------------------".format(("strict" if strict_mode else "")))
+    print("-------------------------graph splitting: {0}----------------------".format(("strict" if strict_mode else "relax")))
     print("Threshold: ", threshold)
     split_branches = []
     node_to_contig_dict, edge_to_contig_dict = contig_map_node(contig_dict)
@@ -927,7 +940,6 @@ def graph_splitting(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, co
     print("No of branch be removed: ", len(set(split_branches)))
     s = ""
     print("Split branches: ", list_to_string(set(split_branches)))
-    print("-------------------------graph splitting end----------------------")
     return
 
 def simp_path(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict):
@@ -1070,6 +1082,18 @@ def contig_node_cov_rise(graph: Graph, simp_node_dict: dict, contig_dict: dict, 
                 print("Node: {0} dp is really low: {1} vs {2}, rise it up".format(no, graph.vp.dp[node], sum_covs))
             graph.vp.dp[node] = sum_covs
     return
+
+def contig_edges(graph: Graph, edge_dict: dict, contig):
+    """
+    edge flow for the contig
+    """
+    edges = []
+    if len(contig) < 2:
+        return edges
+    for i in range(len(contig)-1):
+        edges.append((contig[i], contig[i+1]))
+        
+    return edges
 
 def contig_flow(graph: Graph, edge_dict: dict, contig):
     """
@@ -1325,3 +1349,62 @@ def list_to_string(ids: list, s=""):
 
 def path_to_id_string(graph: Graph, path, s=""):
     return list_to_string([graph.vp.id[node] for node in path], s)
+
+
+
+
+#########
+# def contig_variation_span(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, contig_dict: dict, overlap, maxlen, tempdir):
+#     seaborn.set_theme(style="darkgrid")
+
+#     for cno, [contig, clen, ccov] in contig_dict.items():
+#         print("-------------------------------------------------------------")
+#         src = simp_node_dict[contig[0]]
+#         tgt = simp_node_dict[contig[-1]]
+
+#         involved_node, involved_edge = contig_variation_path(graph, simp_node_dict, contig_dict, cno, src, tgt, overlap)
+#         # the histogram of the data
+#         if len(involved_edge) == 0:
+#             print("no edge within the contig variation, skip graph construction")
+#             continue
+#         xpair = [(key, graph.ep.flow[simp_edge_dict[key]]) for key in involved_edge]
+#         print(xpair)
+        # x_self = contig_flow(graph, simp_edge_dict, contig)
+
+        # print("contig mean: ", numpy.mean(x_self), 
+        # " median: ", numpy.median(x_self), 
+        # " min: ", numpy.min(x_self),
+        # " max: ", numpy.max(x_self))
+        # x_all = [graph.ep.flow[simp_edge_dict[key]] for key in involved_edge]
+        # print("span mean: ", numpy.mean(x_all), 
+        # " median: ", numpy.median(x_all), 
+        # " min: ", numpy.min(x_all),
+        # " max: ", numpy.max(x_all))
+
+        # x_span = [graph.ep.flow[simp_edge_dict[key]] for key in involved_edge.difference(set(contig_edges(graph, simp_edge_dict, contig)))]        
+        # plt.figure(figsize=(32,16))
+        
+        # if len(x_span) != 0:
+        #     x_series = pandas.Series(x_span).value_counts()
+        #     x_self_series = pandas.Series(x_self).value_counts()
+        #     df=pandas.concat([x_self_series,x_series],axis=1)
+        #     df.columns = ["Contig", "Span"]
+        #     df=df.reset_index().melt(id_vars=['index'])
+        #     df.columns = ["coverage", "type", "count"]
+        #     ax = seaborn.barplot(
+    #             x='coverage',
+    #             y='count',
+    #             hue='type',
+    #             data=df,
+    #             palette=['blue','red'],
+    #             alpha=.5,
+    #             dodge=False,)
+    #     else:
+    #         d = pandas.Series({"coverage": x_self})
+    #         ax = seaborn.countplot(x="coverage", data=d)
+    #     for container in ax.containers:
+    #         ax.bar_label(container)
+    #     ax.set_xticklabels(ax.get_xticklabels(), rotation=40, ha="right")
+    #     plt.title('Histogram of Contig {0}, CLEN {1}, CCOV {2} variation'.format(cno, clen, ccov))
+    #     plt.savefig("{0}contig_{1}_variation_hist.png".format(tempdir, cno))
+    # return

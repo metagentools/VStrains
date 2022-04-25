@@ -29,13 +29,13 @@ def sep_ref(ref_file, id=0):
         ref.close()
     return ref_file_list
 
-def quast_eval(c=None, ref=None, o=None, id=0):
-    assert c and ref and o
+def quast_eval(c1=None, c2=None, c3=None, ref=None, o=None, id=0):
+    assert c1 and c2 and c3, ref and o
     subprocess.check_call("rm -rf sub_{0}_*_ref.fasta".format(id), shell=True)
 
     ref_file_list = sep_ref(ref, id)
 
-    command = "/Users/luorunpeng/bio_tools/quast-5.1.0rc1/metaquast.py -m 100 {0} -t 8 -o {1} -R ".format(c, o)
+    command = "python2 /Users/luorunpeng/bio_tools/quast-5.1.0rc1/metaquast.py --unique-mapping -m 250 {0} {1} {2} -t 8 -o {3} -R ".format(c1, c2, c3, o)
 
     for file in ref_file_list:
         command = command + file + ","
@@ -48,12 +48,14 @@ def quast_eval(c=None, ref=None, o=None, id=0):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(prog='quast_query.py', description=usage)
-    parser.add_argument('-c', '--contig_file', dest='contig_file', type=str, required=True, help='contig file')
+    parser.add_argument('-c1', '--contig_file1', dest='contig_file1', type=str, required=True, help='contig file 01')
+    parser.add_argument('-c2', '--contig_file2', dest='contig_file2', type=str, required=True, help='contig file 02')
+    parser.add_argument('-c3', '--contig_file3', dest='contig_file3', type=str, required=True, help='contig file 02')
     parser.add_argument('-ref', '--ref_file', dest='ref_file', type=str, required=True, help='ref file')
     parser.add_argument('-o', '--output_dir', dest='output_dir', type=str, required=True, help='output_dir')
     args = parser.parse_args()
-    assert args.contig_file and args.ref_file and args.output_dir
+    assert args.contig_file1 and args.contig_file2 and args.contig_file3 and args.ref_file and args.output_dir
 
-    quast_eval(args.contig_file, args.ref_file, args.output_dir)
+    quast_eval(args.contig_file1, args.contig_file2, args.contig_file3, args.ref_file, args.output_dir)
 
 

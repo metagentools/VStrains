@@ -2,6 +2,8 @@
 
 from graph_tool import Graph
 import sys
+import heapq
+from collections import deque
 
 import graph_converter
 
@@ -158,7 +160,7 @@ def dijkstra_sp(graph: Graph, simp_node_dict: dict, source, sink, closest_cov, t
                         alt = dist[u] + pow(edge_flow - closest_cov, 2)
                     else:
                         alt = dist[u] + (edge_flow - closest_cov)
-                        
+
                 # relax
                 if alt < dist[v]:
                     dist[v] = alt
@@ -208,6 +210,63 @@ def transitive_graph_reduction(graph: Graph, simp_node_dict: dict, simp_edge_dic
                         simp_edge_dict.pop((i, j))                  
     return
 
+# def contig_variation_path(graph: Graph, simp_node_dict: dict, contig_dict: dict, cno, src, tgt, overlap):
+#     """
+#     find the optimal path from src tgt, where intermediate nodes with cov ~ cand_cov would be prefered
+#     """
+#     print("Start contig variation finding: {0}, {1}, {2}".format(cno, contig_dict[cno][1], contig_dict[cno][2]))
+#     path = [src]
+#     pathqueue = deque()
+#     pathqueue.append([path, len(graph.vp.seq[src])])
+#     rtn_paths = []
+
+#     visited = {}
+#     for node in simp_node_dict.values():
+#         visited[node] = False
+#     for ccno, [contig, _, _] in contig_dict.items():
+#         for id in contig:
+#             visited[simp_node_dict[id]] = True
+
+#     for id in contig_dict[cno][0]:
+#         visited[simp_node_dict[id]] = False
+
+#     while pathqueue:
+#         curr_path, curr_len = pathqueue.popleft()
+#         if curr_path[-1] == tgt:
+#             # print(graph_converter.path_to_id_string(graph, curr_path, "curr path"))
+#             rtn_paths.append([curr_path, curr_len])
+#             continue
+
+#         for next in curr_path[-1].out_neighbors():
+#             if next not in curr_path and not visited[next]:
+#                 # print_vertex(graph, next, "next: ")
+#                 split_path = curr_path[:]
+#                 split_path.append(next)
+#                 split_len = curr_len + len(graph.vp.seq[next]) - overlap
+
+#                 pathqueue.append([split_path, split_len])
+    
+#     involved_node = set()
+#     involved_edge = set()
+#     plen_count = dict()
+#     for p, plen in rtn_paths:
+#         if plen in plen_count:
+#             plen_count[plen] += 1
+#         else:
+#             plen_count[plen] = 1
+#         if len(p) == 1:
+#             involved_node.add(graph.vp.id[p[0]])
+#         for i in range(len(p) - 1):
+#             curr = p[i]
+#             next = p[i+1]
+#             involved_edge.add((graph.vp.id[curr], graph.vp.id[next]))
+#             involved_node.add(graph.vp.id[curr])
+#             involved_node.add(graph.vp.id[next])
+
+#     print("all involved node: ", graph_converter.list_to_string(list(involved_node)))
+#     print("all involved edge: ", graph_converter.list_to_string(list(involved_edge)))
+#     print("all involved path length variation", plen_count)
+#     return involved_node, involved_edge
 # curr_simp_path = []
 # def retrieve_simple_paths(graph: Graph, simp_node_dict: dict, src, tgt, previsited: list, max_len, overlap):
 #     print("src: {0}, tgt: {1}, max_len: {2}".format(graph.vp.id[src], graph.vp.id[tgt], max_len))

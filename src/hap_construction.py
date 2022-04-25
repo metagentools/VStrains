@@ -1,25 +1,25 @@
 #!/usr/bin/env python3
 
-# import re
-from email.quoprimime import body_check
-from operator import concat
 import sys, os
+import subprocess
+import argparse
 # import re
+
 # import graph_tool
 from graph_tool.topology import all_circuits, all_shortest_paths, min_spanning_tree
-from graph_tool.topology import transitive_closure
+from graph_tool.topology import transitive_closure, is_DAG
 from graph_tool.draw import graph_draw
-
-import subprocess
 from graph_tool.all import Graph
-# from graph_tool.topology import is_DAG
-import argparse
+
+from math import ceil
 import numpy
 import heapq
+import matplotlib.pyplot as plt
+import seaborn
+import pandas
 
 from collections import deque
 
-from pyparsing import nums
 
 from graph_converter import *
 from search_algos import *
@@ -39,7 +39,7 @@ def main():
     -> flip graph [DONE]
     Output --> graph_L0.gfa
 
-    -> tip removal based on minimap2 [DONE] 
+    -> tip removal based on minimap2 [DONE] only apply if graph is not dag
     Output --> t_graph_L1.gfa
 
     -> cycle detection and node partition
@@ -110,12 +110,15 @@ def main():
         minimap_api(args.ref_file, "{0}pre_contigs.fasta".format(TEMP_DIR), "{0}pre_contigs_to_strain.paf".format(TEMP_DIR))
     
     print("----------------------------------TIP REMOVAL---------------------------------------")
-    tip_removed = False
-    while not tip_removed:
-        tip_removed = tip_removal(graph0, simp_node_dict0, simp_edge_dict0, TEMP_DIR, args.overlap)
-    
-    contig_dict_fix(graph0, simp_node_dict0, simp_edge_dict0, contig_dict, args.overlap)
+    # apply tip removal for cyclic graph.
+    if not graph_is_DAG(graph0, simp_node_dict0):
+        tip_removed = False
+        while not tip_removed:
+            tip_removed = tip_removal(graph0, simp_node_dict0, simp_edge_dict0, TEMP_DIR, args.overlap)
 
+        contig_dict_fix(graph0, simp_node_dict0, simp_edge_dict0, contig_dict, args.overlap)
+    else:
+        print("Graph is DAG, tip removal skipped.")
     graph_to_gfa(graph0, simp_node_dict0, simp_edge_dict0, "{0}t_graph_L1.gfa".format(TEMP_DIR))
     graph1, simp_node_dict1, simp_edge_dict1 = flipped_gfa_to_graph("{0}t_graph_L1.gfa".format(TEMP_DIR))
 
@@ -128,7 +131,7 @@ def main():
         noncyc_nodes, simple_paths = node_partition(graph1, simp_node_dict1, simp_edge_dict1, TEMP_DIR)
 
     print("-------------------------------COVERAGE REBALANCE-----------------------------------")
-    # all the previous depth use been store in the dict
+    # all the previous depth has been stored in the dict
     # ratio: normalised balanced node depth / previous node depth
     _, _, _, ratio = coverage_rebalance(graph1, simp_node_dict1, simp_edge_dict1)
     
@@ -160,7 +163,6 @@ def main():
         if graph2.vp.dp[node] < THRESHOLD:
             ids.append(no)
     print("nodes that less than THRESHOLD: ", THRESHOLD, " cov be removed: ", list_to_string(ids))
-    ## fix the constant TH FIXME
     graph_simplification(graph2, simp_node_dict2, simp_edge_dict2, node_to_contig_dict, edge_to_contig_dict, THRESHOLD)
 
     graph_to_gfa(graph2, simp_node_dict2, simp_edge_dict2, "{0}sdt_graph_L3.gfa".format(TEMP_DIR))
@@ -196,7 +198,11 @@ def main():
     graph_to_gfa(graph4, simp_node_dict4, simp_edge_dict4, "{0}cbsdt_graph_L5.gfa".format(TEMP_DIR))
     graph5, simp_node_dict5, simp_edge_dict5 = flipped_gfa_to_graph("{0}cbsdt_graph_L5.gfa".format(TEMP_DIR))
     assign_edge_flow(graph5, simp_node_dict5, simp_edge_dict5)
-
+    
+    # print("-----------------------------> contig variation plot")
+    # # TODO
+    # contig_variation_span(graph5, simp_node_dict5, simp_edge_dict5, contig_dict, args.overlap, args.max_len, TEMP_DIR)
+    
     print("-------------------------------CONTIG CLIQUE GRAPH BUILD-----------------------------------")
     if args.ref_file:
         map_ref_to_graph(args.ref_file, simp_node_dict5, "{0}cbsdt_graph_L5.gfa".format(TEMP_DIR), True, "{0}node_to_ref_red.paf".format(TEMP_DIR), "{0}temp_gfa_to_fasta.fasta".format(TEMP_DIR))
@@ -627,6 +633,7 @@ def coverage_rebalance(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict,
         """
         return True if any updates happened
         """
+        is_update = False
         for no, node in simp_node_dict.items():
             us = [e.source() for e in node.in_edges() if graph.ep.color[e] == 'black']
             u_out_degrees = numpy.sum([(len([e for e in u_node.out_edges() if graph.ep.color[e] == 'black'])) for u_node in us]) 
@@ -822,19 +829,6 @@ def contig_clique_graph_build(graph: Graph, simp_node_dict: dict, simp_edge_dict
     print("total edges after reduction: ", len([e for e in cliq_edge_dict.values() if cliq_graph.ep.color[e] == 'black']))
     cliq_graph_r, cliq_node_dict_r, cliq_edge_dict_r = cliq_graph_init(cliq_graph)
     return cliq_graph_r, cliq_node_dict_r, cliq_edge_dict_r, sp_path_dict
-
-def graph_reduction_c(graph: Graph, cand_path, cand_cov):
-    """
-    reduce the graph coverage based on given path and cov,
-    only applied after udp be deployed in the graph
-    """
-    for i in range(len(cand_path) - 1):
-        u = cand_path[i]
-        v = cand_path[i + 1]
-        e = graph.edge(u, v)
-        graph.vp.udp[u] -= cand_cov
-        graph.vp.udp[v] -= cand_cov
-        graph.ep.flow[e] -= cand_cov
 
 def contig_pairwise_concatenation(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, contig_dict: dict, 
 cliq_graph: Graph, cliq_node_dict: dict, cliq_edge_dict: dict, sp_path_dict: dict, 

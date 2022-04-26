@@ -527,7 +527,7 @@ def contig_dict_to_fasta(graph: Graph, contig_dict: dict, simp_node_dict: dict, 
 
     with open(output_file, 'w') as fasta:
         for cno, (contig, clen, ccov) in contig_dict.items():
-            contig_name = ">" + str(cno) + "_" + str(clen) + "_" + str(ccov) + "\n"
+            contig_name = ">" + str(cno) + "_" + str(clen) + "_" + str(round(ccov, 2)) + "\n"
             seq = path_ids_to_seq(graph, contig, contig_name, simp_node_dict, overlap_len) + "\n"
             fasta.write(contig_name)
             fasta.write(seq)
@@ -820,17 +820,17 @@ def contig_cov_fix(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, con
                 " min: ", numpy.min(contig_flow(graph, simp_edge_dict, contig)))
     return
 
-def graph_reduction_c(graph: Graph, cand_path, cand_cov):
+def graph_reduction_c(graph: Graph, cand_path, cand_cov, threshold):
     """
     reduce the graph coverage based on given path and cov,
     only applied after udp be deployed in the graph
     """
+    for i in range(len(cand_path)):
+        graph.vp.udp[cand_path[i]] -= cand_cov
+
     for i in range(len(cand_path) - 1):
-        u = cand_path[i]
-        v = cand_path[i + 1]
-        e = graph.edge(u, v)
-        graph.vp.udp[u] -= cand_cov
-        graph.vp.udp[v] -= cand_cov
+        e = graph.edge(cand_path[i], cand_path[i+1])
+        # print(e, graph.vp.id[cand_path[i]], graph.vp.id[cand_path[i+1]])
         graph.ep.flow[e] -= cand_cov
 
 def graph_splitting(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, contig_dict: dict, threshold, strict_mode=True):
@@ -938,9 +938,8 @@ def graph_splitting(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, co
             graph_remove_vertex(graph, simp_node_dict, graph.vp.id[node], "remove isolated low cov node")
     
     print("No of branch be removed: ", len(set(split_branches)))
-    s = ""
     print("Split branches: ", list_to_string(set(split_branches)))
-    return
+    return len(set(split_branches))
 
 def simp_path(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict):
     """
@@ -977,20 +976,28 @@ def simp_path(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict):
             simple_paths.append(p) 
     return simple_paths
 
-def simple_paths_to_dict(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, contig_nodes, overlap):
+def simple_paths_to_dict(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, contig_dict: dict, overlap):
     simple_paths = simp_path(graph, simp_node_dict, simp_edge_dict)
     simp_path_dict = {}
-    contig_node_ids = set(contig_nodes)
+    contig_node_visited = {}
+    for no in simp_node_dict.keys():
+        contig_node_visited[no] = False
+    for [contig, _, _] in contig_dict.values():
+        for no in contig:
+            contig_node_visited[no] = True
 
     for id, p in enumerate(simple_paths):
-        print("path: ", [int(graph.vp.id[u]) for u in p])
         pids = [graph.vp.id[n] for n in p]
-        if contig_node_ids.intersection(set(pids)):
-            print("simple path forbidden, contig is involved")
+        skip = False
+        for pid in pids:
+            if contig_node_visited[pid]:
+                skip = True
+                continue
+        if skip:
             continue
         name = "0" + str(id) + "0"
         clen = path_len(graph, p, overlap)
-        cov = numpy.min([graph.vp.dp[n] for n in p])
+        cov = numpy.max([graph.vp.dp[n] for n in p])
         simp_path_dict[name] = [pids, clen, cov]
     return simp_path_dict
 
@@ -1109,19 +1116,19 @@ def contig_flow(graph: Graph, edge_dict: dict, contig):
 
     return edge_flow
 
-def contig_uflow(graph: Graph, edge_dict: dict, contig):
-    """
-    edge flow for the contig
-    """
-    edge_flow = []
-    if len(contig) < 2:
-        return edge_flow
-    for i in range(len(contig)-1):
-        e = edge_dict[(contig[i],contig[i+1])]
-        f = graph.ep.uflow[e]
-        edge_flow.append(f)
+# def contig_uflow(graph: Graph, edge_dict: dict, contig):
+#     """
+#     edge flow for the contig
+#     """
+#     edge_flow = []
+#     if len(contig) < 2:
+#         return edge_flow
+#     for i in range(len(contig)-1):
+#         e = edge_dict[(contig[i],contig[i+1])]
+#         f = graph.ep.uflow[e]
+#         edge_flow.append(f)
 
-    return edge_flow
+#     return edge_flow
 
 def path_ids_to_seq(graph: Graph, path_ids: list, path_name, simp_node_dict: dict, overlap_len):
     seq = ""
@@ -1267,7 +1274,6 @@ def cliq_graph_init(graph: Graph):
         if graph.vp.color[i] != 'black' or graph.vp.color[j] != 'black':
             continue
         if graph.ep.color[e] == 'black':
-            print("appending edge: ", (icno, jcno))
             edge = cliq_graph.add_edge(cliq_node_dict[icno], cliq_node_dict[jcno])
             cliq_graph.ep.color[edge] = 'black'
             cliq_graph.ep.slen[edge] = graph.ep.slen[e]

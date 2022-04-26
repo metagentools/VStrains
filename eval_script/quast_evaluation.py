@@ -1,5 +1,4 @@
 #!/usr/bin/python
-from re import sub
 import subprocess
 import argparse
 

@@ -185,6 +185,71 @@ def dijkstra_sp(graph: Graph, simp_node_dict: dict, source, sink, closest_cov, t
 
         return sp[1:-1], graph_converter.path_len(graph, sp[1:-1], overlap)
 
+def dijkstra_sp_v2(graph: Graph, simp_node_dict: dict, source, sink, overlap: int):
+    """
+    Use basic dijkstra algorithm to compute the max coverage between source and sink
+    """
+    print("Dijkastra path finding: Max cov possible guide")
+    if graph.vp.color[source] != 'black' or graph.vp.color[sink] != 'black':
+        print("s/t unavailable")
+        return None, None
+    dist = {}
+    prev = {}
+    Q = set()
+    for node in simp_node_dict.values():
+        if graph.vp.color[node] == 'black':
+            dist[node] = sys.maxsize
+            prev[node] = None
+            Q.add(node)
+    dist[source] = 0
+
+    while Q:
+        u = None
+        # retrieve min
+        for n, d in sorted(dist.items(), key=lambda x: x[1]):
+            if n in Q:
+                u = n
+                break
+        Q.remove(u)
+        # found sink
+        if u == sink:
+            break
+        for v in u.out_neighbors():
+            if v in Q:
+                # obtain current edge cost
+                e = graph.edge(u, v)
+                if graph.ep.color[e] != 'black':
+                    continue
+                # print("curr edge: {0} -> {1}".format(graph.vp.id[u], graph.vp.id[v]))
+                edge_flow = graph.ep.flow[e]
+                alt = dist[u] - edge_flow
+                # relax
+                if alt < dist[v]:
+                    dist[v] = alt
+                    prev[v] = u
+    
+    if dist[sink] == sys.maxsize:
+        print("not reachable")
+        return None, None
+
+    node = sink
+    sp = []
+    while prev[node]:
+        sp.insert(0, node)
+        node = prev[node]
+    if not sp:
+        print("SP not found")
+        return None, None
+    elif node != source:
+        print("SP src not found")
+        return None, None
+    else:
+        sp.insert(0, source)
+        print(graph_converter.path_to_id_string(graph, sp, "SP be found: "))
+        print("plen: ", graph_converter.path_len(graph, sp[1:-1], overlap))
+
+        return sp, graph_converter.path_len(graph, sp[1:-1], overlap)
+
 def get_concat_len(head_cno, head_clen, tail_cno, tail_clen, plen, overlap):
     total_len = 0
     if head_cno == tail_cno:
@@ -210,63 +275,43 @@ def transitive_graph_reduction(graph: Graph, simp_node_dict: dict, simp_edge_dic
                         simp_edge_dict.pop((i, j))                  
     return
 
-# def contig_variation_path(graph: Graph, simp_node_dict: dict, contig_dict: dict, cno, src, tgt, overlap):
-#     """
-#     find the optimal path from src tgt, where intermediate nodes with cov ~ cand_cov would be prefered
-#     """
-#     print("Start contig variation finding: {0}, {1}, {2}".format(cno, contig_dict[cno][1], contig_dict[cno][2]))
-#     path = [src]
-#     pathqueue = deque()
-#     pathqueue.append([path, len(graph.vp.seq[src])])
-#     rtn_paths = []
+def st_variation_path(graph: Graph, src, tgt, overlap):
+    """
+    find the optimal path from src tgt, where intermediate nodes with cov ~ cand_cov would be prefered
+    """
+    print("Start st variation finding: {0} -> {1}".format(graph.vp.id[src], graph.vp.id[tgt]))
+    path = [src]
+    pathqueue = deque()
+    pathqueue.append([path, len(graph.vp.seq[src])])
+    rtn_paths = []
 
-#     visited = {}
-#     for node in simp_node_dict.values():
-#         visited[node] = False
-#     for ccno, [contig, _, _] in contig_dict.items():
-#         for id in contig:
-#             visited[simp_node_dict[id]] = True
+    while pathqueue:
+        curr_path, curr_len = pathqueue.popleft()
+        if curr_path[-1] == tgt:
+            print(graph_converter.path_to_id_string(graph, curr_path, "curr path"))
+            rtn_paths.append([curr_path, curr_len])
+            continue
 
-#     for id in contig_dict[cno][0]:
-#         visited[simp_node_dict[id]] = False
+        for e in curr_path[-1].out_edges():
+            next = e.target()
+            if graph.ep.color[e] != 'black' and graph.vp.color[next] != 'black':
+                continue
+            if next not in curr_path:
+                split_path = curr_path[:]
+                split_path.append(next)
+                split_len = curr_len + len(graph.vp.seq[next]) - overlap
 
-#     while pathqueue:
-#         curr_path, curr_len = pathqueue.popleft()
-#         if curr_path[-1] == tgt:
-#             # print(graph_converter.path_to_id_string(graph, curr_path, "curr path"))
-#             rtn_paths.append([curr_path, curr_len])
-#             continue
+                pathqueue.append([split_path, split_len])
 
-#         for next in curr_path[-1].out_neighbors():
-#             if next not in curr_path and not visited[next]:
-#                 # print_vertex(graph, next, "next: ")
-#                 split_path = curr_path[:]
-#                 split_path.append(next)
-#                 split_len = curr_len + len(graph.vp.seq[next]) - overlap
+    plen_count = dict()
+    for p, plen in rtn_paths:
+        if plen in plen_count:
+            plen_count[plen] += 1
+        else:
+            plen_count[plen] = 1
+        # print(graph_converter.path_to_id_string(graph, p, "Path be found: "))
+    print("all involved path length variation", plen_count)
 
-#                 pathqueue.append([split_path, split_len])
-    
-#     involved_node = set()
-#     involved_edge = set()
-#     plen_count = dict()
-#     for p, plen in rtn_paths:
-#         if plen in plen_count:
-#             plen_count[plen] += 1
-#         else:
-#             plen_count[plen] = 1
-#         if len(p) == 1:
-#             involved_node.add(graph.vp.id[p[0]])
-#         for i in range(len(p) - 1):
-#             curr = p[i]
-#             next = p[i+1]
-#             involved_edge.add((graph.vp.id[curr], graph.vp.id[next]))
-#             involved_node.add(graph.vp.id[curr])
-#             involved_node.add(graph.vp.id[next])
-
-#     print("all involved node: ", graph_converter.list_to_string(list(involved_node)))
-#     print("all involved edge: ", graph_converter.list_to_string(list(involved_edge)))
-#     print("all involved path length variation", plen_count)
-#     return involved_node, involved_edge
 # curr_simp_path = []
 # def retrieve_simple_paths(graph: Graph, simp_node_dict: dict, src, tgt, previsited: list, max_len, overlap):
 #     print("src: {0}, tgt: {1}, max_len: {2}".format(graph.vp.id[src], graph.vp.id[tgt], max_len))

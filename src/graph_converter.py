@@ -1001,6 +1001,85 @@ def simple_paths_to_dict(graph: Graph, simp_node_dict: dict, simp_edge_dict: dic
         simp_path_dict[name] = [pids, clen, cov]
     return simp_path_dict
 
+def simp_path_compactification(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, contig_dict: dict, overlap):
+    """
+    reduce all the contig to a single node, and keep all the potential src/tgt edge.
+
+    1. reduce the coverage for each involving node by the amount of contig cov
+    2. reconnect end-to-end nodes to the contig node
+    """
+    graph_backup = graph.copy()
+    simp_node_dict_backup = simp_node_dict.copy()
+
+    contig_node_dict = {}
+    contig_info = []
+    # reduce all the contig to a single node from the graph
+    for cno, (contig, clen, ccov) in list(contig_dict.items()):
+        src = contig[0]
+        tgt = contig[-1]
+        id = src + "00" + cno + "00" + tgt
+        cseq = path_to_seq(graph_backup, [simp_node_dict_backup[n] for n in contig], cno, overlap)
+        kc = numpy.median([graph_backup.vp.kc[simp_node_dict_backup[u]] for u in contig])
+        in_edges = list((graph_backup.vp.id[e.source()], src) for e in simp_node_dict_backup[src].in_edges())
+        out_edges = list((tgt, graph_backup.vp.id[e.target()],) for e in simp_node_dict_backup[tgt].out_edges())
+        
+
+        for i in range(len(contig)):
+            no = contig[i]
+            popnode = simp_node_dict.pop(no)
+            graph.vp.color[popnode] = 'gray'
+            if i != len(contig) - 1:
+                e = simp_edge_dict.pop((contig[i], contig[i+1]))
+                graph.ep.color[e] = 'gray'
+
+        cv = graph.add_vertex()
+        graph.vp.seq[cv] = cseq
+        graph.vp.dp[cv] = ccov
+        graph.vp.kc[cv] = kc
+        graph.vp.id[cv] = id
+        graph.vp.color[cv] = 'black'
+        simp_node_dict[id] = cv
+        contig_node_dict[cno] = id
+
+        contig_info.append([src, tgt, cno, cv, in_edges, out_edges])
+    
+    # recover all the in-out edges surrounding the contigs
+    for [_, _, _, node, in_edges, out_edges] in contig_info:
+        for (u,v) in in_edges:
+            # print("Previous concat: ", (u,v))
+            if u in simp_node_dict and (u, graph.vp.id[node]) not in simp_edge_dict:
+                ue = graph.add_edge(simp_node_dict[u], node)
+                graph.ep.overlap[ue] = overlap
+                graph.ep.color[ue] = 'black'
+                simp_edge_dict[(u, graph.vp.id[node])] = ue
+                # print_edge(graph, ue, "reappend edge")
+            
+            for [_, tgt, _, in_node, _, _] in contig_info:
+                if tgt == u and (graph.vp.id[in_node], graph.vp.id[node]) not in simp_edge_dict:
+                    ue = graph.add_edge(in_node, node)
+                    graph.ep.overlap[ue] = overlap
+                    graph.ep.color[ue] = 'black'
+                    simp_edge_dict[(graph.vp.id[in_node], graph.vp.id[node])] = ue
+                    # print_edge(graph, ue, "reappend edge")             
+
+        for (u,v) in out_edges:
+            # print("Previous concat: ", (u,v))
+            if v in simp_node_dict and (graph.vp.id[node], v) not in simp_edge_dict:
+                ve = graph.add_edge(node, simp_node_dict[v])
+                graph.ep.overlap[ve] = overlap
+                graph.ep.color[ve] = 'black'
+                simp_edge_dict[(graph.vp.id[node], v)] = ve
+                # print_edge(graph, ve, "reappend edge")
+            
+            for [src, _, _, out_node, _, _] in contig_info:
+                if src == v and (graph.vp.id[node], graph.vp.id[out_node]) not in simp_edge_dict:
+                    ve = graph.add_edge(node, out_node)
+                    graph.ep.overlap[ve] = overlap
+                    graph.ep.color[ve] = 'black'
+                    simp_edge_dict[(graph.vp.id[node], graph.vp.id[out_node])] = ve
+                    # print_edge(graph, ve, "reappend edge")
+    return contig_node_dict
+
 def graph_grouping(graph: Graph, simp_node_dict: dict, forward="", reverse="", partition_length_cut_off=0):
     """
     Maximimize graph connectivity by minimizing node with 0 in-degree or out-degree, detect and remove all the cycles.

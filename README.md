@@ -1,6 +1,48 @@
 ## The project is aiming to construct full-length haplotype from metagenomic environment, using pair-end reads
 
 
+    """
+    --------------------------------------------OVERALL FLOW----------------------------------------
+    Input: Graph, contig
+    operation:
+    -> START
+    -> flip graph [DONE]
+    Output --> graph_L0.gfa
+
+    -> tip removal based on minimap2 [DONE] only apply if graph is not dag
+    Output --> t_graph_L1.gfa
+
+    -> cycle detection and node partition
+    Output --> nc_graph_L2p.gfa
+
+    -> node depth rebalance + assign edge flow [DONE] 
+    Output --> dt_graph_L2.gfa
+
+    -> removed all the node that less than threshold.
+    Output --> sdt_graph_L3.gfa
+
+    -> contig coverage rebalance to minimum edge flow along the contig
+
+    -> split graph branch if supported by contig and cov difference < threshold
+    Output --> bsdt_graph_L4.gfa
+
+    -> graph compactification (without the contig involved path)
+    Output --> cbsdt_graph_L5.gfa
+
+    -> construct contig clique graph
+    Output --> cliq_graph.png
+
+    -> based on the contig clique grah topology, concat the contig via the following priority
+    PRIORITY
+    HIGH
+        --> self-cycle contig if no out-in edges exist
+        --> self-cycle contig, with in-out from same alter contig
+        --> 
+    LOW
+    -> END
+    ------------------------------------------------------------------------------------------------
+    """
+
 # current question: 
 1. for cand path, which cov assign to it.
 2. re-write the shortest path part, use ps path variation and find the best match.

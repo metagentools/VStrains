@@ -271,6 +271,64 @@ def transitive_graph_reduction(graph: Graph, simp_node_dict: dict, simp_edge_dic
                         simp_edge_dict.pop((i, j))                  
     return
 
+def paths_from_src(graph: Graph, simp_node_dict: dict, self_node, src, overlap, maxlen):
+    """
+    retrieve all the path from src node to any node 
+    within maxlen restriction, in straight direction
+    """
+    def dfs_rev(graph: Graph, u, curr_path: list, maxlen, visited, all_path):
+        visited[u] = True
+        curr_path.append(u)
+        curr_len = graph_converter.path_len(graph, curr_path, overlap)
+        if curr_len >= maxlen:
+            all_path.append(list(curr_path))
+        else:
+            for v in u.out_neighbors():
+                if not visited[v]:
+                    dfs_rev(graph, v, curr_path, maxlen, visited, all_path)
+        curr_path.pop(-1)
+        visited[u] = False
+        return
+    visited = {}
+    for u in graph.vertices():
+        if graph.vp.id[u] not in simp_node_dict:
+            visited[u] = True
+        else:
+            visited[u] = False
+    visited[self_node] = True
+    all_path = []
+    dfs_rev(graph, src, [], maxlen, visited, all_path)
+    return all_path
+
+def paths_to_tgt(graph: Graph, simp_node_dict: dict, self_node, tgt, overlap, maxlen):
+    """
+    retrieve all the path from any node to tgt node
+    within maxlen restriction, in reverse direction
+    """
+    def dfs_rev(graph: Graph, v, curr_path: list, maxlen, visited, all_path):
+        visited[v] = True
+        curr_path.insert(0, v)
+        curr_len = graph_converter.path_len(graph, curr_path, overlap)
+        if curr_len >= maxlen:
+            all_path.append(list(curr_path))
+        else:
+            for u in v.in_neighbors():
+                if not visited[u]:
+                    dfs_rev(graph, u, curr_path, maxlen, visited, all_path)
+        curr_path.pop(0)
+        visited[v] = False
+        return
+    visited = {}
+    for u in graph.vertices():
+        if graph.vp.id[u] not in simp_node_dict:
+            visited[u] = True
+        else:
+            visited[u] = False
+    visited[self_node] = True
+    all_path = []
+    dfs_rev(graph, tgt, [], maxlen, visited, all_path)   
+    return all_path
+
 def st_variation_path(graph: Graph, src, src_contig, tgt, tgt_contig, overlap):
     """
     find the optimal path from src tgt, where intermediate nodes with cov ~ cand_cov would be prefered

@@ -588,7 +588,7 @@ def get_contig(graph: Graph, contig_file, simp_node_dict: dict, simp_edge_dict: 
             # use as less in-confident contigs as possible.
             # if clen < min_len / 10 or ccov < min_cov:
             #     continue
-            if clen < min_len / 10:
+            if clen < min_len / 10 and len(contigs) < 2:
                 continue
 
             if contig_len > 1:

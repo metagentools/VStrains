@@ -147,10 +147,6 @@ def dijkstra_sp(graph: Graph, simp_node_dict: dict, source, sink, closest_cov, t
             if v in Q:
                 # obtain current edge cost
                 edge_flow = graph.ep.flow[graph.edge(u, v)]
-                # if (edge_flow - closest_cov) < 0:
-                #     alt = sys.maxsize
-                # else:
-                #     alt = dist[u] + pow(edge_flow - closest_cov, 2)
 
                 if abs(edge_flow - closest_cov) < threshold:
                     alt = dist[u]
@@ -275,7 +271,7 @@ def transitive_graph_reduction(graph: Graph, simp_node_dict: dict, simp_edge_dic
                         simp_edge_dict.pop((i, j))                  
     return
 
-def st_variation_path(graph: Graph, src, tgt, overlap):
+def st_variation_path(graph: Graph, src, src_contig, tgt, tgt_contig, overlap):
     """
     find the optimal path from src tgt, where intermediate nodes with cov ~ cand_cov would be prefered
     """
@@ -285,16 +281,25 @@ def st_variation_path(graph: Graph, src, tgt, overlap):
     pathqueue.append([path, len(graph.vp.seq[src])])
     rtn_paths = []
 
+    visited = {}
+    for node in graph.vertices():
+        visited[graph.vp.id[node]] = False
+    for id in src_contig[:-1]:
+        visited[id] = True
+    for id in tgt_contig[1:]:
+        visited[id] = True
+    
     while pathqueue:
         curr_path, curr_len = pathqueue.popleft()
         if curr_path[-1] == tgt:
-            print(graph_converter.path_to_id_string(graph, curr_path, "curr path"))
             rtn_paths.append([curr_path, curr_len])
             continue
 
         for e in curr_path[-1].out_edges():
             next = e.target()
             if graph.ep.color[e] != 'black' and graph.vp.color[next] != 'black':
+                continue
+            if visited[graph.vp.id[next]]:
                 continue
             if next not in curr_path:
                 split_path = curr_path[:]
@@ -303,14 +308,11 @@ def st_variation_path(graph: Graph, src, tgt, overlap):
 
                 pathqueue.append([split_path, split_len])
 
-    plen_count = dict()
     for p, plen in rtn_paths:
-        if plen in plen_count:
-            plen_count[plen] += 1
-        else:
-            plen_count[plen] = 1
-        # print(graph_converter.path_to_id_string(graph, p, "Path be found: "))
-    print("all involved path length variation", plen_count)
+        if p[0] == src and p[-1] == tgt:
+            print("Length: ", plen, graph_converter.path_to_id_string(graph, p, "-Path be found: "))
+
+    return rtn_paths
 
 # curr_simp_path = []
 # def retrieve_simple_paths(graph: Graph, simp_node_dict: dict, src, tgt, previsited: list, max_len, overlap):

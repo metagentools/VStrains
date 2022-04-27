@@ -1,6 +1,9 @@
 ## The project is aiming to construct full-length haplotype from metagenomic environment, using pair-end reads
 
 
+# current question: 
+1. for cand path, which cov assign to it.
+2. re-write the shortest path part, use ps path variation and find the best match.
 Step to concat the contig clique graph
 1. remove any self-cycle edge with curr contig len < min_len (due to high concat risk)
 2. for all remaining self-cycle, concat them first.

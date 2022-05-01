@@ -519,6 +519,17 @@ def minimap_api(ref_file, fasta_file, output_file):
         ref_file, fasta_file, output_file), shell=True)
     return  
 
+def trim_contig_dict(graph: Graph, simp_node_dict: dict, contig_dict: dict, overlap):
+    for cno, [contig, clen, ccov] in list(contig_dict.items()):
+        involved_node_set = set()
+        new_contig = []
+        for i in range(len(contig)):
+            if contig[i] not in involved_node_set:
+                new_contig.append(contig[i])
+                involved_node_set.add(contig[i])
+        contig_dict[cno] = [new_contig, path_len(graph, [simp_node_dict[no] for no in new_contig], overlap), ccov]
+    return contig_dict
+
 def contig_dict_to_fasta(graph: Graph, contig_dict: dict, simp_node_dict: dict, overlap_len, output_file):
     """
     Store contig dict into fastq file
@@ -953,16 +964,14 @@ def simp_path(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict):
     in_edge = {}
     for e in simp_edge_dict.values():
         src = e.source()
-        src_out_d = len([u for u in src.out_neighbors()])
         target = e.target()
-        target_in_d = len([u for u in target.in_neighbors()])
         if graph.vp.id[src] not in simp_node_dict or graph.vp.id[target] not in simp_node_dict:
             continue
-        if src_out_d == 1 and target_in_d == 1:
+        if src.out_degree() == 1 and target.in_degree() == 1:
             assert src != target
             simple_edges.append([src, target])
-            in_edge[int(src)] = e
-            out_edge[int(target)] = e
+            in_edge[src] = e
+            out_edge[target] = e
 
     # build simple paths from simple edges
     def extend_path(p):
@@ -1535,6 +1544,11 @@ def list_to_string(ids: list, s=""):
 def path_to_id_string(graph: Graph, path, s=""):
     return list_to_string([graph.vp.id[node] for node in path], s)
 
+def get_row(matrix: list, rowId):
+    return matrix[rowId]
+
+def get_col(matrix: list, colId):
+    return [row[colId] for row in matrix]
 
 
 

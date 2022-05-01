@@ -145,7 +145,7 @@ def main():
         graph_to_gfa(graph3, simp_node_dict3, simp_edge_dict3, "{0}bsdt_graph_L4.gfa".format(TEMP_DIR))
         graph4, simp_node_dict4, simp_edge_dict4 = flipped_gfa_to_graph("{0}bsdt_graph_L4.gfa".format(TEMP_DIR))
 
-        coverage_rebalance(graph4, simp_node_dict4, simp_edge_dict4)
+        coverage_rebalance(graph4, simp_node_dict4, simp_edge_dict4, strict=True)
 
         contig_cov_fix(graph4, simp_node_dict4, simp_edge_dict4, contig_dict)
 
@@ -190,8 +190,12 @@ def main():
     plt.title('Bar plot of Edge flow')
     plt.savefig("{0}barplot_edge_flow.png".format(TEMP_DIR))
 
-    cliq_graph, cliq_node_dict, cliq_edge_dict, sp_path_dict = contig_clique_graph_build(graph5, simp_node_dict5, simp_edge_dict5, contig_dict, args.max_len, THRESHOLD, args.overlap)
+    cliq_graph, cliq_node_dict, cliq_edge_dict, sp_path_dict, adj_matrix, cno_to_index = contig_clique_graph_build(graph5, simp_node_dict5, simp_edge_dict5,
+                                                    contig_dict, args.max_len, THRESHOLD, args.overlap)
     draw_cliq_graph(cliq_graph, len(cliq_node_dict), len(cliq_edge_dict), TEMP_DIR, "cliq_graphL1.png")
+    cliq_graph, cliq_node_dict, cliq_edge_dict = clique_graph_clean(graph5, simp_node_dict5, simp_edge_dict5, 
+                                                    cliq_graph, cliq_node_dict, cliq_edge_dict,contig_dict, sp_path_dict, adj_matrix, cno_to_index)
+    draw_cliq_graph(cliq_graph, len(cliq_node_dict), len(cliq_edge_dict), TEMP_DIR, "cliq_graphL2.png")
     print("-------------------------------CONTIG PAIRWISE CONCATENATION-----------------------------------")
     concat_contig_dict = contig_pairwise_concatenation(graph5, simp_node_dict5, simp_edge_dict5, contig_dict, 
     cliq_graph, cliq_node_dict, cliq_edge_dict, sp_path_dict, 
@@ -211,6 +215,7 @@ def main():
     # print("-------------------------------LOCAL SEARCH OPTIMISATION-----------------------------------")
     # local_search_optimisation(graph5, simp_node_dict5, simp_edge_dict5, concat_contig_dict, args.min_cov, args.min_len, args.max_len, args.overlap, THRESHOLD)
     # stat
+    extended_contig_dict = trim_contig_dict(graph5, simp_node_dict5,  extended_contig_dict, args.overlap)
     contig_dict_to_fasta(graph5, extended_contig_dict, simp_node_dict5, args.overlap, "{0}extended_contig.fasta".format(TEMP_DIR))
     contig_dict_to_path(extended_contig_dict, "{0}extended_contig.paths".format(TEMP_DIR))
     minimap_api(args.ref_file, "{0}extended_contig.fasta".format(TEMP_DIR), "{0}extended_contig_to_strain.paf".format(TEMP_DIR))  
@@ -707,21 +712,30 @@ def contig_clique_graph_build(graph: Graph, simp_node_dict: dict, simp_edge_dict
 
     concat_plan, sp_path_dict = allowed_concat_init(graph, contig_dict, simp_node_dict, max_len, threshold, overlap)
     
+    cno2cno_adjMtx_csv = []
+    cno2cno_adjMtx_csv.append([cno+"/"+str(round(contig_dict[cno][2])) for cno in concat_plan.keys()])
+    cno2cno_adjMtx_csv[0].insert(0, "X")
     cno2cno_adjMtx = []
-    cno2cno_adjMtx.append([cno+"/"+str(round(contig_dict[cno][2])) for cno in concat_plan.keys()])
-    cno2cno_adjMtx[0].insert(0, "X")
+
     cno_to_index = {}
-    for i, cno in enumerate(cno2cno_adjMtx[0]):
+    cno_to_index_csv = {}
+    for i, cno in enumerate(cno2cno_adjMtx_csv[0]):
         if i > 0:
-            cno_to_index[cno.split("/")[0]] = i
+            cno_to_index_csv[cno.split("/")[0]] = i
+            cno_to_index[cno.split("/")[0]] = i - 1
+
     for tail_cno, head_cnos in concat_plan.items():
         print("------> tail cno: ", tail_cno, " can concat with following head cnos: ", head_cnos)
-        curr_row = [" " for _ in concat_plan.keys()]
-        curr_row.insert(0, tail_cno+"/"+str(round(contig_dict[tail_cno][2])))
+        curr_row_csv = [" " for _ in concat_plan.keys()]
+        curr_row_csv.insert(0, tail_cno+"/"+str(round(contig_dict[tail_cno][2])))
+        curr_row = [[sys.maxsize,'X'] for _ in concat_plan.keys()]
+
         src_node = cliq_node_dict[tail_cno]
         for head_cno in head_cnos:
             plen = int(sp_path_dict[(tail_cno, head_cno)][1])
-            curr_row[cno_to_index[head_cno]] = str(round(abs(contig_dict[tail_cno][2]-contig_dict[head_cno][2]))) + ":" + str(plen)
+            abs_cdif = abs(contig_dict[tail_cno][2]-contig_dict[head_cno][2])
+            curr_row_csv[cno_to_index_csv[head_cno]] = str(round(abs_cdif)) + ":" + str(plen)
+            curr_row[cno_to_index[head_cno]] = [abs_cdif, 'W']
             tgt_node = cliq_node_dict[head_cno]
             contig_edge = cliq_graph.add_edge(src_node, tgt_node)
             cliq_graph.ep.slen[contig_edge] = plen
@@ -729,68 +743,160 @@ def contig_clique_graph_build(graph: Graph, simp_node_dict: dict, simp_edge_dict
             cliq_graph.ep.text[contig_edge] = str(cliq_graph.ep.slen[contig_edge])
             cliq_edge_dict[(tail_cno, head_cno)] = contig_edge
         cno2cno_adjMtx.append(curr_row)
+        cno2cno_adjMtx_csv.append(curr_row_csv)
 
     with open(csv_file, "w") as my_csv:
         csvWriter = csv.writer(my_csv, delimiter=',')
-        csvWriter.writerows(cno2cno_adjMtx)
+        csvWriter.writerows(cno2cno_adjMtx_csv)
         my_csv.close()
+    return cliq_graph, cliq_node_dict, cliq_edge_dict, sp_path_dict, cno2cno_adjMtx, cno_to_index
 
+
+
+def clique_graph_clean(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, 
+cliq_graph: Graph, cliq_node_dict: dict, cliq_edge_dict: dict, 
+contig_dict: dict, sp_path_dict: dict, adj_matrix, cno_to_index: dict):
+    """
+    adj matrix, elem in 5 colors: X, gray(invalid), white(has connection), red(candidate connection), blue(fixed connection)
+    """
+
+    for cno, contig_node in list(cliq_node_dict.items()):
+        if contig_node in list(contig_node.out_neighbors()):
+            if len(list(contig_node.all_edges())) > 2:
+                # remove self cycle edge with self cycle + outer connection feature
+                adj_matrix[cno_to_index[cno]][cno_to_index[cno]][1] = 'G'
+                print("remove self edge+outer connection {0} -> {0}".format(cno))
+    index_to_cno = {}
+    for cno, i in cno_to_index.items():
+        index_to_cno[i] = cno
+    has_changes = True
+    dim = len(adj_matrix)
+    # iterate the adjacent matrix in rowwise and columnwise
+    while has_changes:
+        print("looping")
+        has_changes = False
+        # row wise
+        for rowId in range(dim):
+            row = get_row(adj_matrix, rowId)
+            hasFixed = False
+            colId = None
+            minFlow = sys.maxsize
+            for cid, [flow, color] in enumerate(row):
+                if color == 'B':
+                    # current row fixed
+                    hasFixed = True
+                    break
+                elif color == 'W':
+                    if flow < minFlow:
+                        colId = cid
+                        minFlow = flow
+                elif color == 'X' or color == 'G':
+                    # invalid, skip
+                    None
+                else:
+                    print("Error: ", rowId, index_to_cno[rowId], cid, index_to_cno[cid])
+                    assert color != 'R'
+            if not hasFixed:
+                if colId != None:
+                    # found a minimum block to assign
+                    adj_matrix[rowId][colId][1] = 'R'
+                    has_changes = True
+                else:
+                    # no more spot for the row
+                    None
+        for colId in range(dim):
+            col = get_col(adj_matrix, colId)
+            # hasFixed
+            rowId = None
+            minFlow = sys.maxsize
+            # if only one red+blue among the column, then assign it to blue/nochange, otherwise select the cand flow red -> blue, 
+            # (also challenge the blue) and recolor the other red to False
+            cands = []
+            for rid, [flow, color] in enumerate(col):
+                if color == 'R' or color == 'B':
+                    cands.append((rid, [flow, color]))
+            if len(cands) == 0:
+                # relax
+                None
+            elif len(cands) == 1:
+                rid, [flow, color] = cands[0]
+                if color == 'R':
+                    adj_matrix[rid][colId] = [flow, 'B']
+                    has_changes = True
+            else:
+                mrid, [mflow, _] = min(cands, key=lambda p: p[1][0])
+                for rid, [flow, color] in cands:
+                    adj_matrix[rid][colId] = [flow, 'G']
+                adj_matrix[mrid][colId] = [mflow, 'B']
+                has_changes = True
+    
+    for rowId, row in enumerate(adj_matrix):
+        print([c for _, c in row])
+        for colId, [_, color] in enumerate(row):
+            if color != 'X':
+                e = cliq_edge_dict[(index_to_cno[rowId], index_to_cno[colId])]
+                if color != 'B':
+                    cliq_graph.ep.color[e] = 'gray'
+                else:
+                    cliq_graph.ep.color[e] = 'black'
+    {
     # graph transitive reduction FIXME select the option the reduce.
-    print("total edges: ", len(cliq_edge_dict))
-    transitive_graph_reduction(graph, simp_node_dict, simp_edge_dict, cliq_graph, contig_dict, cliq_node_dict, cliq_edge_dict, sp_path_dict)
-    print("total edges after reduction: ", len([e for e in cliq_edge_dict.values() if cliq_graph.ep.color[e] == 'black']))
-    cliq_graph, cliq_node_dict, cliq_edge_dict = cliq_graph_init(cliq_graph)
+    # print("total edges: ", len(cliq_edge_dict))
+    # transitive_graph_reduction(graph, simp_node_dict, simp_edge_dict, cliq_graph, contig_dict, cliq_node_dict, cliq_edge_dict, sp_path_dict)
+    # print("total edges after reduction: ", len([e for e in cliq_edge_dict.values() if cliq_graph.ep.color[e] == 'black']))
+    # cliq_graph, cliq_node_dict, cliq_edge_dict = cliq_graph_init(cliq_graph)
     # edge reduction
     # ensure every contig have at most 1 in connection and 1 out connection
-    if graph_is_DAG(graph, simp_node_dict):
-        max_edges = []
-        for no, node in cliq_node_dict.items():
-            print("current contig evaluating: ", no)
-            # in connection
-            ine = [e for e in node.in_edges() if cliq_graph.ep.color[e] == 'black']
-            if len(ine) > 1:
-                ine = sorted(ine, 
-                key=lambda e: similarity_e(e, cliq_graph), reverse=True)
-                max_sim = similarity_e(ine[0], cliq_graph)
-                print("MAX IN EDGE: {0}->{1}, plen: {2}".
-                format(cliq_graph.vp.cno[ine[0].source()], cliq_graph.vp.cno[ine[0].target()], cliq_graph.ep.slen[ine[0]]))
-                print("MAX SIM: ", max_sim)
-                for e in ine:
-                    cs = similarity_e(e, cliq_graph)
-                    if cs < max_sim:
-                        cliq_graph.ep.color[e] = 'gray'
-                        print("drop edge {0} -> {1}, sim: {2}, slen: {3}".format(cliq_graph.vp.cno[e.source()], cliq_graph.vp.cno[e.target()], cs, cliq_graph.ep.slen[e]))
-                    else:
-                        max_edges.append(e)
-            # out connection
-            oute = [e for e in node.out_edges() if cliq_graph.ep.color[e] == 'black']
-            if len(oute) > 1:
-                oute = sorted(oute, 
-                key=lambda e: similarity_e(e, cliq_graph), reverse=True)
-                max_sim = similarity_e(oute[0], cliq_graph)
-                print("MAX OUT EDGE: {0}->{1}, plen: {2}".format(cliq_graph.vp.cno[oute[0].source()], cliq_graph.vp.cno[oute[0].target()], cliq_graph.ep.slen[oute[0]]))
-                print("MAX SIM: ", max_sim)
-                for e in oute:
-                    cs = similarity_e(e, cliq_graph)
-                    if cs < max_sim:
-                        cliq_graph.ep.color[e] = 'gray'    
-                        print("drop edge {0} -> {1}, sim: {2}, slen: {3}".format(cliq_graph.vp.cno[e.source()], cliq_graph.vp.cno[e.target()], cs, cliq_graph.ep.slen[e]))     
-                    else:
-                        max_edges.append(e)
+    # if graph_is_DAG(graph, simp_node_dict):
+    #     max_edges = []
+    #     for no, node in cliq_node_dict.items():
+    #         print("current contig evaluating: ", no)
+    #         # in connection
+    #         ine = [e for e in node.in_edges() if cliq_graph.ep.color[e] == 'black']
+    #         if len(ine) > 1:
+    #             ine = sorted(ine, 
+    #             key=lambda e: similarity_e(e, cliq_graph), reverse=True)
+    #             max_sim = similarity_e(ine[0], cliq_graph)
+    #             print("MAX IN EDGE: {0}->{1}, plen: {2}".
+    #             format(cliq_graph.vp.cno[ine[0].source()], cliq_graph.vp.cno[ine[0].target()], cliq_graph.ep.slen[ine[0]]))
+    #             print("MAX SIM: ", max_sim)
+    #             for e in ine:
+    #                 cs = similarity_e(e, cliq_graph)
+    #                 if cs < max_sim:
+    #                     cliq_graph.ep.color[e] = 'gray'
+    #                     print("drop edge {0} -> {1}, sim: {2}, slen: {3}".format(cliq_graph.vp.cno[e.source()], cliq_graph.vp.cno[e.target()], cs, cliq_graph.ep.slen[e]))
+    #                 else:
+    #                     max_edges.append(e)
+    #         # out connection
+    #         oute = [e for e in node.out_edges() if cliq_graph.ep.color[e] == 'black']
+    #         if len(oute) > 1:
+    #             oute = sorted(oute, 
+    #             key=lambda e: similarity_e(e, cliq_graph), reverse=True)
+    #             max_sim = similarity_e(oute[0], cliq_graph)
+    #             print("MAX OUT EDGE: {0}->{1}, plen: {2}".format(cliq_graph.vp.cno[oute[0].source()], cliq_graph.vp.cno[oute[0].target()], cliq_graph.ep.slen[oute[0]]))
+    #             print("MAX SIM: ", max_sim)
+    #             for e in oute:
+    #                 cs = similarity_e(e, cliq_graph)
+    #                 if cs < max_sim:
+    #                     cliq_graph.ep.color[e] = 'gray'    
+    #                     print("drop edge {0} -> {1}, sim: {2}, slen: {3}".format(cliq_graph.vp.cno[e.source()], cliq_graph.vp.cno[e.target()], cs, cliq_graph.ep.slen[e]))     
+    #                 else:
+    #                     max_edges.append(e)
 
-        # recover node in/out connection if edges be removed lead to no connection
-        sorted_sim_edges_f = sorted([e for e in cliq_graph.edges() if cliq_graph.ep.color[e] != 'black'], key=lambda e: similarity_e(e, cliq_graph), reverse=True)
-        for fe in sorted_sim_edges_f:
-            u = fe.source()
-            v = fe.target()
-            # print("current check edge {0} -> {1}".format(cliq_graph.vp.cno[u], cliq_graph.vp.cno[v]))
-            uoute = [e for e in u.out_edges() if cliq_graph.ep.color[e] == 'black']
-            vine = [e for e in v.in_edges() if cliq_graph.ep.color[e] == 'black']
-            if len(uoute) == 0 and len(vine) == 0:
-                cliq_graph.ep.color[fe] = 'black'
-                print("reappend edge {0} -> {1}, {2}".format(cliq_graph.vp.cno[u], cliq_graph.vp.cno[v], similarity_e(fe, cliq_graph)))
+    #     # recover node in/out connection if edges be removed lead to no connection
+    #     sorted_sim_edges_f = sorted([e for e in cliq_graph.edges() if cliq_graph.ep.color[e] != 'black'], key=lambda e: similarity_e(e, cliq_graph), reverse=True)
+    #     for fe in sorted_sim_edges_f:
+    #         u = fe.source()
+    #         v = fe.target()
+    #         # print("current check edge {0} -> {1}".format(cliq_graph.vp.cno[u], cliq_graph.vp.cno[v]))
+    #         uoute = [e for e in u.out_edges() if cliq_graph.ep.color[e] == 'black']
+    #         vine = [e for e in v.in_edges() if cliq_graph.ep.color[e] == 'black']
+    #         if len(uoute) == 0 and len(vine) == 0:
+    #             cliq_graph.ep.color[fe] = 'black'
+    #             print("reappend edge {0} -> {1}, {2}".format(cliq_graph.vp.cno[u], cliq_graph.vp.cno[v], similarity_e(fe, cliq_graph)))
+    }
     cliq_graph, cliq_node_dict, cliq_edge_dict = cliq_graph_init(cliq_graph)
-    return cliq_graph, cliq_node_dict, cliq_edge_dict, sp_path_dict
+    return cliq_graph, cliq_node_dict, cliq_edge_dict
 
 def contig_pairwise_concatenation(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, contig_dict: dict, 
 cliq_graph: Graph, cliq_node_dict: dict, cliq_edge_dict: dict, sp_path_dict: dict, 
@@ -938,7 +1044,7 @@ min_cov, min_len, max_len, overlap, threshold, tempdir):
             if len(list(contig_node.all_edges())) > 2:
                 # remove self cycle edge with self cycle + outer connection feature
                 cliq_graph_remove_edge(cliq_graph, cliq_edge_dict, cno, cno, cliq_graph.edge(contig_node, contig_node))
-                print("remove self edge+outer connection {0} -> {0} with node length < minlen".format(cno))
+                print("should be removed already ... remove self edge+outer connection {0} -> {0}".format(cno))
             else:
                 print("Circular PATH: ", cno)
                 cov = cliq_graph.vp.ccov[contig_node]
@@ -1077,7 +1183,7 @@ min_cov, min_len, max_len, overlap, threshold, tempdir):
     
     # simplify the graph
     cliq_graph, cliq_node_dict, cliq_edge_dict = cliq_graph_init(cliq_graph)
-    draw_cliq_graph(cliq_graph, len(cliq_node_dict), len(cliq_edge_dict), tempdir, "cliq_graphL2.png")
+    draw_cliq_graph(cliq_graph, len(cliq_node_dict), len(cliq_edge_dict), tempdir, "cliq_graphL3.png")
 
     return contig_dict
 
@@ -1148,6 +1254,10 @@ min_cov, max_len, threshold, overlap):
                     contig_dict[cno] = [contig_dict[cno][0] + [graph.vp.id[n] for n in sp], plen + contig_dict[cno][1] - overlap, ccov]
                 else:
                     print("path not found")
+            
+            # re-assign the strain cov to min flow among the contig
+            redcov = numpy.min(contig_flow(graph, simp_edge_dict, contig_dict[cno][0]))
+            contig_dict[cno][2] = redcov
     
     # udp, node depth with related contig cov be deducted
     graph.vp.udp = graph.new_vertex_property("double")

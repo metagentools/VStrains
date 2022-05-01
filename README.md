@@ -43,9 +43,21 @@
     ------------------------------------------------------------------------------------------------
     """
 
+
+# Necessary Assumption:
+1. all the strains are embedded as an s-t path within the graph.
 # current question: 
 1. for cand path, which cov assign to it.
 2. re-write the shortest path part, use ps path variation and find the best match.
+3. each contig may map to more than one strain, in which lead to inconsistent 
+
+a contig is shared by multiple strains only depends on the degree along the contig path.
+how to figure out whether a contig is contained within #n strains, check the in-out degree on the src/tgt
+since, the min edge flow within interior node of the contig can ensure the contig flow.
+1. axiom 1: the min flow among the edge flows of a contig is from/to the head/tail contig node.
+
+
+
 Step to concat the contig clique graph
 1. remove any self-cycle edge with curr contig len < min_len (due to high concat risk)
 2. for all remaining self-cycle, concat them first.

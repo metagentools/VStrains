@@ -57,7 +57,35 @@ def graph_is_DAG(graph: Graph, simp_node_dict: dict):
     print("graph is not cyclic")
     return True
 
-def reachable(graph: Graph, simp_node_dict: dict, src, src_cno, tgt, tgt_cno, contig_dict: dict):
+def reachable(graph: Graph, simp_node_dict: dict, src, src_contig, tgt, tgt_contig):
+    """
+    determine whether src can possibly reach the tgt
+    """
+    print("reachable check: {0} - {1}".format(graph.vp.id[src], graph.vp.id[tgt]))
+    visited = {}
+    for no in simp_node_dict.keys():
+        if graph.vp.color[simp_node_dict[no]] == 'black':
+            visited[no] = False
+        else:
+            visited[no] = True
+    for c in src_contig[:-1]:
+        visited[c] = True
+    for c in tgt_contig[1:]:
+        visited[c] = True
+
+    queue = [src]
+    while queue:
+        curr = queue.pop()
+        visited[graph.vp.id[curr]] = True
+        if curr == tgt:
+            return True
+        for oute in curr.out_edges():
+            out = oute.target()
+            if not visited[graph.vp.id[out]] and graph.ep.color[oute] == 'black':
+                queue.append(out)
+    return False
+    
+def reachable_with_path(graph: Graph, simp_node_dict: dict, src, src_cno, tgt, tgt_cno, contig_dict: dict):
     """
     determine whether src can possibly reach the tgt
     """
@@ -147,16 +175,11 @@ def dijkstra_sp(graph: Graph, simp_node_dict: dict, source, sink, closest_cov, t
             if v in Q:
                 # obtain current edge cost
                 edge_flow = graph.ep.flow[graph.edge(u, v)]
-
-                if abs(edge_flow - closest_cov) < threshold:
-                    alt = dist[u]
+                diff = edge_flow - closest_cov
+                if abs(diff) > threshold and diff < 0:
+                    alt = dist[u] + pow(diff, 2)
                 else:
-                    if edge_flow - closest_cov < 0:
-                        # higher puishment on selecting negative edge
-                        alt = dist[u] + pow(edge_flow - closest_cov, 2)
-                    else:
-                        alt = dist[u] + (edge_flow - closest_cov)
-
+                    alt = dist[u] + abs(diff)
                 # relax
                 if alt < dist[v]:
                     dist[v] = alt
@@ -164,22 +187,25 @@ def dijkstra_sp(graph: Graph, simp_node_dict: dict, source, sink, closest_cov, t
     
     if dist[sink] == sys.maxsize:
         # not reachable
-        return None, None
+        return None, None, None
 
     node = sink
     sp = []
+    mark = 0
     while prev[node]:
         sp.insert(0, node)
+        mark += (graph.ep.flow[graph.edge(prev[node], node)] - closest_cov)**2
         node = prev[node]
     if not sp:
         print("SP not found")
-        return None, None
+        return None, None, None
     else:
         sp.insert(0, source)
         print(graph_converter.path_to_id_string(graph, sp, "SP be found: "))
-        print("plen: ", graph_converter.path_len(graph, sp[1:-1], overlap))
+        mark = 1/(1+mark**0.5)
+        print("plen: ", graph_converter.path_len(graph, sp[1:-1], overlap), "pmark: ", mark)
 
-        return sp[1:-1], graph_converter.path_len(graph, sp[1:-1], overlap)
+        return sp[1:-1], graph_converter.path_len(graph, sp[1:-1], overlap), mark
 
 def dijkstra_sp_v2(graph: Graph, simp_node_dict: dict, source, sink, overlap: int):
     """
@@ -261,14 +287,36 @@ def get_concat_len(head_cno, head_clen, tail_cno, tail_clen, plen, overlap):
             total_len = head_clen + tail_clen + plen - 2*overlap
     return total_len
 
-def transitive_graph_reduction(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict):
-    for k in simp_node_dict.keys():
-        for i in simp_node_dict.keys():
-            for j in simp_node_dict.keys():
+def transitive_graph_reduction(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, cliq_graph: Graph, 
+contig_dict: dict, cliq_node_dict: dict, cliq_edge_dict: dict, sp_path_dict: dict):
+    for k in cliq_node_dict.keys():
+        for i in cliq_node_dict.keys():
+            for j in cliq_node_dict.keys():
                 if i != j and i != k and j != k:
-                    if (i, k) in simp_edge_dict and (k, j) in simp_edge_dict and (i, j) in simp_edge_dict:
-                        graph.ep.color[simp_edge_dict[(i, j)]] = 'gray'
-                        simp_edge_dict.pop((i, j))                  
+                    if (i, k) in cliq_edge_dict and (k, j) in cliq_edge_dict and (i, j) in cliq_edge_dict:
+                        ik = cliq_edge_dict[(i,k)]
+                        kj = cliq_edge_dict[(k,j)]
+                        ij = cliq_edge_dict[(i,j)]
+                        inode = ik.source()
+                        knode = ik.target()
+                        jnode = kj.target()
+                        ijsim = round(graph_converter.similarity_e(ij, cliq_graph),2)
+                        iksim = round(graph_converter.similarity_e(ik, cliq_graph),2)
+                        kjsim = round(graph_converter.similarity_e(kj, cliq_graph),2)
+                        if cliq_graph.ep.color[ik] == 'black' and cliq_graph.ep.color[kj] == 'black' and cliq_graph.ep.color[ij] == 'black':
+                            print("transitive found: ")
+                            print("ij, slen: ", cliq_graph.ep.slen[ij], "sim: ", ijsim, "|E: ", cliq_graph.vp.text[inode], "--->", cliq_graph.vp.text[jnode])
+                            print("ik, slen: ", cliq_graph.ep.slen[ik], "sim: ", iksim, "|E: ", cliq_graph.vp.text[inode], "--->", cliq_graph.vp.text[knode])
+                            print("kj, slen: ", cliq_graph.ep.slen[kj], "sim: ", kjsim, "|E: ", cliq_graph.vp.text[knode], "--->", cliq_graph.vp.text[jnode])
+                            if (iksim + kjsim) / 2 < ijsim:
+                                cliq_edge_dict[(i, k)] = 'gray'
+                                cliq_edge_dict.pop((i, k))
+                                cliq_edge_dict[(k, j)] = 'gray'
+                                cliq_edge_dict.pop((k, j))
+                            else:
+                                cliq_edge_dict[(i, j)] = 'gray'
+                                cliq_edge_dict.pop((i, j))                                           
+
     return
 
 def paths_from_src(graph: Graph, simp_node_dict: dict, self_node, src, overlap, maxlen):
@@ -329,46 +377,56 @@ def paths_to_tgt(graph: Graph, simp_node_dict: dict, self_node, tgt, overlap, ma
     dfs_rev(graph, tgt, [], maxlen, visited, all_path)   
     return all_path
 
-def st_variation_path(graph: Graph, src, src_contig, tgt, tgt_contig, overlap):
+def st_variation_path(graph: Graph, src, src_contig, tgt, tgt_contig, closest_cov, overlap):
     """
     find the optimal path from src tgt, where intermediate nodes with cov ~ cand_cov would be prefered
     """
     print("Start st variation finding: {0} -> {1}".format(graph.vp.id[src], graph.vp.id[tgt]))
+    
+    rtn_paths = []
+    local_visited = {}
+    global_visited = {}
+    for node in graph.vertices():
+        global_visited[graph.vp.id[node]] = False
+        local_visited[graph.vp.id[node]] = False
+    # avoid searching back to contig itself
+    for id in src_contig[:-1]:
+        global_visited[id] = True
+    for id in tgt_contig[1:]:
+        global_visited[id] = True
+    
+    # mark source node as visited
+    global_visited[graph.vp.id[src]] = True
+    local_visited[graph.vp.id[src]] = True 
+
     path = [src]
     pathqueue = deque()
-    pathqueue.append([path, len(graph.vp.seq[src])])
-    rtn_paths = []
-
-    visited = {}
-    for node in graph.vertices():
-        visited[graph.vp.id[node]] = False
-    for id in src_contig[:-1]:
-        visited[id] = True
-    for id in tgt_contig[1:]:
-        visited[id] = True
+    pathqueue.append([path, local_visited, len(graph.vp.seq[src]), 0]) 
     
     while pathqueue:
-        curr_path, curr_len = pathqueue.popleft()
-        if curr_path[-1] == tgt:
-            rtn_paths.append([curr_path, curr_len])
+        curr_path, local_visited, curr_len, curr_mark = pathqueue.popleft()
+        if curr_path[-1] == tgt and curr_path[0] == src:
+            rtn_paths.append([curr_path, curr_len, 1/(1 + curr_mark**0.5)])
             continue
 
         for e in curr_path[-1].out_edges():
             next = e.target()
             if graph.ep.color[e] != 'black' and graph.vp.color[next] != 'black':
                 continue
-            if visited[graph.vp.id[next]]:
+            if global_visited[graph.vp.id[next]] or local_visited[graph.vp.id[next]]:
                 continue
             if next not in curr_path:
                 split_path = curr_path[:]
+                split_local_visited = dict(local_visited)
                 split_path.append(next)
+                split_local_visited[graph.vp.id[next]] = True
                 split_len = curr_len + len(graph.vp.seq[next]) - overlap
+                split_mark = curr_mark + (graph.ep.flow[e] - closest_cov)**2
+                pathqueue.append([split_path, split_local_visited, split_len, split_mark])
 
-                pathqueue.append([split_path, split_len])
-
-    for p, plen in rtn_paths:
-        if p[0] == src and p[-1] == tgt:
-            print("Length: ", plen, graph_converter.path_to_id_string(graph, p, "-Path be found: "))
+    # for p, plen in rtn_paths:
+    #     if p[0] == src and p[-1] == tgt:
+    #         print("Length: ", plen, graph_converter.path_to_id_string(graph, p, "-Path be found: "))
 
     return rtn_paths
 

@@ -6,6 +6,7 @@ def map_ref_to_graph(paf_file):
     assumption: graph is stored in acc/simplifed_graph, 
     """
     strain_dict = {}
+    all = set()
     with open(paf_file, 'r') as paf:
         for Line in paf:
             splited = Line.split('\t')
@@ -20,6 +21,7 @@ def map_ref_to_graph(paf_file):
             mark = int(splited[11])
             if ref_no not in strain_dict:
                 strain_dict[ref_no] = []
+            all.add(seg_no)
             strain_dict[ref_no].append((seg_no,nmatch/nblock))
         paf.close()
     
@@ -35,6 +37,7 @@ def map_ref_to_graph(paf_file):
                 break
         print("-------------------")
     print("Size: ", len(max_mappings), "max mappings: ", max_mappings)
+    print("DUP: ", all.difference(max_mappings))
     return strain_dict
 
 if __name__ == '__main__':

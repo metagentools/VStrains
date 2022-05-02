@@ -207,16 +207,38 @@ def main():
     minimap_api(args.ref_file, "{0}concat_contig.fasta".format(TEMP_DIR), "{0}concat_contig_to_strain.paf".format(TEMP_DIR))
 
     print("-------------------------------------STRAIN EXTENSION--------------------------------------")
-    extended_contig_dict = strain_extension(graph5, simp_node_dict5, simp_edge_dict5, concat_contig_dict, args.min_cov, args.max_len, THRESHOLD, args.overlap)
-    # graph_to_gfa(graph5, simp_node_dict5, simp_edge_dict5, "{0}stecbsdt_graph_L7.gfa".format(TEMP_DIR))
+    extended_contig_dict, pre_usages = strain_extension(graph5, simp_node_dict5, simp_edge_dict5, concat_contig_dict, args.min_cov, args.max_len, THRESHOLD, args.overlap)
+    
+    print("--------------------------------------GRAPH TRIVIAL SPLIT----------------------------------")
+    # reload graph5 again
+    graph5, simp_node_dict5, simp_edge_dict5 = flipped_gfa_to_graph("{0}cbsdt_graph_L5.gfa".format(TEMP_DIR))
+    assign_edge_flow(graph5, simp_node_dict5, simp_edge_dict5)
+    prev_ids = list(simp_node_dict5.keys())
+    id_mapping = graph_split_final(graph5, simp_node_dict5, simp_edge_dict5)
+    graph_to_gfa(graph5, simp_node_dict5, simp_edge_dict5, "{0}fcbsdt_graph_L6.gfa".format(TEMP_DIR))
+    graph6, simp_node_dict6, simp_edge_dict6 = flipped_gfa_to_graph("{0}fcbsdt_graph_L6.gfa".format(TEMP_DIR))
+    assign_edge_flow(graph6, simp_node_dict6, simp_edge_dict6)
+    contig_dict_resol(graph6, simp_node_dict6, simp_edge_dict6, extended_contig_dict, id_mapping, prev_ids, args.overlap)
 
+    simp_path_dict = simple_paths_to_dict(graph6, simp_node_dict6, simp_edge_dict6, args.overlap)
+    simp_path_compactification(graph6, simp_node_dict6, simp_edge_dict6, simp_path_dict, extended_contig_dict, args.overlap)
+    extended_contig_dict = contig_dict_simp(extended_contig_dict, THRESHOLD)
+    contig_dict_to_path(extended_contig_dict, "{0}post_contig.paths".format(TEMP_DIR))
+
+    graph_to_gfa(graph6, simp_node_dict6, simp_edge_dict6, "{0}sfcbsdt_graph_L7.gfa".format(TEMP_DIR))
+    graph7, simp_node_dict7, simp_edge_dict7 = flipped_gfa_to_graph("{0}sfcbsdt_graph_L7.gfa".format(TEMP_DIR))
+    assign_edge_flow(graph7, simp_node_dict7, simp_edge_dict7)
+
+    print("-------------------------------------LOCAL OPTIMISATION--------------------------------------")
+    local_search_optimisation(graph7, simp_node_dict7, simp_edge_dict7, extended_contig_dict, 
+    args.min_cov, args.min_len, args.max_len, args.overlap, THRESHOLD)
     # print("----------------------------------FINAL STRAIN EXTRACTION----------------------------------")
-    # final_strain_extraction(graph5, simp_node_dict5, simp_edge_dict5, extended_contig_dict, THRESHOLD, args.overlap)
+    # final_strain_extraction(graph5, simp_node_dict5, simp_edge_dict5, extended_contig_dict, pre_usages, THRESHOLD, args.overlap)
     # print("-------------------------------LOCAL SEARCH OPTIMISATION-----------------------------------")
     # local_search_optimisation(graph5, simp_node_dict5, simp_edge_dict5, concat_contig_dict, args.min_cov, args.min_len, args.max_len, args.overlap, THRESHOLD)
     # stat
-    extended_contig_dict = trim_contig_dict(graph5, simp_node_dict5,  extended_contig_dict, args.overlap)
-    contig_dict_to_fasta(graph5, extended_contig_dict, simp_node_dict5, args.overlap, "{0}extended_contig.fasta".format(TEMP_DIR))
+    extended_contig_dict = trim_contig_dict(graph7, simp_node_dict7,  extended_contig_dict, args.overlap)
+    contig_dict_to_fasta(graph7, extended_contig_dict, simp_node_dict7, args.overlap, "{0}extended_contig.fasta".format(TEMP_DIR))
     contig_dict_to_path(extended_contig_dict, "{0}extended_contig.paths".format(TEMP_DIR))
     minimap_api(args.ref_file, "{0}extended_contig.fasta".format(TEMP_DIR), "{0}extended_contig_to_strain.paf".format(TEMP_DIR))  
     return 0
@@ -1284,12 +1306,13 @@ min_cov, max_len, threshold, overlap):
     free_nodes = []
     overused_nodes = []
     pre_usages = {}
+    node_to_contig_dict, _ = contig_map_node(contig_dict)
     for no, node in simp_node_dict.items():
         print("----------------------------------------------------")
         if no == 'global_src' or no == 'global_sink':
             continue
         ratio = round(((graph.vp.dp[node] - graph.vp.udp[node]) * 100 / graph.vp.dp[node]), 2)
-        print("Node: {0}, full: {1}, left: {2}, usage: {3}, {4}".format(no, round(graph.vp.dp[node], 2), round(graph.vp.udp[node], 2), ratio, graph.vp.color[node]))
+        print("Node: {0}, full: {1}, left: {2}, usage: {3}, color: {4}, CNOs: {5}".format(no, round(graph.vp.dp[node], 2), round(graph.vp.udp[node], 2), ratio, graph.vp.color[node], node_to_contig_dict[no] if no in node_to_contig_dict else ""))
         if ratio < 100 and graph.vp.udp[node] > threshold:
             partial_used_nodes.append(no)
         if ratio <= 0:
@@ -1328,11 +1351,11 @@ min_cov, max_len, threshold, overlap):
         ax.bar_label(container)
     ax.set_xticklabels(ax.get_xticklabels(), rotation=40, ha="right")
     plt.title('Bar plot of Node Usage')
-    plt.savefig("{0}barplot_usage.png".format(TEMP_DIR))
+    plt.savefig("{0}barplot_usage_pre.png".format(TEMP_DIR))
 
-    return contig_dict
+    return contig_dict, pre_usages
 
-def final_strain_extraction(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, contig_dict: dict, threshold, overlap):
+def final_strain_extraction(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, contig_dict: dict, pre_usages: dict, threshold, overlap):
     # st path FIXME later
     global_src = simp_node_dict['global_src']
     global_sink = simp_node_dict['global_sink']
@@ -1353,8 +1376,6 @@ def final_strain_extraction(graph: Graph, simp_node_dict: dict, simp_edge_dict: 
             "meancov: ", numpy.mean(cflows), 
             "mediancov: ", numpy.median(cflows),
             "maxcov: ", numpy.max(cflows))
-            for i in range(len(cflows)):
-                print("u: ", graph.vp.id[path[i+1]], "v: ", graph.vp.id[path[i+2]], "flow: ", round(cflows[i],2))
             
             d = pandas.Series({"coverage": cflows})
             ax = seaborn.countplot(x="coverage", data=d)
@@ -1362,7 +1383,6 @@ def final_strain_extraction(graph: Graph, simp_node_dict: dict, simp_edge_dict: 
             ax.set_xticklabels(ax.get_xticklabels(), rotation=40, ha="right")
             plt.title('Count plot of Path {0}'.format("st" + str(curr_id)))
             plt.savefig("{0}countplot_{1}.png".format(TEMP_DIR, "st" + str(curr_id)))
-
             # end stat
             redcov = numpy.min(cflows)
             graph_reduction_c(graph, path, redcov, threshold)
@@ -1397,18 +1417,18 @@ def final_strain_extraction(graph: Graph, simp_node_dict: dict, simp_edge_dict: 
     print("Partial used nodes: ", list_to_string(post_partial_used_nodes))
     print("Overall Usage Post: {0}".format(overall_post_usage))
     # do some plotting
-    # df = pandas.DataFrame(
-    #     {'Id': [i for i in range(len(pre_usages.keys()))],
-    #     'pre': pre_usages.values(),
-    #     'post': post_usages.values()
-    #     })
-    # tidy = df.melt(id_vars='Id').rename(columns=str.title)
-    # ax = seaborn.barplot(x='Id', y='Value', hue='Variable', data=tidy)
-    # for container in ax.containers:
-    #     ax.bar_label(container)
-    # ax.set_xticklabels(ax.get_xticklabels(), rotation=40, ha="right")
-    # plt.title('Bar plot of Node Usage')
-    # plt.savefig("{0}barplot_usage.png".format(TEMP_DIR))
+    df = pandas.DataFrame(
+        {'Id': [i for i in range(len(pre_usages.keys()))],
+        'pre': pre_usages.values(),
+        'post': post_usages.values()
+        })
+    tidy = df.melt(id_vars='Id').rename(columns=str.title)
+    ax = seaborn.barplot(x='Id', y='Value', hue='Variable', data=tidy)
+    for container in ax.containers:
+        ax.bar_label(container)
+    ax.set_xticklabels(ax.get_xticklabels(), rotation=40, ha="right")
+    plt.title('Bar plot of Node Usage')
+    plt.savefig("{0}barplot_usage_post.png".format(TEMP_DIR))
     # post process
     for node in graph.vertices():
         graph.vp.dp[node] = graph.vp.udp[node]
@@ -1416,6 +1436,7 @@ def final_strain_extraction(graph: Graph, simp_node_dict: dict, simp_edge_dict: 
     graph.vp.color[global_src] = 'gray'
     simp_node_dict.pop(graph.vp.id[global_sink])
     graph.vp.color[global_sink] = 'gray'
+    return
 
 def local_search_optimisation(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, contig_dict: dict, min_cov, min_len, max_len, overlap, threshold):
     return

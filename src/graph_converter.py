@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 
-# from concurrent.futures import thread
 from graph_tool.all import Graph
 from graph_tool.draw import graph_draw
 import gfapy
@@ -46,7 +45,7 @@ def gfa_to_graph(gfa_file, init_ori=1):
 
     eprop_overlap = graph.new_edge_property("int", val=0)
     eprop_visited = graph.new_edge_property("int", val=0)
-    eprop_flow = graph.new_edge_property("float", val=0.0)
+    eprop_flow = graph.new_edge_property("double", val=0.0)
     eprop_color = graph.new_edge_property("string")
 
     graph.ep.overlap = eprop_overlap
@@ -851,7 +850,7 @@ def graph_splitting(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, co
     """
     n-n branch splitting
     """
-    print("-------------------------graph splitting: {0}----------------------".format(("strict" if strict_mode else "relax")))
+    print("-------------------------graph split: {0}----------------------".format(("strict" if strict_mode else "relax")))
     print("Threshold: ", threshold)
     split_branches = []
     node_to_contig_dict, edge_to_contig_dict = contig_map_node(contig_dict)
@@ -954,6 +953,167 @@ def graph_splitting(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, co
     print("No of branch be removed: ", len(set(split_branches)))
     print("Split branches: ", list_to_string(set(split_branches)))
     return len(set(split_branches))
+
+def graph_split_final(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict):
+    """
+    Split the graph, for any (0|1)->N, N->(0|1) branch, split by forking the 1 edge to N edge.
+    """
+    has_split = True
+    id_mapping = {}
+    for id in simp_node_dict.keys():
+        id_mapping[id] = set()
+    while has_split:
+        has_split = False
+        for id in list(simp_node_dict.keys()):
+            node = simp_node_dict[id]
+            if graph.vp.color[node] != 'black':
+                continue
+            if id not in id_mapping:
+                id_mapping[id] = set()
+            ines = [ue for ue in node.in_edges() if graph.ep.color[ue] == 'black']
+            outes = [ve for ve in node.out_edges() if graph.ep.color[ve] == 'black']
+            print(id, len(ines), len(outes))
+            if len(ines) == len(outes):
+                None
+                # print("current node is satisfied, skip")
+            elif len(ines) == 0 and len(outes) > 1:
+                # print("current node is source node, split left")
+                graph.vp.color[node] = 'gray'
+                # create len(outes) subnodes
+                s = 'A'
+                for i in range(len(outes)):
+                    oute = outes[i]
+                    tgt = oute.target()
+                    snode = graph_add_vertex(graph, simp_node_dict, id+chr(ord(s) + i), graph.ep.flow[oute], graph.vp.seq[node], graph.vp.kc[node])
+                    graph.ep.color[oute] = 'gray'
+                    sedge = graph_add_edge(graph, simp_edge_dict, snode, graph.vp.id[snode], 
+                    tgt, graph.vp.id[tgt], graph.ep.overlap[oute], graph.ep.flow[oute])
+                    simp_node_dict[graph.vp.id[snode]] = snode
+                    simp_edge_dict[(graph.vp.id[sedge.source()], graph.vp.id[sedge.target()])] = sedge
+                    id_mapping[id].add(graph.vp.id[snode])
+                has_split = True
+            elif len(ines) > 1 and len(outes) == 0:
+                # print("current node is sink node, split right")
+                graph.vp.color[node] = 'gray'
+                # create len(ines) subnodes
+                s = 'A'
+                for i in range(len(ines)):
+                    ine = ines[i]
+                    src = ine.source()
+                    snode = graph_add_vertex(graph, simp_node_dict, id+chr(ord(s) + i), graph.ep.flow[ine], graph.vp.seq[node], graph.vp.kc[node])
+                    graph.ep.color[ine] = 'gray'
+                    sedge = graph_add_edge(graph, simp_edge_dict, src, graph.vp.id[src], 
+                    snode, graph.vp.id[snode], graph.ep.overlap[ine], graph.ep.flow[ine])
+                    simp_node_dict[graph.vp.id[snode]] = snode
+                    simp_edge_dict[(graph.vp.id[sedge.source()], graph.vp.id[sedge.target()])] = sedge
+                    id_mapping[id].add(graph.vp.id[snode])
+                has_split = True
+            elif len(ines) == 1 and len(outes) > 1:
+                # print("split left")
+                graph.vp.color[node] = 'gray'
+                ine = ines[0]
+                src = ine.source()
+                graph.ep.color[ine] = 'gray'
+                s = 'A'
+                for i in range(len(outes)):
+                    oute = outes[i]
+                    tgt = oute.target()
+                    snode = graph_add_vertex(graph, simp_node_dict, id+chr(ord(s) + i), graph.ep.flow[oute], graph.vp.seq[node], graph.vp.kc[node])
+                    graph.ep.color[oute] = 'gray'
+                    sedge_out = graph_add_edge(graph, simp_edge_dict, snode, graph.vp.id[snode], 
+                    tgt, graph.vp.id[tgt], graph.ep.overlap[oute], graph.ep.flow[oute])
+                    simp_node_dict[graph.vp.id[snode]] = snode
+                    simp_edge_dict[(graph.vp.id[sedge_out.source()], graph.vp.id[sedge_out.target()])] = sedge_out
+
+                    sedge_in = graph_add_edge(graph, simp_edge_dict, src, graph.vp.id[src],
+                    snode, graph.vp.id[snode], graph.ep.overlap[ine], graph.ep.flow[oute])
+                    simp_edge_dict[(graph.vp.id[sedge_in.source()], graph.vp.id[sedge_in.target()])] = sedge_in
+                    id_mapping[id].add(graph.vp.id[snode])
+                has_split = True
+            elif len(ines) > 1 and len(outes) == 1:
+                # print("split right")   
+                graph.vp.color[node] = 'gray'
+                oute = outes[0]
+                tgt = oute.target()
+                graph.ep.color[oute] = 'gray'
+                s = 'A'
+                for i in range(len(ines)):
+                    ine = ines[i]
+                    src = ine.source()
+                    snode = graph_add_vertex(graph, simp_node_dict, id+chr(ord(s) + i), graph.ep.flow[ine], graph.vp.seq[node], graph.vp.kc[node])
+                    graph.ep.color[ine] = 'gray'
+                    sedge_in = graph_add_edge(graph, simp_edge_dict, src, graph.vp.id[src], 
+                    snode, graph.vp.id[snode], graph.ep.overlap[ine], graph.ep.flow[ine])
+                    simp_node_dict[graph.vp.id[snode]] = snode
+                    simp_edge_dict[(graph.vp.id[sedge_in.source()], graph.vp.id[sedge_in.target()])] = sedge_in
+
+                    sedge_out = graph_add_edge(graph, simp_edge_dict, snode, graph.vp.id[snode],
+                    tgt, graph.vp.id[tgt], graph.ep.overlap[oute], graph.ep.flow[ine])
+                    simp_edge_dict[(graph.vp.id[sedge_out.source()], graph.vp.id[sedge_out.target()])] = sedge_out
+                    id_mapping[id].add(graph.vp.id[snode])
+                has_split = True
+            else:
+                None
+                # print("Imbalance node, unable to split, skip")
+    return id_mapping
+
+def contig_dict_resol(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, contig_dict: dict, id_mapping: dict, prev_ids: list, overlap):
+    """
+    Update the contig nodes to mapped nodes.
+    """
+
+    def map_contig(contig, id_mappingP: dict):
+        new_contig = []
+        # need more work to allocate the correct mapping to the contig FIXME
+        i = 0
+        while i < len(contig):
+            no = contig[i]
+            assigned = False
+            if len(id_mappingP[no]) == 0:
+                new_contig.append(no)
+                assigned = True
+            else:
+                repnos = sorted(id_mappingP[no], key=lambda id: abs(ccov - graph.vp.dp[simp_node_dict[id]]))
+                if len(new_contig) == 0:
+                    # print("best match: {0} -> {1}, cov: {2}".format(no, repnos[0], ccov))
+                    new_contig.append(repnos[0])     
+                    assigned = True  
+                else: 
+                    for repno in repnos:
+                        if (new_contig[-1], repno) in simp_edge_dict:
+                            # print("best match: {0} -> {1}, cov: {2}".format(no, repno, ccov))
+                            new_contig.append(repno)
+                            assigned = True
+                            break
+            if assigned:
+                i += 1
+            else:
+                # print("rollback")
+                id_mappingP[contig[i-1]].remove(new_contig[-1])
+                new_contig = new_contig[:-1]
+                i -= 1
+        return new_contig
+
+    def merge_id(id_mapping_r: dict, curr_set: set, myid):
+        if len(curr_set) == 0:
+            return set([myid])
+        else:
+            rtn_set = set()
+            for id in curr_set:
+                rtn_set = rtn_set.union(merge_id(id_mapping_r, id_mapping_r[id], id))
+            return rtn_set
+    # id_mapping merging, recursive merge down.
+    red_id_mapping = {}
+
+    for id in prev_ids:
+        all_set = merge_id(id_mapping, id_mapping[id], id)
+        red_id_mapping[id] = all_set
+
+    for cno, (contig, clen, ccov) in list(contig_dict.items()):
+        new_contig = map_contig(contig, copy_dict_hard(red_id_mapping))
+        print_contig(cno, clen, ccov, new_contig, "mapped contig")
+        contig_dict[cno] = [new_contig, path_len(graph, [simp_node_dict[no] for no in new_contig], overlap), ccov]
+    return
 
 def simp_path(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict):
     """
@@ -1102,9 +1262,9 @@ def check_contig_intersection(cno, contig, cno2, contig2):
     # intersection region is proper subset for both contig1 and contig2
     # check intersection
     intersect = set(contig).intersection(set(contig2))
-    print("intersect check: {0} vs {1}, count: {2}".format(cno, cno2, len(intersect)))
+    # print("intersect check: {0} vs {1}, count: {2}".format(cno, cno2, len(intersect)))
     if len(intersect) <= 0:
-        print("No intersection")
+        # print("No intersection")
         return False, intersect, 0
 
     if len(intersect) == len(contig):
@@ -1167,9 +1327,10 @@ def contig_dict_simp(contig_dict: dict, threshold):
                         dup_contig_ids.add(cno2)
                     else:
                         intersect = set(contig).intersection(set(contig2))
-                        print("intersect check: {0} vs {1}, count: {2}".format(cno, cno2, len(intersect)))
+                        # print("intersect check: {0} vs {1}, count: {2}".format(cno, cno2, len(intersect)))
                         if len(intersect) <= 0:
-                            print("No intersection")
+                            None
+                            # print("No intersection")
                         elif len(intersect) == len(contig):
                             if abs(ccov - ccov2) < threshold:
                                 print("{0} is covered by {1}".format(cno, cno2))
@@ -1528,11 +1689,7 @@ def print_vertex(graph, v, s=""):
     print(s, " vertex: ", graph.vp.id[v], ", dp: ", graph.vp.dp[v], ", kc: ", graph.vp.kc[v], ", in_degree: ", v.in_degree(), ", out_degree: ", v.out_degree(), graph.vp.color[v])
 
 def print_contig(cno, clen, ccov, contig, s=""):
-    path = ""
-    for v in contig:
-        path += v + ", "
-    path = path[:-2]
-    print(s, " Contig: ", cno, ", length: ", clen, ", cov: ", ccov, "Path: ", path)
+    print(s, " Contig: ", cno, ", length: ", clen, ", cov: ", ccov, "Path: ", list_to_string(contig))
 
 
 def list_to_string(ids: list, s=""):
@@ -1550,7 +1707,14 @@ def get_row(matrix: list, rowId):
 def get_col(matrix: list, colId):
     return [row[colId] for row in matrix]
 
-
+def copy_dict_hard(d: dict):
+    """
+    hard copy a dict with list element, key is immutable.
+    """
+    rd = {}
+    for k, v in d.items():
+        rd[k] = v.copy()
+    return rd
 
 #########
 # def contig_variation_span(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, contig_dict: dict, overlap, maxlen, tempdir):

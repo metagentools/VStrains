@@ -242,9 +242,7 @@ def dijkstra_sp_v2(graph: Graph, simp_node_dict: dict, source, sink, overlap: in
                 e = graph.edge(u, v)
                 if graph.ep.color[e] != 'black':
                     continue
-                # print("curr edge: {0} -> {1}".format(graph.vp.id[u], graph.vp.id[v]))
-                edge_flow = graph.ep.flow[e]
-                alt = dist[u] - edge_flow
+                alt = dist[u] + pow(graph.ep.flow[e],2)
                 # relax
                 if alt < dist[v]:
                     dist[v] = alt

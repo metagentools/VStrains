@@ -972,7 +972,7 @@ def graph_split_final(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict):
                 id_mapping[id] = set()
             ines = [ue for ue in node.in_edges() if graph.ep.color[ue] == 'black']
             outes = [ve for ve in node.out_edges() if graph.ep.color[ve] == 'black']
-            print(id, len(ines), len(outes))
+            # print(id, len(ines), len(outes))
             if len(ines) == len(outes):
                 None
                 # print("current node is satisfied, skip")
@@ -1135,7 +1135,7 @@ def simp_path(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict):
 
     # build simple paths from simple edges
     def extend_path(p):
-        v = int(p[-1])
+        v = p[-1]
         if v in in_edge:
             p.append(in_edge[v].target())
             return extend_path(p)
@@ -1537,7 +1537,7 @@ def graph_color_other_to_gray(graph: Graph, simp_node_dict: dict, ids: set):
         graph.vp.color[simp_node_dict[id]] = 'gray'
     return 
 
-def graph_add_vertex(graph: Graph, simp_node_dict: dict, id, dp, seq, kc, s="add vertex", color='black'):
+def graph_add_vertex(graph: Graph, simp_node_dict: dict, id, dp, seq, kc, s="add vertex", color='black', printout=False):
     node = graph.add_vertex()
     graph.vp.id[node] = id
     graph.vp.dp[node] = dp
@@ -1545,7 +1545,8 @@ def graph_add_vertex(graph: Graph, simp_node_dict: dict, id, dp, seq, kc, s="add
     graph.vp.kc[node] = kc
     graph.vp.color[node] = color
     simp_node_dict[id] = node
-    print_vertex(graph, node, s)
+    if printout:
+        print_vertex(graph, node, s)
     return node
 
 def graph_remove_vertex(graph, simp_node_dict, id, s="remove vertex", color='gray', printout=False):
@@ -1556,13 +1557,14 @@ def graph_remove_vertex(graph, simp_node_dict, id, s="remove vertex", color='gra
         print_vertex(graph, node, s)
     return node
 
-def graph_add_edge(graph: Graph, simp_edge_dict: dict, src, src_id, tgt, tgt_id, overlap, flow, s="add edge", color='black'):
+def graph_add_edge(graph: Graph, simp_edge_dict: dict, src, src_id, tgt, tgt_id, overlap, flow, s="add edge", color='black', printout=False):
     edge = graph.add_edge(src, tgt)
     graph.ep.overlap[edge] = overlap
     graph.ep.color[edge] = color
     graph.ep.flow[edge] = flow
     simp_edge_dict[(src_id, tgt_id)] = edge
-    print_edge(graph, edge, s)
+    if printout:
+        print_edge(graph, edge, s)
     return edge
 
 def graph_recolor_edge(graph: Graph, simp_edge_dict: dict, src, src_id, tgt, tgt_id, s="edge recolor", color='black'):
@@ -1716,6 +1718,69 @@ def copy_dict_hard(d: dict):
         rd[k] = v.copy()
     return rd
 
+def reindexing(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, extended_contig_dict: dict):
+    idx_mapping = {}
+    idx_node_dict = {}
+    idx_edge_dict = {}
+    idx_contig_dict = {}
+    idx = 0
+    for no, node in simp_node_dict.items():
+        if graph.vp.color[node] == 'black':
+            idx_mapping[no] = str(idx)
+            graph.vp.id[node] = str(idx)
+            idx_node_dict[str(idx)] = node
+            idx += 1
+    for (u, v), e in simp_edge_dict.items():
+        if graph.ep.color[e] == 'black' and graph.vp.color[e.source()] == 'black' and \
+        graph.vp.color[e.target()] == 'black':
+            idx_edge_dict[(idx_mapping[u], idx_mapping[v])] = e
+
+    for cno, [contig, clen, ccov] in extended_contig_dict.items():
+        idx_contig_dict[cno] = [[idx_mapping[no] for no in contig], clen, ccov]
+
+    return graph, idx_node_dict, idx_edge_dict, idx_contig_dict
+
+def add_global_source_sink(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, overlap):
+    # find all the srcs-targets
+    src_nodes = [node for node in graph.vertices() if node.in_degree() == 0 and node.out_degree() != 0]
+    tgt_nodes = [node for node in graph.vertices() if node.in_degree() != 0 and node.out_degree() == 0]
+    
+    # create a global source node & sink node, and concat all the curr src to the global source node
+    global_src = graph.add_vertex()
+    graph.vp.id[global_src] = 'global_src'
+    graph.vp.dp[global_src] = 0
+    graph.vp.color[global_src] = 'black'
+    simp_node_dict[graph.vp.id[global_src]] = global_src
+    for src in src_nodes:
+        e = graph.add_edge(global_src, src)
+        graph.ep.flow[e] = graph.vp.dp[src]
+        graph.ep.color[e] = 'black'
+        graph.ep.overlap[e] = overlap
+        graph.vp.dp[global_src] += graph.ep.flow[e]
+        simp_edge_dict[(graph.vp.id[global_src], graph.vp.id[src])] = e
+    print("srcs:  ", list_to_string([graph.vp.id[src] for src in src_nodes]))
+
+    global_sink = graph.add_vertex()
+    graph.vp.id[global_sink] = 'global_sink'
+    graph.vp.dp[global_sink] = 0
+    graph.vp.color[global_sink] = 'black'
+    simp_node_dict[graph.vp.id[global_sink]] = global_sink
+    for tgt in tgt_nodes:
+        e = graph.add_edge(tgt, global_sink)
+        graph.ep.flow[e] = graph.vp.dp[tgt]
+        graph.ep.color[e] = 'black'
+        graph.ep.overlap[e] = overlap
+        graph.vp.dp[global_sink] += graph.ep.flow[e]
+        simp_edge_dict[(graph.vp.id[tgt], graph.vp.id[global_sink])] = e
+    print("sinks: ", list_to_string([graph.vp.id[tgt] for tgt in tgt_nodes]))
+    return global_src, global_sink
+
+def retrieve_branch(graph: Graph):
+    branches = {}
+    for node in graph.vertices():
+        if node.in_degree() > 1 or node.out_degree() > 1:
+            branches[graph.vp.id[node]] = node
+    return branches
 #########
 # def contig_variation_span(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, contig_dict: dict, overlap, maxlen, tempdir):
 #     seaborn.set_theme(style="darkgrid")

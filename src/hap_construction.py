@@ -7,7 +7,7 @@ import csv
 # import re
 
 # import graph_tool
-from graph_tool.topology import all_circuits, all_shortest_paths, min_spanning_tree
+from graph_tool.topology import all_circuits, all_shortest_paths, min_spanning_tree, topological_sort
 from graph_tool.topology import transitive_closure, is_DAG
 from graph_tool.draw import graph_draw
 from graph_tool.all import Graph
@@ -145,7 +145,7 @@ def main():
         graph_to_gfa(graph3, simp_node_dict3, simp_edge_dict3, "{0}bsdt_graph_L4.gfa".format(TEMP_DIR))
         graph4, simp_node_dict4, simp_edge_dict4 = flipped_gfa_to_graph("{0}bsdt_graph_L4.gfa".format(TEMP_DIR))
 
-        coverage_rebalance(graph4, simp_node_dict4, simp_edge_dict4, strict=True)
+        coverage_rebalance(graph4, simp_node_dict4, simp_edge_dict4, strict=False)
 
         contig_cov_fix(graph4, simp_node_dict4, simp_edge_dict4, contig_dict)
 
@@ -193,8 +193,7 @@ def main():
     cliq_graph, cliq_node_dict, cliq_edge_dict, sp_path_dict, adj_matrix, cno_to_index = contig_clique_graph_build(graph5, simp_node_dict5, simp_edge_dict5,
                                                     contig_dict, args.max_len, THRESHOLD, args.overlap)
     draw_cliq_graph(cliq_graph, len(cliq_node_dict), len(cliq_edge_dict), TEMP_DIR, "cliq_graphL1.png")
-    cliq_graph, cliq_node_dict, cliq_edge_dict = clique_graph_clean(graph5, simp_node_dict5, simp_edge_dict5, 
-                                                    cliq_graph, cliq_node_dict, cliq_edge_dict,contig_dict, sp_path_dict, adj_matrix, cno_to_index)
+    cliq_graph, cliq_node_dict, cliq_edge_dict = clique_graph_clean(cliq_graph, cliq_node_dict, cliq_edge_dict, adj_matrix, cno_to_index)
     draw_cliq_graph(cliq_graph, len(cliq_node_dict), len(cliq_edge_dict), TEMP_DIR, "cliq_graphL2.png")
     print("-------------------------------CONTIG PAIRWISE CONCATENATION-----------------------------------")
     concat_contig_dict = contig_pairwise_concatenation(graph5, simp_node_dict5, simp_edge_dict5, contig_dict, 
@@ -223,6 +222,9 @@ def main():
     simp_path_dict = simple_paths_to_dict(graph6, simp_node_dict6, simp_edge_dict6, args.overlap)
     simp_path_compactification(graph6, simp_node_dict6, simp_edge_dict6, simp_path_dict, extended_contig_dict, args.overlap)
     extended_contig_dict = contig_dict_simp(extended_contig_dict, THRESHOLD)
+
+    graph6, simp_node_dict6, simp_edge_dict6, extended_contig_dict = reindexing(graph6, simp_node_dict6, simp_edge_dict6, extended_contig_dict)
+
     contig_dict_to_path(extended_contig_dict, "{0}post_contig.paths".format(TEMP_DIR))
 
     graph_to_gfa(graph6, simp_node_dict6, simp_edge_dict6, "{0}sfcbsdt_graph_L7.gfa".format(TEMP_DIR))
@@ -593,59 +595,12 @@ def coverage_rebalance(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict,
 
     return prev_dp_dict, curr_dp_dict, node_ratio_dict, ratio_div
 
-# def contig_variation_tree(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, contig_dict: dict, threshold):
-#     contig, clen, ccov = contig_dict['6']
-#     # head_queue = [simp_node_dict[contig[0]]]
-#     # head_nodes = []
-#     # visited = {}
-#     # for v in graph.vertices():
-#     #     visited[v] = False
-#     # while head_queue:
-#     #     curr = head_queue.pop()
-#     #     head_nodes.append(curr)
-#     #     visited[curr] = True
-#     #     for prev in curr.in_neighbors():
-#     #         if not visited[prev]:
-#     #             head_queue.append(prev)
-#     mine, minflow = min_flow_edge(graph, simp_edge_dict, contig)
-#     if mine == None:
-#         minflow = graph.vp.dp[simp_node_dict[contig[-1]]]
-#     qe = [contig[-1], minflow]
-#     tail_queue = [qe]
-#     tail_nodes = set()
-#     visited = {}
-#     outd = 0
-#     for v in graph.vertices():
-#         visited[graph.vp.id[v]] = False
-#     while tail_queue:
-#         currid, cflow = tail_queue.pop()
-#         currnode = simp_node_dict[currid]
-        
-#         outflow = 0
-#         for oute in currnode.out_edges():
-#             next = oute.target()
-#             if not visited[graph.vp.id[next]]:
-#                 tail_nodes.add(graph.vp.id[next])
-#                 outd += 1
-#                 outflow = cflow * (graph.ep.flow[oute] / graph.vp.dp[currnode]) 
-#                 tail_queue.append([graph.vp.id[next], outflow])
-
-#         graph.vp.dp[currnode] -= cflow
-#         if graph.vp.dp[currnode] < threshold:
-#             visited[currid] = True
-
-#     # print(path_to_id_string(graph, head_nodes, "c6 head tree: "))
-#     print(path_to_id_string(graph, list(tail_nodes), "c6 tail tree: "))
-#     print("outd: ", outd)
-
 def allowed_concat_init(graph: Graph, contig_dict: dict, simp_node_dict: dict, max_len, threshold, overlap):
     """
     Decide whether any contig pair should be connected
     """
     self_concat_off = graph_is_DAG(graph, simp_node_dict)
     impossible_concat_dict = {}
-    graph.vp.prev = graph.new_vertex_property("string", val="")
-
     sp_path_dict = {}
 
     for no in contig_dict.keys():
@@ -775,9 +730,8 @@ def contig_clique_graph_build(graph: Graph, simp_node_dict: dict, simp_edge_dict
 
 
 
-def clique_graph_clean(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, 
-cliq_graph: Graph, cliq_node_dict: dict, cliq_edge_dict: dict, 
-contig_dict: dict, sp_path_dict: dict, adj_matrix, cno_to_index: dict):
+def clique_graph_clean(cliq_graph: Graph, cliq_node_dict: dict, cliq_edge_dict: dict, 
+adj_matrix, cno_to_index: dict):
     """
     adj matrix, elem in 5 colors: X, gray(invalid), white(has connection), red(candidate connection), blue(fixed connection)
     """
@@ -861,62 +815,6 @@ contig_dict: dict, sp_path_dict: dict, adj_matrix, cno_to_index: dict):
                     cliq_graph.ep.color[e] = 'gray'
                 else:
                     cliq_graph.ep.color[e] = 'black'
-    {
-    # graph transitive reduction FIXME select the option the reduce.
-    # print("total edges: ", len(cliq_edge_dict))
-    # transitive_graph_reduction(graph, simp_node_dict, simp_edge_dict, cliq_graph, contig_dict, cliq_node_dict, cliq_edge_dict, sp_path_dict)
-    # print("total edges after reduction: ", len([e for e in cliq_edge_dict.values() if cliq_graph.ep.color[e] == 'black']))
-    # cliq_graph, cliq_node_dict, cliq_edge_dict = cliq_graph_init(cliq_graph)
-    # edge reduction
-    # ensure every contig have at most 1 in connection and 1 out connection
-    # if graph_is_DAG(graph, simp_node_dict):
-    #     max_edges = []
-    #     for no, node in cliq_node_dict.items():
-    #         print("current contig evaluating: ", no)
-    #         # in connection
-    #         ine = [e for e in node.in_edges() if cliq_graph.ep.color[e] == 'black']
-    #         if len(ine) > 1:
-    #             ine = sorted(ine, 
-    #             key=lambda e: similarity_e(e, cliq_graph), reverse=True)
-    #             max_sim = similarity_e(ine[0], cliq_graph)
-    #             print("MAX IN EDGE: {0}->{1}, plen: {2}".
-    #             format(cliq_graph.vp.cno[ine[0].source()], cliq_graph.vp.cno[ine[0].target()], cliq_graph.ep.slen[ine[0]]))
-    #             print("MAX SIM: ", max_sim)
-    #             for e in ine:
-    #                 cs = similarity_e(e, cliq_graph)
-    #                 if cs < max_sim:
-    #                     cliq_graph.ep.color[e] = 'gray'
-    #                     print("drop edge {0} -> {1}, sim: {2}, slen: {3}".format(cliq_graph.vp.cno[e.source()], cliq_graph.vp.cno[e.target()], cs, cliq_graph.ep.slen[e]))
-    #                 else:
-    #                     max_edges.append(e)
-    #         # out connection
-    #         oute = [e for e in node.out_edges() if cliq_graph.ep.color[e] == 'black']
-    #         if len(oute) > 1:
-    #             oute = sorted(oute, 
-    #             key=lambda e: similarity_e(e, cliq_graph), reverse=True)
-    #             max_sim = similarity_e(oute[0], cliq_graph)
-    #             print("MAX OUT EDGE: {0}->{1}, plen: {2}".format(cliq_graph.vp.cno[oute[0].source()], cliq_graph.vp.cno[oute[0].target()], cliq_graph.ep.slen[oute[0]]))
-    #             print("MAX SIM: ", max_sim)
-    #             for e in oute:
-    #                 cs = similarity_e(e, cliq_graph)
-    #                 if cs < max_sim:
-    #                     cliq_graph.ep.color[e] = 'gray'    
-    #                     print("drop edge {0} -> {1}, sim: {2}, slen: {3}".format(cliq_graph.vp.cno[e.source()], cliq_graph.vp.cno[e.target()], cs, cliq_graph.ep.slen[e]))     
-    #                 else:
-    #                     max_edges.append(e)
-
-    #     # recover node in/out connection if edges be removed lead to no connection
-    #     sorted_sim_edges_f = sorted([e for e in cliq_graph.edges() if cliq_graph.ep.color[e] != 'black'], key=lambda e: similarity_e(e, cliq_graph), reverse=True)
-    #     for fe in sorted_sim_edges_f:
-    #         u = fe.source()
-    #         v = fe.target()
-    #         # print("current check edge {0} -> {1}".format(cliq_graph.vp.cno[u], cliq_graph.vp.cno[v]))
-    #         uoute = [e for e in u.out_edges() if cliq_graph.ep.color[e] == 'black']
-    #         vine = [e for e in v.in_edges() if cliq_graph.ep.color[e] == 'black']
-    #         if len(uoute) == 0 and len(vine) == 0:
-    #             cliq_graph.ep.color[fe] = 'black'
-    #             print("reappend edge {0} -> {1}, {2}".format(cliq_graph.vp.cno[u], cliq_graph.vp.cno[v], similarity_e(fe, cliq_graph)))
-    }
     cliq_graph, cliq_node_dict, cliq_edge_dict = cliq_graph_init(cliq_graph)
     return cliq_graph, cliq_node_dict, cliq_edge_dict
 
@@ -1047,9 +945,12 @@ min_cov, min_len, max_len, overlap, threshold, tempdir):
                 pow(cliq_graph.vp.ccov[cliq_node_dict[p[1]]] - cov, 2))
             
             print("-->PAIR UP {0} - {1}, cov: {2}, diff: {3}".format(cno1m, cno2m, cov, delta))
-            src = simp_node_dict[contig_dict[cno1m][0][-1]]
-            tgt = simp_node_dict[contig_dict[cno2m][0][0]]
-            cand_path, plen, pmark = dijkstra_sp(graph, simp_node_dict, src, tgt, cov, threshold, overlap)
+            if (cno1m, cno2m) in sp_path_dict:
+                cand_path, plen, pmark = sp_path_dict[(cno1m, cno2m)]
+            else:
+                src = simp_node_dict[contig_dict[cno1m][0][-1]]
+                tgt = simp_node_dict[contig_dict[cno2m][0][0]]
+                cand_path, plen, pmark = dijkstra_sp(graph, simp_node_dict, src, tgt, cov, threshold, overlap)
             cand_len = get_concat_len(cno1m, contig_dict[cno1m][1], cno2m, contig_dict[cno2m][1], plen, overlap)
 
             contig_pair_reduction(cno1m, cno2m, cov, cand_path, cand_len, cno_mapping)
@@ -1070,9 +971,12 @@ min_cov, min_len, max_len, overlap, threshold, tempdir):
             else:
                 print("Circular PATH: ", cno)
                 cov = cliq_graph.vp.ccov[contig_node]
-                src = simp_node_dict[contig_dict[cno][0][-1]]
-                tgt = simp_node_dict[contig_dict[cno][0][0]]
-                cand_path, plen, pmark = dijkstra_sp(graph, simp_node_dict, src, tgt, cov, threshold, overlap)
+                if (cno, cno) in sp_path_dict:
+                    cand_path, plen, pmark = sp_path_dict[(cno, cno)]
+                else:
+                    src = simp_node_dict[contig_dict[cno][0][-1]]
+                    tgt = simp_node_dict[contig_dict[cno][0][0]]
+                    cand_path, plen, pmark = dijkstra_sp(graph, simp_node_dict, src, tgt, cov, threshold, overlap)
                 cand_len = get_concat_len(cno, contig_dict[cno][1], cno, contig_dict[cno][1], plen, overlap)
 
                 if cand_path != None and cand_len != None:
@@ -1215,36 +1119,7 @@ min_cov, max_len, threshold, overlap):
     Extend the strain length
     1. map all the strain back into the graph
     """
-    # find all the srcs-targets
-    src_nodes = [node for node in graph.vertices() if node.in_degree() == 0 and node.out_degree() != 0]
-    tgt_nodes = [node for node in graph.vertices() if node.in_degree() != 0 and node.out_degree() == 0]
-    
-    # create a global source node & sink node, and concat all the curr src to the global source node
-    global_src = graph.add_vertex()
-    graph.vp.id[global_src] = 'global_src'
-    graph.vp.dp[global_src] = 0
-    graph.vp.color[global_src] = 'black'
-    simp_node_dict[graph.vp.id[global_src]] = global_src
-    for src in src_nodes:
-        e = graph.add_edge(global_src, src)
-        graph.ep.flow[e] = graph.vp.dp[src]
-        graph.ep.color[e] = 'black'
-        graph.ep.overlap[e] = overlap
-        graph.vp.dp[global_src] += graph.ep.flow[e]
-    print("srcs: ", list_to_string([graph.vp.id[src] for src in src_nodes]))
-
-    global_sink = graph.add_vertex()
-    graph.vp.id[global_sink] = 'global_sink'
-    graph.vp.dp[global_sink] = 0
-    graph.vp.color[global_sink] = 'black'
-    simp_node_dict[graph.vp.id[global_sink]] = global_sink
-    for tgt in tgt_nodes:
-        e = graph.add_edge(tgt, global_sink)
-        graph.ep.flow[e] = graph.vp.dp[tgt]
-        graph.ep.color[e] = 'black'
-        graph.ep.overlap[e] = overlap
-        graph.vp.dp[global_sink] += graph.ep.flow[e]
-    print("sinks: ", list_to_string([graph.vp.id[tgt] for tgt in tgt_nodes]))
+    global_src, global_sink = add_global_source_sink(graph, simp_node_dict, simp_edge_dict, overlap)
 
     # extend all the contig from both end
     for cno, [contig, clen, ccov] in list(contig_dict.items()):
@@ -1438,7 +1313,46 @@ def final_strain_extraction(graph: Graph, simp_node_dict: dict, simp_edge_dict: 
     graph.vp.color[global_sink] = 'gray'
     return
 
-def local_search_optimisation(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, contig_dict: dict, min_cov, min_len, max_len, overlap, threshold):
+
+def local_search_optimisation(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, contig_dict: dict, 
+min_cov, min_len, max_len, overlap, threshold):   
+    # gen_bubble_detection(graph, simp_node_dict, simp_edge_dict, overlap)
+    global_src, global_sink = add_global_source_sink(graph, simp_node_dict, simp_edge_dict, overlap)
+    bubble_dict = {}
+
+    # retrieve all the minimal bubble
+    branches = retrieve_branch(graph)
+    bubbles = {}
+    for no, branch in branches.items():
+        print("----->Current branch: ", no)
+        bubble = []
+        nextBranch = None
+        for child in branch.out_neighbors():
+            if graph.vp.id[child] not in branches:
+                if child.out_degree() == 0:
+                    bubble.append(child)
+                elif child.out_degree() == 1:
+                    accBranch = list(child.out_neighbors())[0]
+                    if nextBranch == None:
+                        nextBranch = accBranch
+                    if nextBranch != accBranch:
+                        print("not minimal bubble")
+                        bubble = None
+                        break
+
+                    if graph.vp.id[nextBranch] in branches:
+                        bubble.append(child)
+                    else:
+                        print("NEXT BRANCH ERROR", graph.vp.id[branch], graph.vp.id[child], graph.vp.id[nextBranch])
+                else:
+                    print("CHILD ERROR", graph.vp.id[branch], graph.vp.id[child], graph.vp.id[nextBranch])
+            else:
+                print("Consider later")
+        if bubble != None:
+            if bubble != [] and len(bubble) == nextBranch.in_degree():
+                bubbles[(no, graph.vp.id[nextBranch])] = bubble
+    for (a, b), bubble in bubbles.items():
+        print(path_to_id_string(graph, bubble, "Bubble {0} <-> {1}: ".format(a, b)))
     return
 
 if __name__ == "__main__":

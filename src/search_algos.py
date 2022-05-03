@@ -4,7 +4,7 @@ from graph_tool import Graph
 import sys
 import heapq
 from collections import deque
-
+from graph_tool.topology import all_circuits, all_shortest_paths, min_spanning_tree, topological_sort
 import graph_converter
 
 #######################################################################################################
@@ -380,7 +380,7 @@ def st_variation_path(graph: Graph, src, src_contig, tgt, tgt_contig, closest_co
     find the optimal path from src tgt, where intermediate nodes with cov ~ cand_cov would be prefered
     """
     print("Start st variation finding: {0} -> {1}".format(graph.vp.id[src], graph.vp.id[tgt]))
-    
+
     rtn_paths = []
     local_visited = {}
     global_visited = {}
@@ -428,45 +428,101 @@ def st_variation_path(graph: Graph, src, src_contig, tgt, tgt_contig, closest_co
 
     return rtn_paths
 
-# curr_simp_path = []
-# def retrieve_simple_paths(graph: Graph, simp_node_dict: dict, src, tgt, previsited: list, max_len, overlap):
-#     print("src: {0}, tgt: {1}, max_len: {2}".format(graph.vp.id[src], graph.vp.id[tgt], max_len))
-#     simple_path = []
-#     visited = {}
-#     for v in graph.vertices():
-#         visited[v] = False
-#     for p in previsited:
-#         visited[simp_node_dict[p]] = True
-#     visited[src] = False
-#     visited[tgt] = False
+def retrieve_bubble(graph: Graph, simp_edge_dict: dict, s, t):
+    """
+    since the bubble is at most length =1, simply return 
+    all the connected intermediate node.
+    """
+    bubbles = []
+    for child in t.in_neighbors():
+        if graph.vp.color[child] == 'black':
+            prev_conn = (graph.vp.id[s], graph.vp.id[child])
+            if prev_conn in simp_edge_dict:
+                if graph.ep.color[simp_edge_dict[prev_conn]] == 'black':
+                    bubbles.append(child)
+    print("Bubbles: ", graph_converter.path_to_id_string(graph, bubbles))
+    return bubbles
 
-#     def dfs(u, v):
-#         global curr_simp_path
-#         visited[u] = True
-#         curr_simp_path.append(u)
-#         # print(path_to_id_string(graph, curr_simp_path, "temp path"))
-#         if path_len(graph, curr_simp_path, overlap) >= max_len:
-#             print("max len reached, drop the path")
-#         elif u == v:
-#             print(path_to_id_string(graph, curr_simp_path, "path found"))
-#             simple_path.append(curr_simp_path[:])
-#         else:
-#             for next in u.out_neighbors():
-#                 if not visited[next]:
-#                     dfs(next, v)
-#         curr_simp_path = curr_simp_path[:-1]
-#         visited[u] = False
-#         return
-#     dfs(src, tgt)
+def gen_bubble_detection(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, overlap):
+    def print_branch_queue(branch_queue):
+        for close, ind, outd in branch_queue:
+            print("|{0}, in: {1}, out:{2}|".format(graph.vp.id[close], ind, outd))
+    global_src, global_sink = graph_converter.add_global_source_sink(graph, simp_node_dict, simp_edge_dict, overlap)
+    # use topological sort to figure out the order of the branch node
+    if not graph_is_DAG(graph, simp_node_dict):
+        print("Graph is not DAG, obtain spanning tree")
+        tree = min_spanning_tree(graph)
+        graph.set_edge_filter(tree)
+    sort = topological_sort(graph)
+    node_order = {}
+    print("TOP SORT")
+    for i, n in enumerate(sort):
+        node = graph.vertex(n)
+        if node.in_degree() > 1 or node.out_degree() > 1:
+            node_order[node] = i
+            print("branch: ", graph.vp.id[n])
+        else:
+            node_order[node] = sys.maxsize
+    print("TOP SORT END")
 
-#     return simple_path
+    visited = {}
+    prev = {}
+    for node in graph.vertices():
+        visited[node] = False
+        prev[node] = None
+    visited[global_src] = True
+    branch_queue = []
+    normal_queue = [[global_src, 0, global_src.out_degree(), True]]
+    loopCount = 30
+    while normal_queue:
+        loopCount -= 1
+        if loopCount <= 0:
+            break
+        currnode, ind, outd, isBranch = normal_queue.pop()
+        print("----->Curr pop: {0}, {1}, {2}, isBranch: {3}".format(graph.vp.id[currnode], ind, outd, isBranch))
+        for v in currnode.out_neighbors():
+            if not visited[v]:
+                visited[v] = True
+                print("append brand new nodes: ", graph.vp.id[v])
+                b = not (v.in_degree() <= 1 and v.out_degree() <= 1)
+                normal_queue.insert(0, [v, v.in_degree(), v.out_degree(), b])
+                if v.in_degree() == 1:
+                    prev[v] = [currnode, isBranch]
+        
+        if isBranch:
+            # check if it is the minimum branch within normal queue
+            min_branch_inQ, _, _, isBranchQ= min(normal_queue, key=lambda t: node_order[t[0]])
+            if node_order[min_branch_inQ] < node_order[currnode] and isBranchQ:
+                print("there are lower order branch dig in the queue, push the current back")
+                normal_queue.insert(0, [currnode, ind, outd, isBranch])
+            else:
+                print("curr branch is the lowest one, push it to branch queue")
+                branch_queue.insert(0, [currnode, ind, outd])
 
-# def predict_sp_max_len(graph: Graph, simp_node_dict: dict, contig_dict: dict, tail_cno, head_cno, max_len, overlap):
-#     tail_contig, tail_clen, _ = contig_dict[tail_cno]
-#     src_len = len(graph.vp.seq[simp_node_dict[tail_contig[-1]]])
-#     head_contig, head_clen, _ = contig_dict[head_cno]
-#     tgt_len = len(graph.vp.seq[simp_node_dict[head_contig[0]]])
-#     if head_cno == tail_cno:
-#         return max_len - tail_clen + src_len + tgt_len
-#     else:
-#         return max_len - head_clen - tail_clen + src_len + tgt_len + overlap 
+            if len(branch_queue) > 1:
+                print("BEFORE BUBBLE CHECK: ")
+                print_branch_queue(branch_queue)
+                # last inserted, highest order
+                leftClose, lind, loutd = branch_queue[0]
+                print("Leftmost: ", graph.vp.id[leftClose], lind, loutd)
+                for i in range(1, len(branch_queue)):
+                    rightClose, rind, routd = branch_queue[i]
+                    # bubble found, deal with it.
+                    print("Bubble found: ", graph.vp.id[rightClose], rind, routd, "<->", lind)
+                    # do some work
+                    retrieve_bubble(graph, simp_edge_dict, rightClose, leftClose)
+                    #...
+                    # clean up
+                    midd = min(lind, routd)
+                    lind -= midd
+                    routd -= midd
+                    branch_queue[i] = [rightClose, rind, routd]
+                    print("end: ", rind, routd, "<->", lind)
+                branch_queue[0] = [leftClose, lind, loutd]
+                branch_queue_copy = []
+                for close, ind, outd in branch_queue:
+                    if ind != 0 or outd != 0:
+                        branch_queue_copy.append([close, ind, outd])
+                branch_queue = branch_queue_copy
+                print("AFTER BUBBLE CHECK: ")
+                print_branch_queue(branch_queue)

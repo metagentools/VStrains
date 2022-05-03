@@ -2402,3 +2402,107 @@ min_cov, min_len, max_len, overlap, threshold, tempdir):
     draw_cliq_graph(cliq_graph, len(cliq_node_dict), len(cliq_edge_dict), tempdir, "cliq_graphL2.png")
 
     return contig_dict
+
+
+    {
+    # graph transitive reduction FIXME select the option the reduce.
+    # print("total edges: ", len(cliq_edge_dict))
+    # transitive_graph_reduction(graph, simp_node_dict, simp_edge_dict, cliq_graph, contig_dict, cliq_node_dict, cliq_edge_dict, sp_path_dict)
+    # print("total edges after reduction: ", len([e for e in cliq_edge_dict.values() if cliq_graph.ep.color[e] == 'black']))
+    # cliq_graph, cliq_node_dict, cliq_edge_dict = cliq_graph_init(cliq_graph)
+    # edge reduction
+    # ensure every contig have at most 1 in connection and 1 out connection
+    # if graph_is_DAG(graph, simp_node_dict):
+    #     max_edges = []
+    #     for no, node in cliq_node_dict.items():
+    #         print("current contig evaluating: ", no)
+    #         # in connection
+    #         ine = [e for e in node.in_edges() if cliq_graph.ep.color[e] == 'black']
+    #         if len(ine) > 1:
+    #             ine = sorted(ine, 
+    #             key=lambda e: similarity_e(e, cliq_graph), reverse=True)
+    #             max_sim = similarity_e(ine[0], cliq_graph)
+    #             print("MAX IN EDGE: {0}->{1}, plen: {2}".
+    #             format(cliq_graph.vp.cno[ine[0].source()], cliq_graph.vp.cno[ine[0].target()], cliq_graph.ep.slen[ine[0]]))
+    #             print("MAX SIM: ", max_sim)
+    #             for e in ine:
+    #                 cs = similarity_e(e, cliq_graph)
+    #                 if cs < max_sim:
+    #                     cliq_graph.ep.color[e] = 'gray'
+    #                     print("drop edge {0} -> {1}, sim: {2}, slen: {3}".format(cliq_graph.vp.cno[e.source()], cliq_graph.vp.cno[e.target()], cs, cliq_graph.ep.slen[e]))
+    #                 else:
+    #                     max_edges.append(e)
+    #         # out connection
+    #         oute = [e for e in node.out_edges() if cliq_graph.ep.color[e] == 'black']
+    #         if len(oute) > 1:
+    #             oute = sorted(oute, 
+    #             key=lambda e: similarity_e(e, cliq_graph), reverse=True)
+    #             max_sim = similarity_e(oute[0], cliq_graph)
+    #             print("MAX OUT EDGE: {0}->{1}, plen: {2}".format(cliq_graph.vp.cno[oute[0].source()], cliq_graph.vp.cno[oute[0].target()], cliq_graph.ep.slen[oute[0]]))
+    #             print("MAX SIM: ", max_sim)
+    #             for e in oute:
+    #                 cs = similarity_e(e, cliq_graph)
+    #                 if cs < max_sim:
+    #                     cliq_graph.ep.color[e] = 'gray'    
+    #                     print("drop edge {0} -> {1}, sim: {2}, slen: {3}".format(cliq_graph.vp.cno[e.source()], cliq_graph.vp.cno[e.target()], cs, cliq_graph.ep.slen[e]))     
+    #                 else:
+    #                     max_edges.append(e)
+
+    #     # recover node in/out connection if edges be removed lead to no connection
+    #     sorted_sim_edges_f = sorted([e for e in cliq_graph.edges() if cliq_graph.ep.color[e] != 'black'], key=lambda e: similarity_e(e, cliq_graph), reverse=True)
+    #     for fe in sorted_sim_edges_f:
+    #         u = fe.source()
+    #         v = fe.target()
+    #         # print("current check edge {0} -> {1}".format(cliq_graph.vp.cno[u], cliq_graph.vp.cno[v]))
+    #         uoute = [e for e in u.out_edges() if cliq_graph.ep.color[e] == 'black']
+    #         vine = [e for e in v.in_edges() if cliq_graph.ep.color[e] == 'black']
+    #         if len(uoute) == 0 and len(vine) == 0:
+    #             cliq_graph.ep.color[fe] = 'black'
+    #             print("reappend edge {0} -> {1}, {2}".format(cliq_graph.vp.cno[u], cliq_graph.vp.cno[v], similarity_e(fe, cliq_graph)))
+    }
+
+
+# def contig_variation_tree(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, contig_dict: dict, threshold):
+#     contig, clen, ccov = contig_dict['6']
+#     # head_queue = [simp_node_dict[contig[0]]]
+#     # head_nodes = []
+#     # visited = {}
+#     # for v in graph.vertices():
+#     #     visited[v] = False
+#     # while head_queue:
+#     #     curr = head_queue.pop()
+#     #     head_nodes.append(curr)
+#     #     visited[curr] = True
+#     #     for prev in curr.in_neighbors():
+#     #         if not visited[prev]:
+#     #             head_queue.append(prev)
+#     mine, minflow = min_flow_edge(graph, simp_edge_dict, contig)
+#     if mine == None:
+#         minflow = graph.vp.dp[simp_node_dict[contig[-1]]]
+#     qe = [contig[-1], minflow]
+#     tail_queue = [qe]
+#     tail_nodes = set()
+#     visited = {}
+#     outd = 0
+#     for v in graph.vertices():
+#         visited[graph.vp.id[v]] = False
+#     while tail_queue:
+#         currid, cflow = tail_queue.pop()
+#         currnode = simp_node_dict[currid]
+        
+#         outflow = 0
+#         for oute in currnode.out_edges():
+#             next = oute.target()
+#             if not visited[graph.vp.id[next]]:
+#                 tail_nodes.add(graph.vp.id[next])
+#                 outd += 1
+#                 outflow = cflow * (graph.ep.flow[oute] / graph.vp.dp[currnode]) 
+#                 tail_queue.append([graph.vp.id[next], outflow])
+
+#         graph.vp.dp[currnode] -= cflow
+#         if graph.vp.dp[currnode] < threshold:
+#             visited[currid] = True
+
+#     # print(path_to_id_string(graph, head_nodes, "c6 head tree: "))
+#     print(path_to_id_string(graph, list(tail_nodes), "c6 tail tree: "))
+#     print("outd: ", outd)

@@ -145,7 +145,7 @@ def reachable_with_path(graph: Graph, simp_node_dict: dict, src, src_cno, tgt, t
     return reached, rec_path
 
 
-def dijkstra_sp(graph: Graph, simp_node_dict: dict, source, sink, closest_cov, threshold, overlap: int):
+def dijkstra_sp(graph: Graph, source, sink, closest_cov, threshold, overlap: int):
     """
     Use basic dijkstra algorithm to compute the shortest path between source and sink
     """
@@ -153,7 +153,7 @@ def dijkstra_sp(graph: Graph, simp_node_dict: dict, source, sink, closest_cov, t
     dist = {}
     prev = {}
     Q = set()
-    for node in simp_node_dict.values():
+    for node in graph.vertices():
         dist[node] = sys.maxsize
         prev[node] = None
         Q.add(node)
@@ -526,3 +526,34 @@ def gen_bubble_detection(graph: Graph, simp_node_dict: dict, simp_edge_dict: dic
                 branch_queue = branch_queue_copy
                 print("AFTER BUBBLE CHECK: ")
                 print_branch_queue(branch_queue)
+
+def minimal_bubble_detection(graph: Graph):
+    # retrieve all the minimal bubble
+    branches = graph_converter.retrieve_branch(graph)
+    bubbles = {}
+    for no, branch in branches.items():
+        bubble = []
+        nextBranch = None
+        for child in branch.out_neighbors():
+            if graph.vp.id[child] not in branches:
+                if child.out_degree() == 0:
+                    bubble.append(child)
+                elif child.out_degree() == 1:
+                    accBranch = list(child.out_neighbors())[0]
+                    if nextBranch == None:
+                        nextBranch = accBranch
+                    if nextBranch != accBranch:
+                        print("not minimal bubble")
+                        bubble = None
+                        break
+
+                    if graph.vp.id[nextBranch] in branches:
+                        bubble.append(child)
+                    else:
+                        print("NEXT BRANCH ERROR", graph.vp.id[branch], graph.vp.id[child], graph.vp.id[nextBranch])
+                else:
+                    print("CHILD ERROR", graph.vp.id[branch], graph.vp.id[child], graph.vp.id[nextBranch])
+        if bubble != None:
+            if bubble != [] and len(bubble) == nextBranch.in_degree():
+                bubbles[(no, graph.vp.id[nextBranch])] = bubble
+    return branches, bubbles

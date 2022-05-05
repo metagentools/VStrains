@@ -472,11 +472,10 @@ def map_ref_to_graph(ref_file, simp_node_dict: dict, graph_file, store_mapping=F
         for Line in paf:
             splited = Line.split('\t')
             seg_no = str(splited[0])
-            seg_no = splited[0]
             seg_l = int(splited[1])
             seg_s = int(splited[2])
             seg_f = int(splited[3])
-            ref_no = splited[5]
+            ref_no = str(splited[5])
             nmatch = int(splited[9])
             nblock = int(splited[10])
             mark = int(splited[11])
@@ -813,7 +812,10 @@ def contig_dict_fix(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, co
                 contig_dict[cno + "_" + str(i)] = [subc, sublen, subcov]
     return
 
-def contig_cov_fix(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, contig_dict: dict, printout=False):
+def contig_cov_fix(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, contig_dict: dict, branch_id_mapping: dict=None, printout=False):
+    """
+    if found a single node contig that also not appearing in the simp_node_dict, check if is mapped to split contig
+    """
     for cno, [contig, clen, ccov] in list(contig_dict.items()):
         if printout:
             print("---------------------------------------------------------------")
@@ -822,6 +824,16 @@ def contig_cov_fix(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, con
         else:
             if contig[0] not in simp_node_dict:
                 contig_dict.pop(cno)
+                print("isolated contig node {0}, prepared to pop, check any replacement".format(cno))
+                if branch_id_mapping != None and contig[0] in branch_id_mapping:
+                    print("mapping: {0} -> {1}".format(contig[0], branch_id_mapping[contig[0]]))
+                    s = 'A'
+                    for i, mapped in enumerate(branch_id_mapping[contig[0]]):
+                        if mapped in simp_node_dict:
+                            mapped_node = simp_node_dict[mapped]
+                            mapped_cno = cno+chr(ord(s) + i)
+                            contig_dict[mapped_cno] = [[mapped], clen, graph.vp.dp[mapped_node]]
+                            print("mapped cno: ", mapped_cno, mapped)
             else:
                 contig_dict[cno][2] = graph.vp.dp[simp_node_dict[contig[0]]]
         if cno in contig_dict:
@@ -854,13 +866,15 @@ def graph_splitting(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, co
     print("Threshold: ", threshold)
     split_branches = []
     node_to_contig_dict, edge_to_contig_dict = contig_map_node(contig_dict)
+    no_mapping = {}
     for no, node in list(simp_node_dict.items()):
         ind = len([e for e in node.in_edges() if graph.ep.color[e] == 'black'])
         outd = len([e for e in node.out_edges() if graph.ep.color[e] == 'black'])
         if ind == outd and ind > 1 and (no in node_to_contig_dict or not strict_mode):
             support_contigs = node_to_contig_dict[no] if no in node_to_contig_dict else {}
             print_vertex(graph, node, "---------- branch node, support by contig {0}".format(support_contigs))
-            cproduct = [(ie, oe, numpy.mean([graph.ep.flow[ie], graph.ep.flow[oe]]), abs(graph.ep.flow[ie] - graph.ep.flow[oe])) for ie in node.in_edges() for oe in node.out_edges() if abs(graph.ep.flow[ie] - graph.ep.flow[oe]) < threshold]
+            cproduct = [(ie, oe, numpy.mean([graph.ep.flow[ie], graph.ep.flow[oe]]), abs(graph.ep.flow[ie] - graph.ep.flow[oe])) 
+            for ie in node.in_edges() for oe in node.out_edges() if abs(graph.ep.flow[ie] - graph.ep.flow[oe]) < threshold]
             cproduct = sorted(cproduct, key=lambda element: element[2])
 
             es = [val for _, _, val, _ in cproduct]
@@ -911,9 +925,13 @@ def graph_splitting(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, co
                         print("- branch split performed")
                         split_branches.append(no)
 
-                        subid = "0" + no + "0" + str(i)
+                        subid = "X" + no + "X" + str(i)
                         subdp = numpy.max([graph.ep.flow[ie], graph.ep.flow[oe]])
                         sub_node = graph_add_vertex(graph, simp_node_dict, subid, subdp, graph.vp.seq[node], graph.vp.kc[node])
+
+                        if no not in no_mapping:
+                            no_mapping[no] = []
+                        no_mapping[no].append(str(subid))
 
                         graph.vp.dp[node] -= subdp
 
@@ -952,7 +970,7 @@ def graph_splitting(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, co
     
     print("No of branch be removed: ", len(set(split_branches)))
     print("Split branches: ", list_to_string(set(split_branches)))
-    return len(set(split_branches))
+    return len(set(split_branches)), no_mapping
 
 def graph_split_final(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict):
     """
@@ -1740,7 +1758,7 @@ def reindexing(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, extende
 
     return graph, idx_node_dict, idx_edge_dict, idx_contig_dict
 
-def add_global_source_sink(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, overlap):
+def add_global_source_sink(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, overlap, store_dict=False):
     # find all the srcs-targets
     src_nodes = [node for node in graph.vertices() if node.in_degree() == 0 and node.out_degree() != 0]
     tgt_nodes = [node for node in graph.vertices() if node.in_degree() != 0 and node.out_degree() == 0]
@@ -1750,30 +1768,40 @@ def add_global_source_sink(graph: Graph, simp_node_dict: dict, simp_edge_dict: d
     graph.vp.id[global_src] = 'global_src'
     graph.vp.dp[global_src] = 0
     graph.vp.color[global_src] = 'black'
-    simp_node_dict[graph.vp.id[global_src]] = global_src
+    if store_dict:
+        simp_node_dict[graph.vp.id[global_src]] = global_src
     for src in src_nodes:
         e = graph.add_edge(global_src, src)
         graph.ep.flow[e] = graph.vp.dp[src]
         graph.ep.color[e] = 'black'
         graph.ep.overlap[e] = overlap
         graph.vp.dp[global_src] += graph.ep.flow[e]
-        simp_edge_dict[(graph.vp.id[global_src], graph.vp.id[src])] = e
+        if store_dict:
+            simp_edge_dict[(graph.vp.id[global_src], graph.vp.id[src])] = e
     print("srcs:  ", list_to_string([graph.vp.id[src] for src in src_nodes]))
 
     global_sink = graph.add_vertex()
     graph.vp.id[global_sink] = 'global_sink'
     graph.vp.dp[global_sink] = 0
     graph.vp.color[global_sink] = 'black'
-    simp_node_dict[graph.vp.id[global_sink]] = global_sink
+    if store_dict:
+        simp_node_dict[graph.vp.id[global_sink]] = global_sink
     for tgt in tgt_nodes:
         e = graph.add_edge(tgt, global_sink)
         graph.ep.flow[e] = graph.vp.dp[tgt]
         graph.ep.color[e] = 'black'
         graph.ep.overlap[e] = overlap
         graph.vp.dp[global_sink] += graph.ep.flow[e]
-        simp_edge_dict[(graph.vp.id[tgt], graph.vp.id[global_sink])] = e
+        if store_dict:
+            simp_edge_dict[(graph.vp.id[tgt], graph.vp.id[global_sink])] = e
     print("sinks: ", list_to_string([graph.vp.id[tgt] for tgt in tgt_nodes]))
     return global_src, global_sink
+
+def remove_global_source_sink(graph: Graph, gs, gt):
+    del_v = [gs, gt]
+    for v in reversed(sorted(del_v)):
+        graph.remove_vertex(v)
+    return
 
 def retrieve_branch(graph: Graph):
     branches = {}
@@ -1781,58 +1809,3 @@ def retrieve_branch(graph: Graph):
         if node.in_degree() > 1 or node.out_degree() > 1:
             branches[graph.vp.id[node]] = node
     return branches
-#########
-# def contig_variation_span(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, contig_dict: dict, overlap, maxlen, tempdir):
-#     seaborn.set_theme(style="darkgrid")
-
-#     for cno, [contig, clen, ccov] in contig_dict.items():
-#         print("-------------------------------------------------------------")
-#         src = simp_node_dict[contig[0]]
-#         tgt = simp_node_dict[contig[-1]]
-
-#         involved_node, involved_edge = contig_variation_path(graph, simp_node_dict, contig_dict, cno, src, tgt, overlap)
-#         # the histogram of the data
-#         if len(involved_edge) == 0:
-#             print("no edge within the contig variation, skip graph construction")
-#             continue
-#         xpair = [(key, graph.ep.flow[simp_edge_dict[key]]) for key in involved_edge]
-#         print(xpair)
-        # x_self = contig_flow(graph, simp_edge_dict, contig)
-
-        # print("contig mean: ", numpy.mean(x_self), 
-        # " median: ", numpy.median(x_self), 
-        # " min: ", numpy.min(x_self),
-        # " max: ", numpy.max(x_self))
-        # x_all = [graph.ep.flow[simp_edge_dict[key]] for key in involved_edge]
-        # print("span mean: ", numpy.mean(x_all), 
-        # " median: ", numpy.median(x_all), 
-        # " min: ", numpy.min(x_all),
-        # " max: ", numpy.max(x_all))
-
-        # x_span = [graph.ep.flow[simp_edge_dict[key]] for key in involved_edge.difference(set(contig_edges(graph, simp_edge_dict, contig)))]        
-        # plt.figure(figsize=(32,16))
-        
-        # if len(x_span) != 0:
-        #     x_series = pandas.Series(x_span).value_counts()
-        #     x_self_series = pandas.Series(x_self).value_counts()
-        #     df=pandas.concat([x_self_series,x_series],axis=1)
-        #     df.columns = ["Contig", "Span"]
-        #     df=df.reset_index().melt(id_vars=['index'])
-        #     df.columns = ["coverage", "type", "count"]
-        #     ax = seaborn.barplot(
-    #             x='coverage',
-    #             y='count',
-    #             hue='type',
-    #             data=df,
-    #             palette=['blue','red'],
-    #             alpha=.5,
-    #             dodge=False,)
-    #     else:
-    #         d = pandas.Series({"coverage": x_self})
-    #         ax = seaborn.countplot(x="coverage", data=d)
-    #     for container in ax.containers:
-    #         ax.bar_label(container)
-    #     ax.set_xticklabels(ax.get_xticklabels(), rotation=40, ha="right")
-    #     plt.title('Histogram of Contig {0}, CLEN {1}, CCOV {2} variation'.format(cno, clen, ccov))
-    #     plt.savefig("{0}contig_{1}_variation_hist.png".format(tempdir, cno))
-    # return

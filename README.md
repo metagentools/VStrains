@@ -1,6 +1,26 @@
 ## The project is aiming to construct full-length haplotype from metagenomic environment, using pair-end reads
 
 
+alternative plan
+
+
+conda activate spades-hapConstruction-env
+
+what contig can help us?
+contig can help us to find correct direction when meeting a non-trivial branch
+
+two type of contig:
+1. splitter contig: contig with node len > 1, guide the branch split
+2. candidate contig, guide the contig concat/strain extraction
+
+when do graph split, we split two type of branches
+1. trivial branch (node with in degree 0 or 1 to out degree > 1) (also reverse)
+   1. when we split the trivial branch, the splitted contig may also lead to *multiple mappings*, how to select the correct contig? 
+2. non-trivial branch (node with in degree > 1 and out degree > 1)
+   1. we can use splitter contig to help us split the branch.
+
+
+
 -->5HIV
 time python src/hap_construction.py -gfa benchmark/fastq/5-strain-HIV-20000x/output/assembly_graph_after_simplification.gfa -c benchmark/fastq/5-strain-HIV-20000x/output/contigs.paths -mincov 500 -minlen 8000 -maxlen 10000 -overlap 127 -ref benchmark/strains/5-strain-HIV.fasta -o acc_5_hiv/ > 5hiv.log
 

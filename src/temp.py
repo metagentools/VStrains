@@ -2506,3 +2506,86 @@ min_cov, min_len, max_len, overlap, threshold, tempdir):
 #     # print(path_to_id_string(graph, head_nodes, "c6 head tree: "))
 #     print(path_to_id_string(graph, list(tail_nodes), "c6 tail tree: "))
 #     print("outd: ", outd)
+
+
+#########
+# def contig_variation_span(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, contig_dict: dict, overlap, maxlen, tempdir):
+#     seaborn.set_theme(style="darkgrid")
+
+#     for cno, [contig, clen, ccov] in contig_dict.items():
+#         print("-------------------------------------------------------------")
+#         src = simp_node_dict[contig[0]]
+#         tgt = simp_node_dict[contig[-1]]
+
+#         involved_node, involved_edge = contig_variation_path(graph, simp_node_dict, contig_dict, cno, src, tgt, overlap)
+#         # the histogram of the data
+#         if len(involved_edge) == 0:
+#             print("no edge within the contig variation, skip graph construction")
+#             continue
+#         xpair = [(key, graph.ep.flow[simp_edge_dict[key]]) for key in involved_edge]
+#         print(xpair)
+        # x_self = contig_flow(graph, simp_edge_dict, contig)
+
+        # print("contig mean: ", numpy.mean(x_self), 
+        # " median: ", numpy.median(x_self), 
+        # " min: ", numpy.min(x_self),
+        # " max: ", numpy.max(x_self))
+        # x_all = [graph.ep.flow[simp_edge_dict[key]] for key in involved_edge]
+        # print("span mean: ", numpy.mean(x_all), 
+        # " median: ", numpy.median(x_all), 
+        # " min: ", numpy.min(x_all),
+        # " max: ", numpy.max(x_all))
+
+        # x_span = [graph.ep.flow[simp_edge_dict[key]] for key in involved_edge.difference(set(contig_edges(graph, simp_edge_dict, contig)))]        
+        # plt.figure(figsize=(32,16))
+        
+        # if len(x_span) != 0:
+        #     x_series = pandas.Series(x_span).value_counts()
+        #     x_self_series = pandas.Series(x_self).value_counts()
+        #     df=pandas.concat([x_self_series,x_series],axis=1)
+        #     df.columns = ["Contig", "Span"]
+        #     df=df.reset_index().melt(id_vars=['index'])
+        #     df.columns = ["coverage", "type", "count"]
+        #     ax = seaborn.barplot(
+    #             x='coverage',
+    #             y='count',
+    #             hue='type',
+    #             data=df,
+    #             palette=['blue','red'],
+    #             alpha=.5,
+    #             dodge=False,)
+    #     else:
+    #         d = pandas.Series({"coverage": x_self})
+    #         ax = seaborn.countplot(x="coverage", data=d)
+    #     for container in ax.containers:
+    #         ax.bar_label(container)
+    #     ax.set_xticklabels(ax.get_xticklabels(), rotation=40, ha="right")
+    #     plt.title('Histogram of Contig {0}, CLEN {1}, CCOV {2} variation'.format(cno, clen, ccov))
+    #     plt.savefig("{0}contig_{1}_variation_hist.png".format(tempdir, cno))
+    # return
+
+
+    # TODO
+    # print("--------------------------------------GRAPH TRIVIAL SPLIT----------------------------------")
+    # prev_ids = list(simp_node_dict5.keys())
+    # trivial_split_count, id_mapping = graph_split_final(graph5, simp_node_dict5, simp_edge_dict5)
+    # graph_to_gfa(graph5, simp_node_dict5, simp_edge_dict5, "{0}fcbsdt_graph_L6.gfa".format(TEMP_DIR))
+    # graph5, simp_node_dict5, simp_edge_dict5 = flipped_gfa_to_graph("{0}fcbsdt_graph_L6.gfa".format(TEMP_DIR))
+    # assign_edge_flow(graph5, simp_node_dict5, simp_edge_dict5)
+    # contig_dict_resol(graph5, simp_node_dict5, simp_edge_dict5, contig_dict, id_mapping, prev_ids, args.overlap)
+
+    # simp_path_dict = simple_paths_to_dict(graph5, simp_node_dict5, simp_edge_dict5, args.overlap)
+    # simp_path_compactification(graph5, simp_node_dict5, simp_edge_dict5, simp_path_dict, contig_dict, args.overlap)
+    # contig_dict = contig_dict_simp(contig_dict, THRESHOLD)
+
+    # graph5, simp_node_dict5, simp_edge_dict5, contig_dict = reindexing(graph5, simp_node_dict5, simp_edge_dict5, contig_dict)
+
+    # contig_dict_to_path(contig_dict, "{0}post_contig.paths".format(TEMP_DIR))
+
+    # graph_to_gfa(graph5, simp_node_dict5, simp_edge_dict5, "{0}sfcbsdt_graph_L7.gfa".format(TEMP_DIR))
+    # graph5, simp_node_dict5, simp_edge_dict5 = flipped_gfa_to_graph("{0}sfcbsdt_graph_L7.gfa".format(TEMP_DIR))
+    # assign_edge_flow(graph5, simp_node_dict5, simp_edge_dict5)
+
+    # num_split, branch_id_mapping = graph_splitting(graph5, simp_node_dict5, simp_edge_dict5, contig_dict, THRESHOLD, strict_mode=False, oddBranch=True)
+
+    # graph_to_gfa(graph5, simp_node_dict5, simp_edge_dict5, "{0}ssfcbsdt_graph_L8.gfa".format(TEMP_DIR))

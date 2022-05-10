@@ -929,36 +929,39 @@ def contig_branch_splitting(graph: Graph, simp_node_dict: dict, simp_edge_dict: 
     return
 
 
-def graph_splitting(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, contig_dict: dict, threshold, strict_mode=True, oddBranch=False):
+def graph_splitting(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, contig_dict: dict, threshold):
     """
     n-n branch splitting, # FIXME add more restrict rule to avoid false positive split
     """
-    print("-------------------------graph split: {0} {1}----------------------".
-        format(("strict" if strict_mode else "relax"), ("Even branch only" if not oddBranch else "Any branch")))
+    print("-------------------------graph split----------------------")
     print("Threshold: ", threshold)
     split_branches = []
     node_to_contig_dict, edge_to_contig_dict = contig_map_node(contig_dict)
     no_mapping = {}
     for no, node in list(simp_node_dict.items()):
-        ind = len([e for e in node.in_edges() if graph.ep.color[e] == 'black'])
-        outd = len([e for e in node.out_edges() if graph.ep.color[e] == 'black'])
-        if (oddBranch or ind == outd) and (ind > 1 and outd > 1) and (no in node_to_contig_dict or not strict_mode):
+        ine = [e for e in node.in_edges() if graph.ep.color[e] == 'black']
+        oute = [e for e in node.out_edges() if graph.ep.color[e] == 'black']
+        ine_usage = {}
+        for ie in ine:
+            ine_usage[ie] = 0
+        oute_usage = {}
+        for oe in oute:
+            oute_usage[oe] = 0
+        if len(ine) > 1 and len(oute) > 1:
             support_contigs = node_to_contig_dict[no] if no in node_to_contig_dict else {}
             print_vertex(graph, node, "---------- branch node, support by contig {0}".format(support_contigs))
-            cproduct = [(ie, oe, numpy.mean([graph.ep.flow[ie], graph.ep.flow[oe]]), abs(graph.ep.flow[ie] - graph.ep.flow[oe])) 
-            for ie in node.in_edges() for oe in node.out_edges() if abs(graph.ep.flow[ie] - graph.ep.flow[oe]) < threshold 
-            and graph.ep.color[ie] == 'black' and graph.ep.color[oe] == 'black']
+            cproduct = []
+            for ie in ine:
+                for oe in oute:
+                    delta = abs(graph.ep.flow[ie] - graph.ep.flow[oe])
+                    if delta < threshold:
+                        cproduct.append((ie, oe, numpy.mean([graph.ep.flow[ie], graph.ep.flow[oe]]), delta))
+                        ine_usage[ie] += 1
+                        oute_usage[oe] += 1
 
-            #TODO ambiguous mode need more check
-            es = [val for _, _, val, _ in cproduct]
-            amb = numpy.max(es) - numpy.min(es) if cproduct else 0
             if cproduct == []:
                 print("no matching edges to split")
-            elif not strict_mode and amb < threshold and no not in node_to_contig_dict:
-                print("ambiguous split under non-strict mode, skip: ", amb)
             else:
-                cproduct = sorted(cproduct, key=lambda tuple: tuple[3])
-
                 for i, (ie, oe, eval, delta) in enumerate(cproduct):
                     print("---------------")
                     print_edge(graph, ie, "in")
@@ -990,26 +993,25 @@ def graph_splitting(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, co
                             print_contig(cno, clen, ccov, contig, "support contig ")
                         else:
                             None
+                    involved_contig_sumcov = sum([contig_dict[cno][2] for cno in involved_contigs])
+                    print("involved contig cov sum: {0}, triple-edge flow: {1}".format(involved_contig_sumcov, eval))
+                    print("in edge usage: {0}, out edge usage: {1}".format(ine_usage[ie], oute_usage[oe]))
                     if cross_talk:
                         print("- current branch split forbidden, cross talk", prev_no, no, next_no)
-                    elif not involved_contigs and strict_mode:
+                    elif not involved_contigs and (ine_usage[ie] > 1 or oute_usage[oe] > 1):
                         print("- current branch split forbidden, no supporting contig path", prev_no, no, next_no)
                     else:
-                        if not involved_contigs:
-                            print("pass, relax mode, no involved contig")
-
                         print("- branch split performed")
                         split_branches.append(no)
 
                         subid = "X" + no + "X" + str(i)
-                        subdp = numpy.mean([graph.ep.flow[ie], graph.ep.flow[oe]])
-                        sub_node = graph_add_vertex(graph, simp_node_dict, subid, subdp, graph.vp.seq[node], graph.vp.kc[node])
+                        sub_node = graph_add_vertex(graph, simp_node_dict, subid, eval, graph.vp.seq[node], graph.vp.kc[node])
 
                         if no not in no_mapping:
                             no_mapping[no] = []
                         no_mapping[no].append(str(subid))
 
-                        graph.vp.dp[node] -= subdp
+                        graph.vp.dp[node] -= eval
 
                         graph_remove_edge(graph, simp_edge_dict, prev_no, no)
                         graph_remove_edge(graph, simp_edge_dict, no, next_no)
@@ -1169,39 +1171,33 @@ def contig_dict_resol(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, 
     Update the contig nodes to mapped nodes.
     """
 
-    def map_contig(contig, id_mappingP: dict):
-        new_contig = []
-        # need more work to allocate the correct mapping to the contig FIXME
-        i = 0
-        while i < len(contig):
-            no = contig[i]
-            assigned = False
-            if len(id_mappingP[no]) == 0:
-                new_contig.append(no)
-                assigned = True
-            else:
-                repnos = sorted(id_mappingP[no], key=lambda id: abs(ccov - graph.vp.dp[simp_node_dict[id]]))
-                print("ALL CHOICE {0} -> {1}".format(no, list_to_string(repnos)))
-                if len(new_contig) == 0:
-                    # print("best match: {0} -> {1}, cov: {2}".format(no, repnos[0], ccov))
-                    new_contig.append(repnos[0])     
-                    assigned = True  
+    def map_contig_tree(cno, contig, id_mappingP: dict):
+        paths = []
+        if len(id_mappingP[contig[0]]) == 0:
+            paths = [[contig[0]]]
+        else:
+            paths = [[s] for s in id_mappingP[contig[0]]]
+        for i in range(1, len(contig)):
+            print("curr paths: ", paths)
+            acc_paths = []
+            next = contig[i]
+            for p in paths:
+                last = p[-1]
+                if len(id_mappingP[next]) == 0:
+                    if (last, next) in simp_edge_dict:
+                        acc_paths.append((p+[next]))
                 else:
-                    for repno in repnos:
-                        if (new_contig[-1], repno) in simp_edge_dict:
-                            # print("best match: {0} -> {1}, cov: {2}".format(no, repno, ccov))
-                            if not assigned:
-                                new_contig.append(repno)
-                                assigned = True
-            if assigned:
-                i += 1
-            else:
-                print("rollback")
-                id_mappingP[contig[i-1]].remove(new_contig[-1])
-                new_contig = new_contig[:-1]
-                i -= 1
-        return new_contig
-
+                    for nextm in id_mappingP[next]:
+                        if (last, nextm) in simp_edge_dict:
+                            acc_paths.append((p+[nextm]))
+            paths = acc_paths
+        print("----------------> curr contig tree mapping: ", cno, " mapped count: ", len(paths))
+        for p in paths:
+            print(list_to_string(p))
+            eflow = contig_flow(graph, simp_edge_dict, p)
+            if len(eflow) > 0:
+                print("flows: ", eflow, "min: ", min(eflow), numpy.median(eflow), numpy.mean(eflow))
+        return paths
     def merge_id(id_mapping_r: dict, curr_set: set, myid):
         if len(curr_set) == 0:
             return set([myid])
@@ -1221,10 +1217,54 @@ def contig_dict_resol(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, 
 
     for cno, (contig, clen, ccov) in list(contig_dict.items()):
         print("---------------------------------------------")
-        print("Current mapping contig: ", cno, contig)
-        new_contig = map_contig(contig, copy_dict_hard(red_id_mapping))
-        print_contig(cno, clen, ccov, new_contig, "mapped contig")
-        contig_dict[cno] = [new_contig, path_len(graph, [simp_node_dict[no] for no in new_contig], overlap), ccov]
+        print("Current mapping contig: ", cno, list_to_string(contig))
+        # new_contig = map_contig(contig, copy_dict_hard(red_id_mapping))
+        paths = map_contig_tree(cno, contig, red_id_mapping)
+        # split the contig tree to avoid the ambiguity variation
+        contig_list = []
+        k = -1
+        for i in range(len(contig)):
+            currnodes = [path[i] for path in paths]
+            if all(e==currnodes[0] for e in currnodes):
+                if k == i - 1:
+                    # just concat to the last sublist from contig_list
+                    if len(contig_list) == 0:
+                        contig_list = [[currnodes[0]]]
+                    else:
+                        contig_list[-1].append(currnodes[0])
+                    k += 1
+                else:
+                    contig_list.append([currnodes[0]])
+                    k = i
+        contig_dict.pop(cno)
+        if len(contig_list) < 1:
+            print("no mapping for the current contig: whole contig is ambiguous mapping", cno)
+            for i, path in enumerate(paths):
+                dupcno = cno + "^" + str(i)
+                if dupcno in contig_dict:
+                    print("dup cno: ", dupcno, " already exist, error")
+                else:
+                    eflow = contig_flow(graph, simp_edge_dict, path)
+                    subcov = 0
+                    if len(eflow) < 1:
+                        # only one vertex
+                        subcov = graph.vp.dp[simp_node_dict[path[0]]]
+                    else:
+                        subcov = min(eflow)
+                    contig_dict[dupcno] = [path, path_len(graph, [simp_node_dict[no] for no in path], overlap), subcov]
+                print("duplicated mapped contig: ", dupcno, list_to_string(path))
+        elif len(contig_list) == 1:
+            print("single mapping")
+            print(list_to_string(contig_list[0]))
+            contig_dict[cno] = [contig_list[0], path_len(graph, [simp_node_dict[no] for no in contig_list[0]], overlap), ccov]
+        else:
+            for i, subcontig in enumerate(contig_list):
+                subcno = cno + "^" + str(i)
+                if subcno in contig_dict:
+                    print("sub cno: ", subcno, " already exist, error")
+                else:
+                    contig_dict[subcno] = [subcontig, path_len(graph, [simp_node_dict[no] for no in subcontig], overlap), ccov]
+                print("sub mapped contig: ", subcno, list_to_string(subcontig))
     return
 
 def simp_path(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict):

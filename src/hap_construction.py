@@ -142,11 +142,12 @@ def main():
     graph5 = None
     simp_node_dict5 = None
     simp_edge_dict5 = None
-    total_removed_branch = 0
+    total_removed_branch_nt = 0
+    total_removed_branch_t = 0
     iterCount = 'A'
     while True:
         # branch split
-        num_split, branch_id_mapping = graph_splitting(grapha, simp_node_dicta, simp_edge_dicta, contig_dict, THRESHOLD, strict_mode=False, oddBranch=True)
+        num_split, branch_id_mapping = graph_splitting(grapha, simp_node_dicta, simp_edge_dicta, contig_dict, THRESHOLD)
         # clean up graph
         graph_to_gfa(grapha, simp_node_dicta, simp_edge_dicta, "{0}split_graph_L{1}1.gfa".format(TEMP_DIR, iterCount))
         graphb, simp_node_dictb, simp_edge_dictb = flipped_gfa_to_graph("{0}split_graph_L{1}1.gfa".format(TEMP_DIR, iterCount))
@@ -156,37 +157,43 @@ def main():
 
         simp_path_dict = simple_paths_to_dict(graphb, simp_node_dictb, simp_edge_dictb, args.overlap)
         simp_path_compactification(graphb, simp_node_dictb, simp_edge_dictb, simp_path_dict, contig_dict, args.overlap)
+        
+        contig_dict = contig_dict_simp(contig_dict, THRESHOLD)
+
         graph_to_gfa(graphb, simp_node_dictb, simp_edge_dictb, "{0}split_graph_L{1}1s.gfa".format(TEMP_DIR, iterCount))
         graphb, simp_node_dictb, simp_edge_dictb = flipped_gfa_to_graph("{0}split_graph_L{1}1s.gfa".format(TEMP_DIR, iterCount))
         assign_edge_flow(graphb, simp_node_dictb, simp_edge_dictb)
         
-        # # normal split FIXME
-        # prev_ids = list(simp_node_dictb.keys())
-        # trivial_split_count, id_mapping = graph_split_final(graphb, simp_node_dictb, simp_edge_dictb, contig_dict)
+        # normal split FIXME
+        prev_ids = list(simp_node_dictb.keys())
+        trivial_split_count, id_mapping = graph_split_final(graphb, simp_node_dictb, simp_edge_dictb, contig_dict)
 
         graph_to_gfa(graphb, simp_node_dictb, simp_edge_dictb, "{0}split_graph_L{1}2.gfa".format(TEMP_DIR, iterCount))
         graphc, simp_node_dictc, simp_edge_dictc = flipped_gfa_to_graph("{0}split_graph_L{1}2.gfa".format(TEMP_DIR, iterCount))
         assign_edge_flow(graphc, simp_node_dictc, simp_edge_dictc)
 
-        # contig_dict_resol(graphc, simp_node_dictc, simp_edge_dictc, contig_dict, id_mapping, prev_ids, args.overlap)
+        contig_dict_resol(graphc, simp_node_dictc, simp_edge_dictc, contig_dict, id_mapping, prev_ids, args.overlap)
 
         simp_path_dict = simple_paths_to_dict(graphc, simp_node_dictc, simp_edge_dictc, args.overlap)
         simp_path_compactification(graphc, simp_node_dictc, simp_edge_dictc, simp_path_dict, contig_dict, args.overlap)
-        
-        contig_dict = contig_dict_simp(contig_dict, THRESHOLD)
 
         graph_to_gfa(graphc, simp_node_dictc, simp_edge_dictc, "{0}split_graph_L{1}3.gfa".format(TEMP_DIR, iterCount))
         graph5, simp_node_dict5, simp_edge_dict5 = flipped_gfa_to_graph("{0}split_graph_L{1}3.gfa".format(TEMP_DIR, iterCount))
         assign_edge_flow(graph5, simp_node_dict5, simp_edge_dict5)
-        if num_split != 0:
-            total_removed_branch += num_split
+
+        contig_dict = contig_dict_simp(contig_dict, THRESHOLD)
+        contig_dict = trim_contig_dict(graph5, simp_node_dict5, contig_dict, args.overlap)
+        
+        if num_split != 0 or trivial_split_count != 0:
+            total_removed_branch_nt += num_split
+            total_removed_branch_t += trivial_split_count
             grapha = graph5
             simp_node_dicta = simp_node_dict5
             simp_edge_dicta = simp_edge_dict5
             iterCount = chr(ord(iterCount) + 1)
         else:
             break
-    print("Total branches removed: ", total_removed_branch)
+    print("Total non-trivial branches removed: ", total_removed_branch_nt, " total trivial branches removed: ", total_removed_branch_t)
     print("Graph is dag? ", graph_is_DAG(graph5, simp_node_dict5))
     contig_cov_fix(graph5, simp_node_dict5, simp_edge_dict5, contig_dict, printout=True)
     contig_dict_to_path(contig_dict, "{0}pre_contigs.paths".format(TEMP_DIR))
@@ -674,7 +681,7 @@ def allowed_concat_init(graph: Graph, contig_dict: dict, simp_node_dict: dict, m
         contig_concat_plans[key] = all_contig_ids - item
     return contig_concat_plans, sp_path_dict
 
-def contig_clique_graph_build(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, contig_dict: dict, max_len, threshold, overlap, csv_file="adjmatrix.csv"):
+def contig_clique_graph_build(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, contig_dict: dict, max_len, threshold, overlap):
     cliq_graph = Graph(directed=True)
     cliq_graph.vp.cno = cliq_graph.new_vertex_property("string", val="")
     cliq_graph.vp.clen = cliq_graph.new_vertex_property("int32_t")
@@ -732,11 +739,6 @@ def contig_clique_graph_build(graph: Graph, simp_node_dict: dict, simp_edge_dict
             cliq_edge_dict[(tail_cno, head_cno)] = contig_edge
         cno2cno_adjMtx.append(curr_row)
         cno2cno_adjMtx_csv.append(curr_row_csv)
-
-    with open(csv_file, "w") as my_csv:
-        csvWriter = csv.writer(my_csv, delimiter=',')
-        csvWriter.writerows(cno2cno_adjMtx_csv)
-        my_csv.close()
     return cliq_graph, cliq_node_dict, cliq_edge_dict, sp_path_dict, cno2cno_adjMtx, cno_to_index
 
 
@@ -750,9 +752,25 @@ adj_matrix, cno_to_index: dict):
     for cno, contig_node in list(cliq_node_dict.items()):
         if contig_node in list(contig_node.out_neighbors()):
             if len(list(contig_node.all_edges())) > 2:
-                # remove self cycle edge with self cycle + outer connection feature
-                adj_matrix[cno_to_index[cno]][cno_to_index[cno]][1] = 'G'
-                print("remove self edge+outer connection {0} -> {0}".format(cno))
+                remove_self_cycle = False
+                if not remove_self_cycle:
+                    for inn in contig_node.in_neighbors():
+                        if inn != contig_node and contig_node in (inn.in_neighbors()):
+                            print("remove sc set 01, ")
+                            remove_self_cycle = True
+                            break
+                if not remove_self_cycle:
+                    for onn in contig_node.out_neighbors():
+                        if onn != contig_node and contig_node in (onn.out_neighbors()):
+                            print("remove sc set 02, ")
+                            remove_self_cycle = True
+                            break    
+                if remove_self_cycle:
+                    # remove self cycle edge with self cycle + outer connection feature
+                    adj_matrix[cno_to_index[cno]][cno_to_index[cno]][1] = 'G'
+                    print("remove self edge+outer connection {0} -> {0}".format(cno))
+                else:
+                    print("Keep self cycle since no feedback from neighbor ", cno)
     index_to_cno = {}
     for cno, i in cno_to_index.items():
         index_to_cno[i] = cno
@@ -1323,6 +1341,7 @@ min_cov, min_len, max_len, overlap, threshold):
     # end stat
 
     # while bubbles
+    # gen_bubble_detection(graph, simp_node_dict, simp_edge_dict, overlap)
     branches, bubbles = minimal_bubble_detection(graph)
     for (a, b), bubble in bubbles.items():
         print("------------------------------------------------")

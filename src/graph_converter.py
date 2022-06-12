@@ -6,6 +6,10 @@ import gfapy
 import subprocess
 import sys
 
+import matplotlib.pyplot as plt
+import seaborn
+import pandas
+
 import numpy
 
 from hap_construction import DEBUG_MODE
@@ -507,8 +511,7 @@ def gfa_to_fasta(gfa_file, fasta_file):
             for Line in gfa:
                 splited = Line.split('\t')
                 if splited[0] == 'S':
-                    quality = "B"*len(splited[2])
-                    fasta.write("@{0}\n{1}\n+\n{2}\n".format(splited[1],splited[2],quality))
+                    fasta.write(">{0}\n{1}\n".format(splited[1],splited[2]))
             fasta.close()
         gfa.close()
 
@@ -1946,3 +1949,28 @@ def retrieve_branch(graph: Graph):
         if node.in_degree() > 1 or node.out_degree() > 1:
             branches[graph.vp.id[node]] = node
     return branches
+
+def contig_replacement(contig: list, a, b):
+    """
+    replace all occurance of a from contig to b
+    """
+
+    return [(n if n != a else b) for n in contig]
+
+def draw_edgeflow(graph: Graph, edge_dict: dict, tempdir, title, filename):
+    seaborn.set_theme(style="darkgrid")
+    plt.figure(figsize=(128,64))
+    drawdict = {}
+    for id, e in edge_dict.items():
+        drawdict[id] = graph.ep.flow[e]
+    sorted_draw_dict = sorted(drawdict.items(), key=lambda x: x[1])
+    df = pandas.DataFrame(
+        {'Id': [id for id, _ in sorted_draw_dict],
+        'Flow': [f for _, f in sorted_draw_dict]
+        })
+    ax = seaborn.barplot(x='Id', y='Flow', data=df)
+    for container in ax.containers:
+        ax.bar_label(container)
+    ax.set_xticklabels(ax.get_xticklabels(), rotation=40, ha="right")
+    plt.title(title)
+    plt.savefig("{0}{1}".format(tempdir, filename))

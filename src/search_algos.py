@@ -5,7 +5,9 @@ import sys
 import heapq
 from collections import deque
 from graph_tool.topology import all_circuits, all_shortest_paths, min_spanning_tree, topological_sort
+from numpy import sort
 import graph_converter
+import gurobipy as gp
 
 #######################################################################################################
 #######################################PATH FINDING ALGORITHM##########################################
@@ -176,6 +178,7 @@ def dijkstra_sp(graph: Graph, source, sink, closest_cov, threshold, overlap: int
                 # obtain current edge cost
                 edge_flow = graph.ep.flow[graph.edge(u, v)]
                 diff = edge_flow - closest_cov
+                # alt = dist[u] + pow(diff, 2)
                 if abs(diff) > threshold and diff < 0:
                     alt = dist[u] + pow(diff, 2)
                 else:
@@ -529,31 +532,113 @@ def gen_bubble_detection(graph: Graph, simp_node_dict: dict, simp_edge_dict: dic
 
 def minimal_bubble_detection(graph: Graph):
     # retrieve all the minimal bubble
+    # every bubble is structure as (start branch -> single node child -> end branch)
     branches = graph_converter.retrieve_branch(graph)
     bubbles = {}
     for no, branch in branches.items():
         bubble = []
-        nextBranch = None
+        bubble_dict = {}
         for child in branch.out_neighbors():
             if graph.vp.id[child] not in branches:
                 if child.out_degree() == 0:
                     bubble.append(child)
                 elif child.out_degree() == 1:
                     accBranch = list(child.out_neighbors())[0]
-                    if nextBranch == None:
-                        nextBranch = accBranch
-                    if nextBranch != accBranch:
-                        print("not minimal bubble")
-                        bubble = None
-                        break
-
-                    if graph.vp.id[nextBranch] in branches:
-                        bubble.append(child)
+                    if graph.vp.id[accBranch] in branches:
+                        if accBranch not in bubble_dict:
+                            bubble_dict[accBranch] = [child]
+                        else:
+                            bubble_dict[accBranch].append(child)
                     else:
-                        print("NEXT BRANCH ERROR", graph.vp.id[branch], graph.vp.id[child], graph.vp.id[nextBranch])
+                        print("NEXT BRANCH ERROR, NOT A LISTED BRANCH", graph.vp.id[branch], graph.vp.id[child], graph.vp.id[accBranch])
                 else:
-                    print("CHILD ERROR", graph.vp.id[branch], graph.vp.id[child], graph.vp.id[nextBranch])
-        if bubble != None:
-            if bubble != [] and len(bubble) == nextBranch.in_degree():
+                    print("CHILD ERROR, SHOULD BE MARKED AS A BRANCH", graph.vp.id[branch], graph.vp.id[child])
+        for nextBranch, bubble in bubble_dict.items():
+            if len(bubble) > 1:
                 bubbles[(no, graph.vp.id[nextBranch])] = bubble
     return branches, bubbles
+
+def LPSolveBubbleLocal(bin_dict: dict, strain_dict: dict, threshold):
+    """
+    solve the bin-assignment problem by assigning strain only once to bset match bin
+    such that maximize the bin usage if possible
+    """
+    print("Start Linear Programming solver..")
+
+    bin_list = list(bin_dict.items())
+    strain_list = list(strain_dict.items())
+    bin = [v for _, v in bin_list]
+    strain = [v for _, v in strain_list]
+
+    threshold = (sum(strain) - sum(bin)) + threshold if sum(strain) > sum(bin) else threshold
+    
+    print("bin sum: ", sum(bin), " strain sum: ", sum(strain))
+    print("bin: ", bin_dict)
+    print("strains: ", strain_dict)
+    print("alpha: ", threshold)
+
+    # FIXME lock step should fix, to avoid the order influence
+    locked = {}
+    for i in range(len(strain)):
+        locked[i] = False
+
+    m = gp.Model("BubbleSwap")
+    xs = []
+    obj = gp.LinExpr()
+    for b in bin:
+        le = gp.LinExpr()
+        x = m.addVars([i for i in range(len(strain))] ,vtype=gp.GRB.BINARY)
+        xs.append(x)
+        # check how many lockable item
+        lockable = []
+        # FIXME better lock method, may use double-match
+        for i, v in x.items():
+            if abs(strain[i] - b) < threshold and not locked[i]:
+                lockable.append(i)
+            le += v*strain[i]
+        if len(lockable) != 0:
+            lockable_s = sorted(lockable, key=lambda lk : abs(strain[lk] - b))
+            print("sorted lockable: ", lockable_s, "bin: ", b)
+            m.addConstr(x[lockable_s[0]] == 1)
+            locked[lockable_s[0]] = True
+            print("pre-locked: bin: {0}, strain: {1}".format(b, strain[lockable_s[0]]))
+        # m.addConstr(le <= (b+threshold))
+        obj += (b - le)**2
+
+    # add constraint, such that each strain only used once
+    for i in range(len(strain)):
+        le = gp.LinExpr()
+        for item in xs:
+            le += item[i]
+        m.addConstr(le == 1)
+
+    m.setObjective(obj, gp.GRB.MINIMIZE)
+
+    try:
+        m.optimize()
+    except gp.GurobiError():
+        print("Optimize failed due to non-convexity")
+    #  obtain the decision variable result
+    #  which strain is contained in which bin
+    bin_assignment = {}
+    strain_placement = {}
+    for i, x in enumerate(xs):
+        # each x is telling the current ith bin assignment
+        bin_id = bin_list[i][0]
+        bin_assignment[bin_id] = []
+        for j, var in x.items():
+            if int(var.x) == 1:
+                # i.e., current jth strain is assigned to ith bin
+                strain_id = strain_list[j][0]
+                bin_assignment[bin_id].append(strain_id)
+                if strain_id not in strain_placement:
+                    strain_placement[strain_id] = [bin_id]
+                else:
+                    strain_placement[strain_id].append(bin_id)
+                
+    print("Bin assignment: ", bin_assignment)
+    print("Strain placement: ", strain_placement)
+    print([int(var.x) for var in m.getVars()])
+    print(m.objVal)
+    print(m.display())
+    return bin_assignment, strain_placement

@@ -133,7 +133,8 @@ def main():
     print("-------------------------------CONTIG COVERAGE REBALANCE-----------------------------------")
     # re-evaluate the contig coverage
     contig_cov_fix(graph3, simp_node_dict3, simp_edge_dict3, contig_dict)
-
+    draw_edgeflow(graph3, simp_edge_dict3, TEMP_DIR, 'Bar plot of Edge flow', 'barplot_edge_flow.png')
+    gfa_to_fasta("{0}sdt_graph_L3.gfa".format(TEMP_DIR), "{0}graph_L3_node.fasta".format(TEMP_DIR))
     print("-----------------------GRAPH BRANCH SPLIT & COMPACTIFICATION-------------------------------")
     grapha = graph3
     simp_node_dicta = simp_node_dict3
@@ -195,6 +196,12 @@ def main():
             break
     print("Total non-trivial branches removed: ", total_removed_branch_nt, " total trivial branches removed: ", total_removed_branch_t)
     print("Graph is dag? ", graph_is_DAG(graph5, simp_node_dict5))
+    if graph_is_DAG(graph5, simp_node_dict5):
+        coverage_rebalance(graph5, simp_node_dict5, simp_edge_dict5, strict=True)
+        mediandp = numpy.median([graph2.vp.dp[node] for node in simp_node_dict2.values()])
+        print("MEDIAN NODE DEPTH: ", mediandp)
+        # TODO more
+        THRESHOLD= mediandp/20
     contig_cov_fix(graph5, simp_node_dict5, simp_edge_dict5, contig_dict, printout=True)
     contig_dict_to_path(contig_dict, "{0}pre_contigs.paths".format(TEMP_DIR))
 
@@ -211,25 +218,12 @@ def main():
         map_ref_to_graph(args.ref_file, simp_node_dict5, "{0}rbsdt_graph_L5.gfa".format(TEMP_DIR), True, "{0}node_to_ref_red.paf".format(TEMP_DIR), "{0}temp_gfa_to_fasta.fasta".format(TEMP_DIR))
         contig_dict_to_fasta(graph5, contig_dict, simp_node_dict5, args.overlap, "{0}post_contigs.fasta".format(TEMP_DIR))
         minimap_api(args.ref_file, "{0}post_contigs.fasta".format(TEMP_DIR), "{0}post_contigs_to_strain.paf".format(TEMP_DIR))
-
+    
+    gfa_to_fasta("{0}rbsdt_graph_L5.gfa".format(TEMP_DIR), "{0}graph_L5_node.fasta".format(TEMP_DIR))
+    
     print("-------------------------------CONTIG CLIQUE GRAPH BUILD-----------------------------------")
     
-    seaborn.set_theme(style="darkgrid")
-    plt.figure(figsize=(128,64))
-    drawdict = {}
-    for id, e in simp_edge_dict5.items():
-        drawdict[id] = graph5.ep.flow[e]
-    sorted_draw_dict = sorted(drawdict.items(), key=lambda x: x[1])
-    df = pandas.DataFrame(
-        {'Id': [id for id, _ in sorted_draw_dict],
-        'Flow': [f for _, f in sorted_draw_dict]
-        })
-    ax = seaborn.barplot(x='Id', y='Flow', data=df)
-    for container in ax.containers:
-        ax.bar_label(container)
-    ax.set_xticklabels(ax.get_xticklabels(), rotation=40, ha="right")
-    plt.title('Bar plot of Edge flow')
-    plt.savefig("{0}barplot_edge_flow.png".format(TEMP_DIR))
+    draw_edgeflow(graph5, simp_edge_dict5, TEMP_DIR, 'Bar plot of Edge flow', 'barplot_edge_flow_sp.png')
 
     cliq_graph, cliq_node_dict, cliq_edge_dict, sp_path_dict, adj_matrix, cno_to_index = contig_clique_graph_build(graph5, simp_node_dict5, simp_edge_dict5,
                                                     contig_dict, args.max_len, THRESHOLD, args.overlap)
@@ -1181,13 +1175,13 @@ min_cov, max_len, threshold, overlap):
                 else:
                     print("path not found")
             
-            # re-assign the strain cov to min flow among the contig
-            assert len(contig_dict[cno][0]) >= 1
-            if len(contig_dict[cno][0]) == 1:
-                redcov = graph.vp.dp[contig_dict[cno][0][0]]
-            else:
-                redcov = numpy.min(contig_flow(graph, simp_edge_dict, contig_dict[cno][0]))
-            contig_dict[cno][2] = redcov
+            # # re-assign the strain cov to min flow among the contig
+            # assert len(contig_dict[cno][0]) >= 1
+            # if len(contig_dict[cno][0]) == 1:
+            #     redcov = graph.vp.dp[contig_dict[cno][0][0]]
+            # else:
+            #     redcov = numpy.min(contig_flow(graph, simp_edge_dict, contig_dict[cno][0]))
+            contig_dict[cno][2] = ccov
     remove_global_source_sink(graph, global_src, global_sink)
     return contig_dict
 
@@ -1346,10 +1340,30 @@ min_cov, min_len, max_len, overlap, threshold):
     for (a, b), bubble in bubbles.items():
         print("------------------------------------------------")
         print("Bubble {0} <-> {1}".format(a, b))
+        bin = {}
+        strains = {}
+        prev_strain_loc = {}
         for var in bubble:
             varid = graph.vp.id[var]
-            print("    bin: {0}, bin size: {1}, curr usage: {2}%\n    strain: {3}\n".format(varid, graph.vp.dp[var], pre_usages[varid],
-            [(cno, contig_dict[cno][2]) for cno in node_to_contig_dict[varid]] if varid in node_to_contig_dict else ""))
+            bin[varid] = graph.vp.dp[var]
+            if varid in node_to_contig_dict:
+                for cno in node_to_contig_dict[varid]:
+                    if cno not in strains:
+                        strains[cno] = contig_dict[cno][2]
+                    if cno not in prev_strain_loc:
+                        prev_strain_loc[cno] = varid
+                print("    bin: {0}, bin size: {1}, curr usage: {2}%\n    strain: {3}\n".format(varid, graph.vp.dp[var], pre_usages[varid],
+                [(cno, contig_dict[cno][2]) for cno in node_to_contig_dict[varid]] if varid in node_to_contig_dict else ""))
+            else:
+                print("    bin: {0}, bin size: {1}, curr usage: {2}%\n    strain: None\n".format(varid, graph.vp.dp[var], pre_usages[varid]))
+        if len(strains) > 0:
+            bin_assignment, strain_placement = LPSolveBubbleLocal(bin, strains, threshold)
+            for bin, contained_strain in bin_assignment.items():
+                for cno in contained_strain:
+                    curr_contig = contig_dict[cno][0]
+                    rep_contig = contig_replacement(curr_contig, prev_strain_loc[cno], bin)
+                    print("cno: {0} {1} --> {2}".format(cno, list_to_string(curr_contig), list_to_string(rep_contig)))
+                    contig_dict[cno][0] = rep_contig
     print("------------------------------------------------")
     # handle all the local minimal bubble, do local swap
     # post-processing, based on swapped information, split the bubble edges evenly

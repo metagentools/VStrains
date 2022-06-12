@@ -19,6 +19,11 @@ when do graph split, we split two type of branches
 2. non-trivial branch (node with in degree > 1 and out degree > 1)
    1. we can use splitter contig to help us split the branch.
 
+bubble swap part:
+1. when linear programming to solve the branch assignment, alpha value
+   setting may lead to infeasible answer, since overbound.
+2. alternative way: use additional percentage instead of threshold
+
 
 
 -->5HIV

@@ -3,7 +3,6 @@
 import sys, os
 import subprocess
 import argparse
-import csv
 # import re
 
 # import graph_tool
@@ -20,7 +19,7 @@ import seaborn
 import pandas
 
 from collections import deque
-
+from itertools import product
 
 from graph_converter import *
 from search_algos import *
@@ -206,8 +205,7 @@ def main():
     contig_dict_to_path(contig_dict, "{0}pre_contigs.paths".format(TEMP_DIR))
 
     graph5, simp_node_dict5, simp_edge_dict5, contig_dict = reindexing(graph5, simp_node_dict5, simp_edge_dict5, contig_dict)
-    for fkid, fknode in simp_node_dict5.items():
-        print(fkid, len(graph5.vp.seq[fknode]))
+
     contig_dict_to_path(contig_dict, "{0}post_contigs.paths".format(TEMP_DIR))
     graph_to_gfa(graph5, simp_node_dict5, simp_edge_dict5, "{0}rbsdt_graph_L5.gfa".format(TEMP_DIR))
     graph5, simp_node_dict5, simp_edge_dict5 = flipped_gfa_to_graph("{0}rbsdt_graph_L5.gfa".format(TEMP_DIR))
@@ -1268,107 +1266,196 @@ def final_strain_extraction(graph: Graph, simp_node_dict: dict, simp_edge_dict: 
     graph.vp.color[global_sink] = 'gray'
     return
 
+
+
 def local_search_optimisation(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, contig_dict: dict, 
 min_cov, min_len, max_len, overlap, threshold):   
+    """
+    need to check whether current path flow below maximum flow 
+    """
     # gen_bubble_detection(graph, simp_node_dict, simp_edge_dict, overlap)
-    global_src, global_sink = add_global_source_sink(graph, simp_node_dict, simp_edge_dict, overlap, store_dict=True)
+    # global_src, global_sink = add_global_source_sink(graph, simp_node_dict, simp_edge_dict, overlap, store_dict=True)
     
-    # stat on current usage
-    # udp, node depth with related contig cov be deducted
-    graph.vp.udp = graph.new_vertex_property("double")
+    usage_dict = {}
+    # init status to all the node
+    node_to_contig_dict, edge_to_contig_dict = contig_map_node(contig_dict)
+    full_count = 0
+    partial_count = 0
+    over_count = 0
     for no, node in simp_node_dict.items():
-        graph.vp.udp[node] = graph.vp.dp[node]
-    print("------------------> all the extended contigs: ")
-    for cno, [contig, clen, ccov] in list(contig_dict.items()):
-        print_contig(cno, clen, ccov, contig, "-----> extended contig ")
-        call = [simp_node_dict[n] for n in contig]
-        if global_src in simp_node_dict[contig[0]].in_neighbors():
-            call.insert(0, global_src)
-        if global_sink in simp_node_dict[contig[-1]].out_neighbors():
-            call.append(global_sink)
-        graph_reduction_c(graph, call, ccov, threshold)
-
-    for v in graph.vertices():
-        if graph.vp.udp[v] < threshold:
-            graph.vp.color[v] = 'gray'
-    for e in graph.edges():
-        if graph.ep.flow[e] < threshold:
-            graph.ep.color[e] = 'gray'
-    partial_used_nodes = []
-    free_nodes = []
-    overused_nodes = []
-    pre_usages = {}
-    node_to_contig_dict, _ = contig_map_node(contig_dict)
-    for no, node in simp_node_dict.items():
-        print("----------------------------------------------------")
-        if no == 'global_src' or no == 'global_sink':
-            continue
-        ratio = round(((graph.vp.dp[node] - graph.vp.udp[node]) * 100 / graph.vp.dp[node]), 2)
-        print("Node: {0}, full: {1}, left: {2}, usage: {3}, color: {4}, CNOs: {5}".format(no, round(graph.vp.dp[node], 2), round(graph.vp.udp[node], 2), ratio, graph.vp.color[node], node_to_contig_dict[no] if no in node_to_contig_dict else ""))
-        if ratio < 100 and graph.vp.udp[node] > threshold:
-            partial_used_nodes.append(no)
-        if ratio <= 0:
-            free_nodes.append(no)
-        if ratio > 100 and graph.vp.udp[node] < -threshold:
-            overused_nodes.append(no)
-        pre_usages[no] = ratio
-    overall_pre_usage = numpy.mean(list(pre_usages.values()))
-    print("Free nodes: ", list_to_string(free_nodes))
-    print("Partial used nodes: ", list_to_string(partial_used_nodes))
-    print("Over used nodes: ", list_to_string(overused_nodes))
-    print("Usage: ", overall_pre_usage)
-
-    # analytics part
-    global TEMP_DIR
-    seaborn.set_theme(style="darkgrid")
-    plt.figure(figsize=(128,64))
-    df = pandas.DataFrame(
-        {'Id': pre_usages.keys(),
-        'pre': pre_usages.values(),
-        })
-    ax = seaborn.barplot(x='Id', y='pre', data=df)
-    for container in ax.containers:
-        ax.bar_label(container)
-    ax.set_xticklabels(ax.get_xticklabels(), rotation=40, ha="right")
-    plt.title('Bar plot of Node Usage')
-    plt.savefig("{0}barplot_usage_pre.png".format(TEMP_DIR))
-    # end stat
-
-    # while bubbles
-    # gen_bubble_detection(graph, simp_node_dict, simp_edge_dict, overlap)
-    branches, bubbles = minimal_bubble_detection(graph)
-    for (a, b), bubble in bubbles.items():
-        print("------------------------------------------------")
-        print("Bubble {0} <-> {1}".format(a, b))
-        bin = {}
-        strains = {}
-        prev_strain_loc = {}
-        for var in bubble:
-            varid = graph.vp.id[var]
-            bin[varid] = graph.vp.dp[var]
-            if varid in node_to_contig_dict:
-                for cno in node_to_contig_dict[varid]:
-                    if cno not in strains:
-                        strains[cno] = contig_dict[cno][2]
-                    if cno not in prev_strain_loc:
-                        prev_strain_loc[cno] = varid
-                print("    bin: {0}, bin size: {1}, curr usage: {2}%\n    strain: {3}\n".format(varid, graph.vp.dp[var], pre_usages[varid],
-                [(cno, contig_dict[cno][2]) for cno in node_to_contig_dict[varid]] if varid in node_to_contig_dict else ""))
+        if no not in node_to_contig_dict:
+            usage_dict[no] = [0, graph.vp.dp[node], 'partial']
+            partial_count += 1
+        else:
+            sum_used = 0
+            for cno in node_to_contig_dict[no]:
+                sum_used += contig_dict[cno][2]
+            if sum_used - graph.vp.dp[node] > threshold:
+                # overused
+                usage_dict[no] = [sum_used, graph.vp.dp[node], 'over']
+                over_count += 1
             else:
-                print("    bin: {0}, bin size: {1}, curr usage: {2}%\n    strain: None\n".format(varid, graph.vp.dp[var], pre_usages[varid]))
-        if len(strains) > 0:
-            bin_assignment, strain_placement = LPSolveBubbleLocal(bin, strains, threshold)
-            for bin, contained_strain in bin_assignment.items():
-                for cno in contained_strain:
-                    curr_contig = contig_dict[cno][0]
-                    rep_contig = contig_replacement(curr_contig, prev_strain_loc[cno], bin)
-                    print("cno: {0} {1} --> {2}".format(cno, list_to_string(curr_contig), list_to_string(rep_contig)))
-                    contig_dict[cno][0] = rep_contig
-    print("------------------------------------------------")
-    # handle all the local minimal bubble, do local swap
-    # post-processing, based on swapped information, split the bubble edges evenly
-    # store graph, combine simple path, store graph, map contig node
-    # end loop
+                if abs(sum_used - graph.vp.dp[node]) < threshold:
+                    usage_dict[no] = [sum_used, graph.vp.dp[node], 'full']
+                    full_count += 1
+                else:
+                    usage_dict[no] = [sum_used, graph.vp.dp[node], 'partial']
+                    partial_count += 1
+        print("node: {0}, curr usage: {1}, capacity: {2}, status: {3}".format(
+            no, round(usage_dict[no][0]), round(usage_dict[no][1]), usage_dict[no][2]))
+
+    for sno, snode in simp_node_dict.items():
+        for eno, enode in simp_node_dict.items():
+            # check if sno & eno adjacent
+            if sno == eno or snode in enode.all_neighbors():
+                continue
+            # not adjacent nodes, check any bounded over-path and partial-path exist
+            over_paths, partial_paths = path_replacement_account(graph, simp_node_dict, simp_edge_dict, usage_dict, snode, enode)
+            if len(over_paths) <= 0 or len(partial_paths) <= 0:
+                continue
+            print("-----*curr s: {0} t: {1}".format(sno, eno))
+            all_cnos = set()
+            all_paths = {}
+            prev_cno_mapping = {}
+            for i, op in enumerate(over_paths):
+                min_bound = min([graph.vp.dp[n] for n in op])
+                print(path_to_id_string(graph, op, "over cap: {0}".format(min_bound)))
+
+                cno_set = set()
+                for n in op:
+                    if graph.vp.id[n] in node_to_contig_dict:
+                        acc_set = set(node_to_contig_dict[graph.vp.id[n]])
+                        cno_set = acc_set if len(cno_set) == 0 else cno_set.intersection(acc_set)
+                    else:
+                        cno_set = set()
+                        break
+                print("involved strain: ", [(cno, contig_dict[cno][2]) for cno in cno_set])
+                all_cnos = all_cnos.union(cno_set)
+                all_paths[('o', i)] = (op, min_bound)
+                for cno in cno_set:
+                    prev_cno_mapping[cno] = ('o', i)
+
+            for i, pp in enumerate(partial_paths):
+                min_bound = min([graph.vp.dp[n] for n in pp])
+                print(path_to_id_string(graph, pp, "partial cap: {0}".format(min_bound)))
+                cno_set = set()
+                for n in pp:
+                    if graph.vp.id[n] in node_to_contig_dict:
+                        acc_set = set(node_to_contig_dict[graph.vp.id[n]])
+                        cno_set = acc_set if len(cno_set) == 0 else cno_set.intersection(acc_set)
+                    else:
+                        cno_set = set()
+                        break
+                print("involved strain: ", [(cno, contig_dict[cno][2]) for cno in cno_set])
+                all_cnos = all_cnos.union(cno_set)
+                all_paths[('p', i)] = (pp, min_bound)
+                for cno in cno_set:
+                    prev_cno_mapping[cno] = ('p', i)
+            
+            all_comb = list(product(list(all_paths.keys()), repeat=len(all_cnos)))
+            all_cnos = list(all_cnos)
+            print([(cno, contig_dict[cno][2]) for cno in all_cnos])
+            optim_score = None
+            optim_comb = []
+            for i, comb in enumerate(all_comb):
+                # select the best combination that provides optimal capacity usage
+                comb_subscores = {}
+                for key, [_, cap] in all_paths.items():
+                    comb_subscores[key] = [0, cap]
+                for j in range(len(all_cnos)):
+                    _, cap = all_paths[comb[j]]
+                    flow = contig_dict[all_cnos[j]][2]
+                    comb_subscores[comb[j]][0] += flow
+                #FIXME how to assign the score for one comb
+                score = pow(sum([flow/cap for [flow, cap] in comb_subscores.values()]) - len(comb_subscores), 2)
+                if optim_score == None:
+                    optim_score = score
+                    optim_comb = comb
+                elif score < optim_score:
+                        optim_score = score
+                        optim_comb = comb
+            print("Optim comb: ", [(path_to_id_string(graph, all_paths[key][0], str(all_paths[key][1])), "cno: " + all_cnos[i], contig_dict[all_cnos[i]][2]) for i, key in enumerate(optim_comb)])
+            print("Optim score: ", optim_score)
+
+            # replacement
+            for i, key in enumerate(optim_comb):
+                # update contig dict
+                cno = all_cnos[i]
+                prev_p = [graph.vp.id[n] for n in all_paths[prev_cno_mapping[cno]][0]]
+                new_p = [graph.vp.id[n] for n in all_paths[key][0]]
+                print("prev: {0}, {1}".format(cno, contig_dict[cno][0]))
+                contig = contig_replacement_c(contig_dict[cno][0], prev_p, new_p)
+                print("after: {0}, {1}".format(cno, contig))
+                clen = path_len(graph, contig, overlap)
+                contig_dict[cno] = [contig, clen, contig_dict[cno][2]]
+                # update usage dict
+                #TODO
+
+
+
+
+    # # stat on current usage
+    # # udp, node depth with related contig cov be deducted
+    # graph.vp.udp = graph.new_vertex_property("double")
+    # for no, node in simp_node_dict.items():
+    #     graph.vp.udp[node] = graph.vp.dp[node]
+    # print("------------------> all the extended contigs: ")
+    # for cno, [contig, clen, ccov] in list(contig_dict.items()):
+    #     print_contig(cno, clen, ccov, contig, "-----> extended contig ")
+    #     call = [simp_node_dict[n] for n in contig]
+    #     if global_src in simp_node_dict[contig[0]].in_neighbors():
+    #         call.insert(0, global_src)
+    #     if global_sink in simp_node_dict[contig[-1]].out_neighbors():
+    #         call.append(global_sink)
+    #     graph_reduction_c(graph, call, ccov, threshold)
+
+    # for v in graph.vertices():
+    #     if graph.vp.udp[v] < threshold:
+    #         graph.vp.color[v] = 'gray'
+    # for e in graph.edges():
+    #     if graph.ep.flow[e] < threshold:
+    #         graph.ep.color[e] = 'gray'
+    # partial_used_nodes = []
+    # free_nodes = []
+    # overused_nodes = []
+    # pre_usages = {}
+    # node_to_contig_dict, _ = contig_map_node(contig_dict)
+    # for no, node in simp_node_dict.items():
+    #     print("----------------------------------------------------")
+    #     if no == 'global_src' or no == 'global_sink':
+    #         continue
+    #     ratio = round(((graph.vp.dp[node] - graph.vp.udp[node]) * 100 / graph.vp.dp[node]), 2)
+    #     print("Node: {0}, full: {1}, left: {2}, usage: {3}, color: {4}, CNOs: {5}".format(no, round(graph.vp.dp[node], 2), round(graph.vp.udp[node], 2), ratio, graph.vp.color[node], node_to_contig_dict[no] if no in node_to_contig_dict else ""))
+    #     if ratio < 100 and graph.vp.udp[node] > threshold:
+    #         partial_used_nodes.append(no)
+    #     if ratio <= 0:
+    #         free_nodes.append(no)
+    #     if ratio > 100 and graph.vp.udp[node] < -threshold:
+    #         overused_nodes.append(no)
+    #     pre_usages[no] = ratio
+    # overall_pre_usage = numpy.mean(list(pre_usages.values()))
+    # print("Free nodes: ", list_to_string(free_nodes))
+    # print("Partial used nodes: ", list_to_string(partial_used_nodes))
+    # print("Over used nodes: ", list_to_string(overused_nodes))
+    # print("Usage: ", overall_pre_usage)
+
+    # # analytics part
+    # global TEMP_DIR
+    # seaborn.set_theme(style="darkgrid")
+    # plt.figure(figsize=(128,64))
+    # df = pandas.DataFrame(
+    #     {'Id': pre_usages.keys(),
+    #     'pre': pre_usages.values(),
+    #     })
+    # ax = seaborn.barplot(x='Id', y='pre', data=df)
+    # for container in ax.containers:
+    #     ax.bar_label(container)
+    # ax.set_xticklabels(ax.get_xticklabels(), rotation=40, ha="right")
+    # plt.title('Bar plot of Node Usage')
+    # plt.savefig("{0}barplot_usage_pre.png".format(TEMP_DIR))
+    # # end stat
+
+
     return
 
 if __name__ == "__main__":

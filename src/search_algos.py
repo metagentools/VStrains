@@ -59,21 +59,14 @@ def graph_is_DAG(graph: Graph, simp_node_dict: dict):
     print("graph is not cyclic")
     return True
 
-def reachable(graph: Graph, simp_node_dict: dict, src, src_contig, tgt, tgt_contig):
+def reachable(graph: Graph, simp_node_dict: dict, src, tgt):
     """
     determine whether src can possibly reach the tgt
     """
     print("reachable check: {0} - {1}".format(graph.vp.id[src], graph.vp.id[tgt]))
     visited = {}
     for no in simp_node_dict.keys():
-        if graph.vp.color[simp_node_dict[no]] == 'black':
-            visited[no] = False
-        else:
-            visited[no] = True
-    for c in src_contig[:-1]:
-        visited[c] = True
-    for c in tgt_contig[1:]:
-        visited[c] = True
+        visited[no] = False
 
     queue = [src]
     while queue:
@@ -83,7 +76,7 @@ def reachable(graph: Graph, simp_node_dict: dict, src, src_contig, tgt, tgt_cont
             return True
         for oute in curr.out_edges():
             out = oute.target()
-            if not visited[graph.vp.id[out]] and graph.ep.color[oute] == 'black':
+            if not visited[graph.vp.id[out]]:
                 queue.append(out)
     return False
     
@@ -431,6 +424,36 @@ def st_variation_path(graph: Graph, src, src_contig, tgt, tgt_contig, closest_co
 
     return rtn_paths
 
+def path_replacement_account(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, usage_dict: dict, s, t):
+    """
+    obtain any complete partial used path and overused path
+    """
+    def dfs_rev(graph: Graph, v, curr_path: list, visited: dict, all_path: list, usage_dict: dict, cond):
+        if len(curr_path) > 0 and curr_path[-1] == v:
+            all_path.append(list(curr_path))
+        else:
+            for next in curr_path[-1].out_neighbors():
+                if not visited[next] and (usage_dict[graph.vp.id[next]][2] == cond or next == v):
+                    visited[next] = True
+                    curr_path.append(next)
+                    dfs_rev(graph, v, curr_path, visited, all_path, usage_dict, cond)
+                    curr_path.pop()
+                    visited[next] = False
+        return
+    all_path_o = []
+    visited = {}
+    for node in simp_node_dict.values():
+        visited[node] = False
+    dfs_rev(graph, t, [s], visited, all_path_o, usage_dict, "over")
+
+    all_path_p = []
+    for node in simp_node_dict.values():
+        visited[node] = False
+    dfs_rev(graph, t, [s], visited, all_path_p, usage_dict, "partial")
+
+    return all_path_o, all_path_p
+
+
 def retrieve_bubble(graph: Graph, simp_edge_dict: dict, s, t):
     """
     since the bubble is at most length =1, simply return 
@@ -536,12 +559,12 @@ def minimal_bubble_detection(graph: Graph):
     branches = graph_converter.retrieve_branch(graph)
     bubbles = {}
     for no, branch in branches.items():
-        bubble = []
         bubble_dict = {}
         for child in branch.out_neighbors():
             if graph.vp.id[child] not in branches:
                 if child.out_degree() == 0:
-                    bubble.append(child)
+                    # iff the child  == global sink
+                    print("Child is sink node: ", graph.vp.id[child])
                 elif child.out_degree() == 1:
                     accBranch = list(child.out_neighbors())[0]
                     if graph.vp.id[accBranch] in branches:

@@ -2589,3 +2589,41 @@ min_cov, min_len, max_len, overlap, threshold, tempdir):
     # num_split, branch_id_mapping = graph_splitting(graph5, simp_node_dict5, simp_edge_dict5, contig_dict, THRESHOLD, strict_mode=False, oddBranch=True)
 
     # graph_to_gfa(graph5, simp_node_dict5, simp_edge_dict5, "{0}ssfcbsdt_graph_L8.gfa".format(TEMP_DIR))
+
+
+
+    # while bubbles
+    # gen_bubble_detection(graph, simp_node_dict, simp_edge_dict, overlap)
+    branches, bubbles = minimal_bubble_detection(graph)
+    for (a, b), bubble in bubbles.items():
+        print("------------------------------------------------")
+        print("Bubble {0} <-> {1}".format(a, b))
+        bin = {}
+        strains = {}
+        prev_strain_loc = {}
+        for var in bubble:
+            varid = graph.vp.id[var]
+            bin[varid] = graph.vp.dp[var]
+            if varid in node_to_contig_dict:
+                for cno in node_to_contig_dict[varid]:
+                    if cno not in strains:
+                        strains[cno] = contig_dict[cno][2]
+                    if cno not in prev_strain_loc:
+                        prev_strain_loc[cno] = varid
+                print("    bin: {0}, bin size: {1}, curr usage: {2}%\n    strain: {3}\n".format(varid, graph.vp.dp[var], pre_usages[varid],
+                [(cno, contig_dict[cno][2]) for cno in node_to_contig_dict[varid]] if varid in node_to_contig_dict else ""))
+            else:
+                print("    bin: {0}, bin size: {1}, curr usage: {2}%\n    strain: None\n".format(varid, graph.vp.dp[var], pre_usages[varid]))
+        if len(strains) > 0:
+            bin_assignment, strain_placement = LPSolveBubbleLocal(bin, strains, threshold)
+            for bin, contained_strain in bin_assignment.items():
+                for cno in contained_strain:
+                    curr_contig = contig_dict[cno][0]
+                    rep_contig = contig_replacement(curr_contig, prev_strain_loc[cno], bin)
+                    print("cno: {0} {1} --> {2}".format(cno, list_to_string(curr_contig), list_to_string(rep_contig)))
+                    contig_dict[cno][0] = rep_contig
+    print("------------------------------------------------")
+    # handle all the local minimal bubble, do local swap
+    # post-processing, based on swapped information, split the bubble edges evenly
+    # store graph, combine simple path, store graph, map contig node
+    # end loop

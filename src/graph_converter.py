@@ -1954,8 +1954,16 @@ def contig_replacement(contig: list, a, b):
     """
     replace all occurance of a from contig to b
     """
-
     return [(n if n != a else b) for n in contig]
+
+def contig_replacement_c(contig: list, a, b):
+    rtn = []
+    rtn.extend(contig[0:contig.index(a[0])])
+    rtn.extend(b)
+    next = contig.index(a[-1]) + 1
+    if next < len(contig):
+        rtn.extend(contig[next:])
+    return rtn
 
 def draw_edgeflow(graph: Graph, edge_dict: dict, tempdir, title, filename):
     seaborn.set_theme(style="darkgrid")

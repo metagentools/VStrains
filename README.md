@@ -29,17 +29,17 @@ bubble swap part:
 -->5HIV
 time python src/hap_construction.py -gfa benchmark/fastq/5-strain-HIV-20000x/output/assembly_graph_after_simplification.gfa -c benchmark/fastq/5-strain-HIV-20000x/output/contigs.paths -mincov 500 -minlen 8000 -maxlen 10000 -overlap 127 -ref benchmark/strains/5-strain-HIV.fasta -o acc_5_hiv/ > 5hiv.log
 
-python eval_script/quast_evaluation.py -c1 benchmark/fastq/5-strain-HIV-20000x/output/contigs.fasta -c2 acc_5_hiv/extended_contig.fasta -c3 acc_5_hiv/extended_contig.fasta -ref benchmark/strains/5-strain-HIV.fasta -o quast5hiv/
+python eval_script/quast_evaluation.py -c1 benchmark/fastq/5-strain-HIV-20000x/output/contigs.fasta -c2 acc_5_hiv/final_contig.fasta -c3 acc_5_hiv/final_contig.fasta -ref benchmark/strains/5-strain-HIV.fasta -o quast5hiv/
 
 -->6POLIO
 time python src/hap_construction.py -gfa benchmark/fastq/6-strain-poliovirus/output/assembly_graph_after_simplification.gfa -c benchmark/fastq/6-strain-poliovirus/output/contigs.paths -mincov 500 -minlen 6000 -maxlen 8000 -overlap 127 -ref benchmark/strains/6-strain-polio.fasta -o acc_6polio/ > 6polio.log
 
-python eval_script/quast_evaluation.py -c1 benchmark/fastq/6-strain-poliovirus/output/contigs.fasta -c2 ../vg-flow/vgflow6polioResult/haps.final.fasta -c3 acc_6polio/extended_contig.fasta -ref benchmark/strains/6-strain-polio.fasta -o quast6polio/
+python eval_script/quast_evaluation.py -c1 benchmark/fastq/6-strain-poliovirus/output/contigs.fasta -c2 ../vg-flow/vgflow6polioResult/haps.final.fasta -c3 acc_6polio/final_contig.fasta -ref benchmark/strains/6-strain-polio.fasta -o quast6polio/
 
 --> 15ZIKV
 time python src/hap_construction.py -gfa benchmark/fastq/15-strain-ZIKV-20000x/output/assembly_graph_after_simplification.gfa -c benchmark/fastq/15-strain-ZIKV-20000x/output/contigs.paths -mincov 500 -minlen 8000 -maxlen 11000 -overlap 127 -ref benchmark/strains/15-strain-ZIKV.fasta -o acc_15_zikv/ > 15zikv.log
 
-python eval_script/quast_evaluation.py -c1 benchmark/fastq/15-strain-ZIKV-20000x/output/contigs.fasta -c2 ../vg-flow/vgflow15o/haps.final.fasta -c3 acc_15_zikv/extended_contig.fasta -ref benchmark/strains/15-strain-ZIKV.fasta -o quast15zikv/
+python eval_script/quast_evaluation.py -c1 benchmark/fastq/15-strain-ZIKV-20000x/output/contigs.fasta -c2 ../vg-flow/vgflow15o/haps.final.fasta -c3 acc_15_zikv/final_contig.fasta -ref benchmark/strains/15-strain-ZIKV.fasta -o quast15zikv/
     """
     --------------------------------------------OVERALL FLOW----------------------------------------
     Input: Graph, contig
@@ -157,3 +157,13 @@ alternate plan:
 5. For the reduce graph, we only consider the nodes with coverage over 500 dp, which would eliminate nodes that are errorness. From now, we can assemble the secondary contigs from the reduced graph.
    
 6. For all contigs both from SPAdes assembly and secondary elimination step, we can merge the contigs to achieve the threshold length sequence. For the merge step, we can align all the reads to the contig ends, and the insert size, distance between the contigs, pair-end information to merge them.
+
+
+1. find min edge, locate interval [min_edge,min_edge*2 - 1)
+2. partite interval by delta into several portion
+3. locate the max number portion, use topological sort the sort the nodes in the portion, find path between all adjacent portions 
+4. between portion, edge weight as follow:
+   1. if diff < delta, mark 0
+   2. if delta < diff < min edge flow, mark 2
+   3. if min edge < diff, mark 1
+   4. less mark better

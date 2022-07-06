@@ -59,11 +59,51 @@ def graph_is_DAG(graph: Graph, simp_node_dict: dict):
     print("graph is not cyclic")
     return True
 
+def retrieve_cycle(graph: Graph, n=1):
+    """
+    retrieve a cycle, if any, else return None, sequential
+    """
+    cycles = []
+    def processDFSTree(graph: Graph, stack: list, visited: list, n):
+        for out_e in stack[-1].out_edges():
+            if graph.ep.color[out_e] != 'black':
+                continue
+            if n == 0:
+                return n
+            next = out_e.target()
+            if visited[next] == 'instack':
+                # revisit a visited node, cycle
+                n -= 1
+                store_cycle(stack, next)
+            elif visited[next] == 'unvisited':
+                visited[next] = 'instack'
+                stack.append(next)
+                n = processDFSTree(graph, stack, visited, n)
+        visited[stack[-1]] = 'done'
+        stack.pop()
+        return n
+
+    def store_cycle(stack: list, next):
+        stack = stack[stack.index(next):]
+        print("Cycle: ", graph_converter.list_to_string([graph.vp.id[node] for node in stack]))
+        cycles.append(stack)
+
+    visited = {}
+    for node in graph.vertices():
+        visited[node] = 'unvisited'
+    
+    for v in graph.vertices():
+        if visited[v] == 'unvisited':
+            stack = [v]
+            visited[v] = 'instack'
+            n = processDFSTree(graph, stack, visited, n)
+    
+    return cycles if len(cycles) > 0 else None
+
 def reachable(graph: Graph, simp_node_dict: dict, src, tgt):
     """
     determine whether src can possibly reach the tgt
     """
-    print("reachable check: {0} - {1}".format(graph.vp.id[src], graph.vp.id[tgt]))
     visited = {}
     for no in simp_node_dict.keys():
         visited[no] = False
@@ -266,6 +306,89 @@ def dijkstra_sp_v2(graph: Graph, simp_node_dict: dict, source, sink, overlap: in
 
         return sp, graph_converter.path_len(graph, sp[1:-1], overlap)
 
+def eval_score(flow, ccov, threshold, min_e):
+    diff = flow - ccov
+    if diff < -threshold:
+        return "P4"
+    elif diff >= -threshold and diff <= threshold:
+        return "P1"
+    elif diff > threshold and diff <= min_e - threshold:
+        return "P3"
+    elif diff > min_e - threshold:
+        return "P2"
+    return None
+
+def dijkstra_sp_v3(graph: Graph, source, sink, closest_cov, threshold, overlap: int, min_e):
+    """
+    Use basic dijkstra algorithm to compute the shortest path between source and sink
+    """
+    print("Dijkastra path finding: closest cov guide: ", closest_cov)
+    dist = {}
+    prev = {}
+    Q = set()
+    for node in graph.vertices():
+        dist[node] = sys.maxsize
+        prev[node] = None
+        Q.add(node)
+    dist[source] = 0
+
+    while Q:
+        u = None
+        # retrieve min
+        for n, d in sorted(dist.items(), key=lambda x: x[1]):
+            if n in Q:
+                u = n
+                break
+
+        Q.remove(u)
+        if u == sink:
+            break
+
+        for v in u.out_neighbors():
+            if v in Q:
+                # obtain current edge cost
+                edge_flow = graph.ep.flow[graph.edge(u, v)]
+                diff = edge_flow - closest_cov
+                if diff < -threshold:
+                    #P4
+                    alt = dist[u] + (-threshold - diff)/threshold
+                elif diff >= -threshold and diff <= threshold:
+                    #P1
+                    alt = dist[u] - (len(str(graph.vp.id[v]).split('_'))/(abs(diff) + 1))*threshold
+                elif diff > threshold and diff <= min_e - threshold:
+                    #P3
+                    # alt = dist[u] + 1
+                    alt = dist[u] + ((diff - threshold) / (min_e - 2 * threshold))
+                elif diff > min_e - threshold:
+                    #P2
+                    alt = dist[u] + 0
+                # relax
+                if alt < dist[v]:
+                    dist[v] = alt
+                    prev[v] = u
+    
+    if dist[sink] == sys.maxsize:
+        # not reachable
+        return None, None, None
+
+    node = sink
+    sp = []
+    mark = 0
+    while prev[node]:
+        sp.insert(0, node)
+        mark += (graph.ep.flow[graph.edge(prev[node], node)] - closest_cov)**2
+        node = prev[node]
+    if not sp:
+        print("SP not found")
+        return None, None, None
+    else:
+        sp.insert(0, source)
+        print(graph_converter.path_to_id_string(graph, sp, "SP be found: "))
+        mark = 1/(1+mark**0.5)
+        print("plen: ", graph_converter.path_len(graph, sp[1:-1], overlap), "pmark: ", mark)
+
+        return sp[1:-1], graph_converter.path_len(graph, sp[1:-1], overlap), mark
+
 def get_concat_len(head_cno, head_clen, tail_cno, tail_clen, plen, overlap):
     total_len = 0
     if head_cno == tail_cno:
@@ -281,8 +404,7 @@ def get_concat_len(head_cno, head_clen, tail_cno, tail_clen, plen, overlap):
             total_len = head_clen + tail_clen + plen - 2*overlap
     return total_len
 
-def transitive_graph_reduction(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, cliq_graph: Graph, 
-contig_dict: dict, cliq_node_dict: dict, cliq_edge_dict: dict, sp_path_dict: dict):
+def transitive_graph_reduction(cliq_node_dict: dict, cliq_edge_dict: dict):
     for k in cliq_node_dict.keys():
         for i in cliq_node_dict.keys():
             for j in cliq_node_dict.keys():
@@ -291,25 +413,27 @@ contig_dict: dict, cliq_node_dict: dict, cliq_edge_dict: dict, sp_path_dict: dic
                         ik = cliq_edge_dict[(i,k)]
                         kj = cliq_edge_dict[(k,j)]
                         ij = cliq_edge_dict[(i,j)]
-                        inode = ik.source()
-                        knode = ik.target()
-                        jnode = kj.target()
-                        ijsim = round(graph_converter.similarity_e(ij, cliq_graph),2)
-                        iksim = round(graph_converter.similarity_e(ik, cliq_graph),2)
-                        kjsim = round(graph_converter.similarity_e(kj, cliq_graph),2)
-                        if cliq_graph.ep.color[ik] == 'black' and cliq_graph.ep.color[kj] == 'black' and cliq_graph.ep.color[ij] == 'black':
-                            print("transitive found: ")
-                            print("ij, slen: ", cliq_graph.ep.slen[ij], "sim: ", ijsim, "|E: ", cliq_graph.vp.text[inode], "--->", cliq_graph.vp.text[jnode])
-                            print("ik, slen: ", cliq_graph.ep.slen[ik], "sim: ", iksim, "|E: ", cliq_graph.vp.text[inode], "--->", cliq_graph.vp.text[knode])
-                            print("kj, slen: ", cliq_graph.ep.slen[kj], "sim: ", kjsim, "|E: ", cliq_graph.vp.text[knode], "--->", cliq_graph.vp.text[jnode])
-                            if (iksim + kjsim) / 2 < ijsim:
-                                cliq_edge_dict[(i, k)] = 'gray'
-                                cliq_edge_dict.pop((i, k))
-                                cliq_edge_dict[(k, j)] = 'gray'
-                                cliq_edge_dict.pop((k, j))
-                            else:
-                                cliq_edge_dict[(i, j)] = 'gray'
-                                cliq_edge_dict.pop((i, j))                                           
+                        cliq_edge_dict[(i, j)] = 'gray'
+                        cliq_edge_dict.pop((i, j))  
+                        # inode = ik.source()
+                        # knode = ik.target()
+                        # jnode = kj.target()
+                        # ijsim = round(graph_converter.similarity_e(ij, cliq_graph),2)
+                        # iksim = round(graph_converter.similarity_e(ik, cliq_graph),2)
+                        # kjsim = round(graph_converter.similarity_e(kj, cliq_graph),2)
+                        # if cliq_graph.ep.color[ik] == 'black' and cliq_graph.ep.color[kj] == 'black' and cliq_graph.ep.color[ij] == 'black':
+                        #     print("transitive found: ")
+                        #     print("ij, slen: ", cliq_graph.ep.slen[ij], "sim: ", ijsim, "|E: ", cliq_graph.vp.text[inode], "--->", cliq_graph.vp.text[jnode])
+                        #     print("ik, slen: ", cliq_graph.ep.slen[ik], "sim: ", iksim, "|E: ", cliq_graph.vp.text[inode], "--->", cliq_graph.vp.text[knode])
+                        #     print("kj, slen: ", cliq_graph.ep.slen[kj], "sim: ", kjsim, "|E: ", cliq_graph.vp.text[knode], "--->", cliq_graph.vp.text[jnode])
+                        #     if (iksim + kjsim) / 2 < ijsim:
+                        #         cliq_edge_dict[(i, k)] = 'gray'
+                        #         cliq_edge_dict.pop((i, k))
+                        #         cliq_edge_dict[(k, j)] = 'gray'
+                        #         cliq_edge_dict.pop((k, j))
+                        #     else:
+                        #         cliq_edge_dict[(i, j)] = 'gray'
+                        #         cliq_edge_dict.pop((i, j))                                           
 
     return
 
@@ -430,7 +554,7 @@ def path_replacement_account(graph: Graph, simp_node_dict: dict, simp_edge_dict:
     """
     def dfs_rev(graph: Graph, v, curr_path: list, visited: dict, all_path: list, usage_dict: dict, cond):
         if len(curr_path) > 0 and curr_path[-1] == v:
-            all_path.append(list(curr_path))
+            all_path.append(list(curr_path[1:-1]))
         else:
             for next in curr_path[-1].out_neighbors():
                 if not visited[next] and (usage_dict[graph.vp.id[next]][2] == cond or next == v):
@@ -442,12 +566,12 @@ def path_replacement_account(graph: Graph, simp_node_dict: dict, simp_edge_dict:
         return
     all_path_o = []
     visited = {}
-    for node in simp_node_dict.values():
+    for node in graph.vertices():
         visited[node] = False
     dfs_rev(graph, t, [s], visited, all_path_o, usage_dict, "over")
 
     all_path_p = []
-    for node in simp_node_dict.values():
+    for node in graph.vertices():
         visited[node] = False
     dfs_rev(graph, t, [s], visited, all_path_p, usage_dict, "partial")
 
@@ -583,7 +707,7 @@ def minimal_bubble_detection(graph: Graph):
 
 def LPSolveBubbleLocal(bin_dict: dict, strain_dict: dict, threshold):
     """
-    solve the bin-assignment problem by assigning strain only once to bset match bin
+    solve the bin-assignment problem by assigning strain only once to best match bin
     such that maximize the bin usage if possible
     """
     print("Start Linear Programming solver..")

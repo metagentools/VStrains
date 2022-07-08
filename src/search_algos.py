@@ -304,7 +304,7 @@ def dijkstra_sp_v2(graph: Graph, simp_node_dict: dict, source, sink, overlap: in
         print(graph_converter.path_to_id_string(graph, sp, "SP be found: "))
         print("plen: ", graph_converter.path_len(graph, sp[1:-1], overlap))
 
-        return sp, graph_converter.path_len(graph, sp[1:-1], overlap)
+        return sp[1:-1], graph_converter.path_len(graph, sp[1:-1], overlap)
 
 def eval_score(flow, ccov, threshold, min_e):
     diff = flow - ccov
@@ -351,15 +351,15 @@ def dijkstra_sp_v3(graph: Graph, source, sink, closest_cov, threshold, overlap: 
                 diff = edge_flow - closest_cov
                 if diff < -threshold:
                     #P4
-                    alt = dist[u] + (-threshold - diff)/threshold
+                    alt = dist[u] + (- diff)/threshold
                 elif diff >= -threshold and diff <= threshold:
                     #P1
                     alt = dist[u] - (len(str(graph.vp.id[v]).split('_'))/(abs(diff) + 1))*threshold
-                elif diff > threshold and diff <= min_e - threshold:
+                elif diff > threshold and diff <= 2*threshold:
                     #P3
                     # alt = dist[u] + 1
-                    alt = dist[u] + ((diff - threshold) / (min_e - 2 * threshold))
-                elif diff > min_e - threshold:
+                    alt = dist[u] + ((diff - threshold) / threshold)
+                elif diff > 2*threshold:
                     #P2
                     alt = dist[u] + 0
                 # relax
@@ -414,26 +414,7 @@ def transitive_graph_reduction(cliq_node_dict: dict, cliq_edge_dict: dict):
                         kj = cliq_edge_dict[(k,j)]
                         ij = cliq_edge_dict[(i,j)]
                         cliq_edge_dict[(i, j)] = 'gray'
-                        cliq_edge_dict.pop((i, j))  
-                        # inode = ik.source()
-                        # knode = ik.target()
-                        # jnode = kj.target()
-                        # ijsim = round(graph_converter.similarity_e(ij, cliq_graph),2)
-                        # iksim = round(graph_converter.similarity_e(ik, cliq_graph),2)
-                        # kjsim = round(graph_converter.similarity_e(kj, cliq_graph),2)
-                        # if cliq_graph.ep.color[ik] == 'black' and cliq_graph.ep.color[kj] == 'black' and cliq_graph.ep.color[ij] == 'black':
-                        #     print("transitive found: ")
-                        #     print("ij, slen: ", cliq_graph.ep.slen[ij], "sim: ", ijsim, "|E: ", cliq_graph.vp.text[inode], "--->", cliq_graph.vp.text[jnode])
-                        #     print("ik, slen: ", cliq_graph.ep.slen[ik], "sim: ", iksim, "|E: ", cliq_graph.vp.text[inode], "--->", cliq_graph.vp.text[knode])
-                        #     print("kj, slen: ", cliq_graph.ep.slen[kj], "sim: ", kjsim, "|E: ", cliq_graph.vp.text[knode], "--->", cliq_graph.vp.text[jnode])
-                        #     if (iksim + kjsim) / 2 < ijsim:
-                        #         cliq_edge_dict[(i, k)] = 'gray'
-                        #         cliq_edge_dict.pop((i, k))
-                        #         cliq_edge_dict[(k, j)] = 'gray'
-                        #         cliq_edge_dict.pop((k, j))
-                        #     else:
-                        #         cliq_edge_dict[(i, j)] = 'gray'
-                        #         cliq_edge_dict.pop((i, j))                                           
+                        cliq_edge_dict.pop((i, j))                                            
 
     return
 

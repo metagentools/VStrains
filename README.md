@@ -2,7 +2,7 @@
 
 
 alternative plan
-
+Thus the equation is: Coverage_2 = | 32.23620072586657 + 0.009936800927088535 * Coverage |
 
 conda activate spades-hapConstruction-env
 
@@ -27,19 +27,23 @@ bubble swap part:
 
 
 -->5HIV
-time python src/hap_construction.py -gfa benchmark/fastq/5-strain-HIV-20000x/output/assembly_graph_after_simplification.gfa -c benchmark/fastq/5-strain-HIV-20000x/output/contigs.paths -mincov 500 -minlen 8000 -maxlen 10000 -overlap 127 -ref benchmark/strains/5-strain-HIV.fasta -o acc_5_hiv/ > 5hiv.log
+time python src/hap_construction.py -gfa benchmark/fastq/5-strain-HIV-20000x/output/assembly_graph_after_simplification.gfa -c benchmark/fastq/5-strain-HIV-20000x/output/contigs.paths -overlap 127 -ref benchmark/strains/5-strain-HIV.fasta -o acc_5_hiv/ > 5hiv.log
 
-python eval_script/quast_evaluation.py -c1 benchmark/fastq/5-strain-HIV-20000x/output/contigs.fasta -c2 acc_5_hiv/final_contig.fasta -c3 acc_5_hiv/final_contig.fasta -ref benchmark/strains/5-strain-HIV.fasta -o quast5hiv/
+python eval_script/quast_evaluation.py -c1 benchmark/fastq/5-strain-HIV-20000x/output/contigs.fasta -c2 acc_5_hiv/final_contigs.fasta -c3 acc_5_hiv/final_contigs.fasta -ref benchmark/strains/5-strain-HIV.fasta -o quast5hiv/
 
 -->6POLIO
-time python src/hap_construction.py -gfa benchmark/fastq/6-strain-poliovirus/output/assembly_graph_after_simplification.gfa -c benchmark/fastq/6-strain-poliovirus/output/contigs.paths -mincov 500 -minlen 6000 -maxlen 8000 -overlap 127 -ref benchmark/strains/6-strain-polio.fasta -o acc_6_polio/ > 6polio.log
+time python src/hap_construction.py -gfa benchmark/fastq/6-strain-poliovirus/output/assembly_graph_after_simplification.gfa -c benchmark/fastq/6-strain-poliovirus/output/contigs.paths -overlap 127 -ref benchmark/strains/6-strain-polio.fasta -o acc_6_polio/ > 6polio.log
 
-python eval_script/quast_evaluation.py -c1 benchmark/fastq/6-strain-poliovirus/output/contigs.fasta -c2 ../vg-flow/vgflow6polioResult/haps.final.fasta -c3 acc_6polio/final_contig.fasta -ref benchmark/strains/6-strain-polio.fasta -o quast6polio/
+python eval_script/quast_evaluation.py -c1 benchmark/fastq/6-strain-poliovirus/output/contigs.fasta -c2 ../vg-flow/vgflow6polioResult/haps.final.fasta -c3 acc_6_polio/final_contigs.fasta -ref benchmark/strains/6-strain-polio.fasta -o quast6polio/
 
 --> 15ZIKV
-time python src/hap_construction.py -gfa benchmark/fastq/15-strain-ZIKV-20000x/output/assembly_graph_after_simplification.gfa -c benchmark/fastq/15-strain-ZIKV-20000x/output/contigs.paths -mincov 500 -minlen 8000 -maxlen 11000 -overlap 127 -ref benchmark/strains/15-strain-ZIKV.fasta -o acc_15_zikv/ > 15zikv.log
+time python src/hap_construction.py -gfa benchmark/fastq/15-strain-ZIKV-20000x/output/assembly_graph_after_simplification.gfa -c benchmark/fastq/15-strain-ZIKV-20000x/output/contigs.paths -overlap 127 -ref benchmark/strains/15-strain-ZIKV.fasta -o acc_15_zikv/ > 15zikv.log
 
-python eval_script/quast_evaluation.py -c1 benchmark/fastq/15-strain-ZIKV-20000x/output/contigs.fasta -c2 ../vg-flow/vgflow15o/haps.final.fasta -c3 acc_15_zikv/final_contig.fasta -ref benchmark/strains/15-strain-ZIKV.fasta -o quast15zikv/
+time python src/hap_construction.py -gfa ../savage-benchmarks/fastq/15-strain-ZIKV-20000x/output_careful/assembly_graph_after_simplification.gfa -c ../savage-benchmarks/fastq/15-strain-ZIKV-20000x/output_careful/contigs.paths -overlap 127 -ref benchmark/strains/15-strain-ZIKV.fasta -o acc_15_zikv_careful/ > 15zikv_careful.log
+
+python eval_script/quast_evaluation.py -c1 benchmark/fastq/15-strain-ZIKV-20000x/output/contigs.fasta -c2 ../vg-flow/vgflow15o/haps.final.fasta -c3 acc_15_zikv/final_contigs.fasta -ref benchmark/strains/15-strain-ZIKV.fasta -o quast15zikv/
+
+python eval_script/quast_evaluation.py -c1 ../savage-benchmarks/fastq/15-strain-ZIKV-20000x/output_careful/contigs.fasta -c2 ../vg-flow/vgflow15o/haps.final.fasta -c3 acc_15_zikv_careful/final_contigs.fasta -ref benchmark/strains/15-strain-ZIKV.fasta -o quast15zikv
     """
     --------------------------------------------OVERALL FLOW----------------------------------------
     Input: Graph, contig

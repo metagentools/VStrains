@@ -4,20 +4,22 @@ import sys, os
 import subprocess
 import argparse
 
-from graph_tool.topology import all_circuits
-from graph_tool.draw import graph_draw
+from graph_tool.topology import shortest_path
 from graph_tool.all import Graph
 
 import numpy
 import matplotlib.pyplot as plt
 import seaborn
-import pandas
-
-from collections import deque
-from itertools import product
+import pandas as pd
 
 from graph_converter import *
-from search_algos import *
+
+
+# k-means clustering
+from sklearn.cluster import KMeans
+# linear regression
+from sklearn.linear_model import LinearRegression
+from sklearn.metrics import silhouette_score
 
 usage = "Construct viral strains under deno vo approach"
 author = "Runpeng Luo"
@@ -29,9 +31,7 @@ def main():
     parser = argparse.ArgumentParser(prog='hap_construction.py', description=usage)
     parser.add_argument('-gfa', '--gfa_file', dest='gfa_file', type=str, required=True, help='assembly graph under gfa format')
     parser.add_argument('-c', '--contig', dest='contig_file', type=str, required=True, help='contig file from SPAdes, paths format')
-    parser.add_argument('-mincov' '--minimum_coverage', dest='min_cov', type=int, default=100, help=("minimum coverage for strains"))
-    parser.add_argument('-minlen', '--minimum_strain_length', dest='min_len', default=2500, type=int, help=("minimum strain length"))
-    parser.add_argument('-maxlen', '--maximum_strain_length', dest='max_len', default=12000, type=int, help=("maximum strain length"))
+    parser.add_argument('-mincov' '--minimum_coverage', dest='min_cov', type=int, help=("minimum coverage for strains"))
     parser.add_argument('-overlap', '--vertex_overlap', dest='overlap', default=127, type=int, help=("adjacent vertex overlap in the graph"))
     parser.add_argument('-ref', "--reference_fa", dest='ref_file', type=str, help='reference strain, fasta format, DEBUG_MODE only')
     parser.add_argument('-o', '--output_dir', dest='output_dir', default='acc/', type=str, help='output directory (default: acc/)')
@@ -45,8 +45,8 @@ def main():
     subprocess.check_call("rm -rf {0} && mkdir {0}".format(TEMP_DIR), shell=True)
 
     print("----------------------------------INPUT---------------------------------------")
-    graph, simp_node_dict, simp_edge_dict = gfa_to_graph(args.gfa_file, init_ori=1)
-    contig_dict = get_contig(args.contig_file, simp_node_dict, simp_edge_dict, args.min_len)
+    graph, simp_node_dict, simp_edge_dict = gfa_to_graph(args.gfa_file, args.overlap)
+    contig_dict = get_contig(args.contig_file, simp_node_dict, simp_edge_dict, 250)
     
     graph_to_gfa(graph, simp_node_dict, simp_edge_dict, "{0}graph_L0.gfa".format(TEMP_DIR))
     graph0, simp_node_dict0, simp_edge_dict0 = flipped_gfa_to_graph("{0}graph_L0.gfa".format(TEMP_DIR))
@@ -64,14 +64,14 @@ def main():
     graph1, simp_node_dict1, simp_edge_dict1 = flipped_gfa_to_graph("{0}t_graph_L1.gfa".format(TEMP_DIR))
 
     print("-----------------------------DELTA ESTIMATION-----------------------------")
-    delta_estimation(graph1, simp_node_dict1, simp_edge_dict1)
+    b0, b1 = delta_estimation(graph1)
     print("-------------------------------GRAPH SIMPLIFICATION & REBALANCE-----------------------------------")
     #FIXME
     mediandp = numpy.median([graph1.vp.dp[node] for node in simp_node_dict1.values()])
-    THRESHOLD = mediandp/20
-    # 20000 * 0.001 
-    # numpy.quantile([graph1.vp.dp[node] for node in graph1.vertices()], 0.05)
-    # mediandp/20
+    if args.min_cov:
+        THRESHOLD = args.min_cov
+    else:
+        THRESHOLD = 0.05 * mediandp
     print("MEDIAN NODE DEPTH: ", mediandp, "threshold: ", THRESHOLD)
     graph_simplification(graph1, simp_node_dict1, simp_edge_dict1, contig_dict, THRESHOLD)
 
@@ -86,7 +86,6 @@ def main():
     
     print("-------------------------------CONTIG COVERAGE REBALANCE-----------------------------------")
     contig_cov_fix(graph3, simp_node_dict3, simp_edge_dict3, contig_dict)
-    draw_edgeflow(graph3, simp_edge_dict3, TEMP_DIR, 'Bar plot of Edge flow', 'barplot_edge_flow.png')
     
     # stat evaluation
     if args.ref_file:
@@ -119,7 +118,7 @@ def main():
         # fix trivial splitted contig
         contig_dict_remapping(graphb, simp_node_dictb, simp_edge_dictb, contig_dict, id_mapping, prev_ids, args.overlap)
         # non-trivial branch split
-        num_split = graph_splitting(graphb, simp_node_dictb, simp_edge_dictb, contig_dict, THRESHOLD, args.overlap)
+        num_split = graph_splitting(graphb, simp_node_dictb, simp_edge_dictb, contig_dict, b0, b1, THRESHOLD, args.overlap)
     
         graph_to_gfa(graphb, simp_node_dictb, simp_edge_dictb, "{0}split_graph_L{1}2.gfa".format(TEMP_DIR, iterCount))
         graphc, simp_node_dictc, simp_edge_dictc = flipped_gfa_to_graph("{0}split_graph_L{1}2.gfa".format(TEMP_DIR, iterCount))
@@ -156,7 +155,7 @@ def main():
     # end stat
 
     print("-----------------------CONTIG PATH EXTENSION-------------------------------")
-    strain_dict = extract_cand_path2(graph5, simp_node_dict5, simp_edge_dict5, contig_dict, args.overlap, THRESHOLD)
+    strain_dict = extract_cand_path(graph5, simp_node_dict5, simp_edge_dict5, contig_dict, args.overlap, b0, b1, THRESHOLD)
     
     print("-----------------------FINAL CLEAN UP-------------------------------")
     contig_dup_removed(graph5, simp_edge_dict5, strain_dict)  
@@ -166,36 +165,107 @@ def main():
     minimap_api(args.ref_file, "{0}final_contigs.fasta".format(TEMP_DIR), "{0}final_contigs_to_strain.paf".format(TEMP_DIR))
     return 0
 
-def delta_estimation(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict):
+def delta_estimation(graph: Graph):
     global TEMP_DIR
-    print("test delta")
+    print("Start delta estimation")
     xs = []
     ys = []
     cxs = []
     cys = []
     for node in graph.vertices():
-        if sum([x.out_degree() for x in node.in_neighbors()]) == node.in_degree() and sum([y.in_degree() for y in node.out_neighbors()]) == node.out_degree():
+        if (sum([x.out_degree() for x in node.in_neighbors()]) == node.in_degree() 
+            and sum([y.in_degree() for y in node.out_neighbors()]) == node.out_degree()):
             lv = sum([graph.vp.dp[n] for n in node.in_neighbors()])
             rv = sum([graph.vp.dp[n] for n in node.out_neighbors()])
             m = graph.vp.dp[node]
-            xs.append(lv)
-            ys.append(m)
-            xs.append(rv)
-            ys.append(m)
+            xs.extend([lv, rv])
+            ys.extend([m, m])
             cxs.append(m)
             cys.append(m)
-    
-    fig = plt.figure(figsize=(48,36))
-    plt.scatter(xs, ys, s=40)
-    plt.plot(cxs, cys, linewidth=3.0)
-    plt.title("delta_scatter_plot")
-    plt.savefig("{0}{1}".format(TEMP_DIR, "delta_scatter_plot.png"))
-    
-    fig2 = plt.figure(figsize=(48,36))
+
+    plt.figure(figsize=(12,8))
     plt.hist([b-a for b, a in zip(ys,xs)], bins=len(ys))
     plt.title("delta_hist_plot")
     plt.savefig("{0}{1}".format(TEMP_DIR, "delta_hist_plot.png"))
-    return
+
+    print("sample size: ", len(xs))
+    if len(xs) < 100:
+        return 32.23620072586657, 0.009936800927088535
+
+    df = pd.DataFrame({'x': xs, 'y': ys})
+    # find n_clusters
+    ncs = [i for i in range(2, len(xs)//10)]
+    scores = []
+    for n_c in ncs:
+        clusterer = KMeans(n_clusters=n_c)
+        preds = clusterer.fit_predict(df)
+        centers = clusterer.cluster_centers_
+        score = silhouette_score(df, preds)
+        scores.append(score)
+
+    plt.figure(figsize=(12,8))
+    plt.plot(ncs, scores, c="black")
+    plt.title("K-Means Silhouette Score",size=20)
+    plt.xlabel("number of cluster", size=16)
+    plt.ylabel("score", size=16)
+    # plt.show()
+    plt.savefig("{0}{1}".format(TEMP_DIR, "silhouette_score_delta.png"))
+
+    optim_nc = max(ncs, key=lambda x: scores[ncs.index(x)])
+    print("Optim n_cluster: ", optim_nc)
+    # clustering
+    kmc = KMeans(n_clusters=optim_nc)
+    kmc_model = kmc.fit(df)
+    clust_medians = []
+    clust_x = []
+    # plot
+    colors=["red","blue","green","purple","orange"]
+    plt.figure(figsize=(12,8))
+    for i in range(numpy.max(kmc_model.labels_)+1):
+        cxs = df[kmc_model.labels_==i].iloc[:,0]
+        cys = df[kmc_model.labels_==i].iloc[:,1]
+        if len(cxs) < 10:
+            print("skip cluster: ", kmc_model.cluster_centers_[i])
+            continue
+        plt.scatter(cxs, cys, label=i, c=colors[i%len(colors)], alpha=0.5)
+
+        vals = []
+        for (x1,y1) in zip(cxs, cys):
+            for (x2,y2) in zip(cxs, cys):
+                if x1 != x2 and y1 != y2:
+                    vals.append(max(abs(y1-y2), abs(x1-x2)))
+        clust_x.append(kmc_model.cluster_centers_[i][0])
+        clust_medians.append(numpy.median(vals))
+
+    plt.scatter(kmc_model.cluster_centers_[:,0], kmc_model.cluster_centers_[:,1], label='Cluster Centers', c="black", s=200)
+    plt.title("K-Means Clustering",size=20)
+    plt.xlabel(df.columns[0], size=16)
+    plt.ylabel(df.columns[1], size=16)
+    plt.legend()
+
+    plt.figure(figsize=(12,8))
+    plt.scatter(clust_x, clust_medians, label='Cluster Centers', c="black", s=100)
+    lr = LinearRegression()
+    # fit the data using linear regression
+    # the reshaping is because the function expects more columns in x
+    model = lr.fit(numpy.array(clust_x).reshape(-1,1),clust_medians)
+    b0 = model.intercept_
+    b1 = model.coef_[0]
+    print("The intercept of this model is:", model.intercept_)
+    print("The slope coefficient of this model is:", model.coef_[0])
+    print("")
+    print("Thus the equation is: Coverage_2 = |", b0, "+", b1, "* Coverage |")
+
+    x_range = [0, max(clust_x)]                      # get the bounds for x
+    y_range = [b0, b0+b1*x_range[1]]    # get the bounds for y
+    plt.plot(x_range, y_range, c="red")
+    plt.title("Regression",size=20)
+    plt.xlabel("coverage", size=16)
+    plt.ylabel("delta", size=16)
+    # plt.show()
+    plt.savefig("{0}{1}".format(TEMP_DIR, "cluster_delta.png"))
+
+    return b0, b1
 
 curr_path = []
 def node_partition(graph: Graph, simp_node_dict: dict):
@@ -438,7 +508,7 @@ def coverage_rebalance_s(graph: Graph, simp_node_dict: dict, simp_edge_dict: dic
     simple_paths = None
     # graphtool is_DAG() may not work if the graph is not connected as several parts
     if not graph_is_DAG(graph, simp_node_dict):
-        noncyc_nodes, simple_paths = node_partition(graph, simp_node_dict, TEMP_DIR)
+        noncyc_nodes, simple_paths = node_partition(graph, simp_node_dict)
 
     print("-------------------------------COVERAGE REBALANCE-----------------------------------")
     # all the previous depth has been stored in the dict
@@ -579,16 +649,18 @@ def coverage_rebalance(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict,
 
     return prev_dp_dict, curr_dp_dict, node_ratio_dict, ratio_div
 
-def extract_cand_path2(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, contig_dict: dict, overlap, threshold, itercount='A'):
+def extract_cand_path(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, contig_dict: dict, overlap, b0, b1, threshold, strain_prefix='A'):
     def dict_to_hist(graph: Graph, contig_dict: dict):
+        print("contig histogram generating..")
         contig_hist = {}
         for (cno, [_, clen, ccov]) in contig_dict.items():
-            lb = ccov - threshold
-            ub = ccov + threshold
+            delta = 3*abs(b0 + b1*ccov)
+            lb = ccov - delta
+            ub = ccov + delta
             min_eset = {}
             min_vset = set()
             for e in graph.edges():
-                if graph.ep.flow[e] > lb and graph.ep.flow[e] <= ub:
+                if graph.ep.flow[e] >= lb and graph.ep.flow[e] <= ub:
                     # if (reachable(graph, simp_node_dict, e.target(), simp_node_dict[contig[0]]) or
                     #     reachable(graph, simp_node_dict, simp_node_dict[contig[-1]], e.source())):
                         min_eset[(graph.vp.id[e.source()], graph.vp.id[e.target()])] = e
@@ -597,11 +669,63 @@ def extract_cand_path2(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict,
             x = [graph.ep.flow[e] for e in min_eset.values()]
             regions, bins = numpy.histogram(x)
             contig_hist[cno] = [clen, ccov, regions, bins]
+        print("done..")
         return contig_hist
-    strain_dict = {}
+    
+    def set_edge_weight(graph: Graph, ccov, b0, b1, relax=False):
+        for e in graph.edges():
+            diff = graph.ep.flow[e] - ccov
+            delta = 3*abs(b0 + b1 * graph.ep.flow[e])
+            if diff < -delta:
+                #P4 worst
+                graph.ep.eval[e] = (-diff)/delta
+                graph.ep.eval[e] += 1 if relax else 0
+            elif diff >= -delta and diff <= delta:
+                #P1 best
+                alen = len(str(graph.vp.id[e.source()]).split('_')) + len(str(graph.vp.id[e.target()]).split('_'))
+                # negative weight, guarantee selection
+                graph.ep.eval[e] = -(alen/(abs(diff) + 1))*delta
+                # when relax, remove possible negative cycle
+                graph.ep.eval[e] = 0 if relax else graph.ep.eval[e]
+            elif diff > delta and diff <= 2*delta:
+                #P3
+                graph.ep.eval[e] = ((diff - delta) / delta)
+                graph.ep.eval[e] += 1 if relax else 0
+            else:
+                #P2
+                graph.ep.eval[e] = 0
+                graph.ep.eval[e] += 1 if relax else 0
+        return
+
+    def st_path(graph: Graph, ccov, s, t, b0, b1, is_dag=False, ):
+        sp_vlist = []
+        try:
+            sp_vlist, _ = shortest_path(graph, s, t, graph.ep.eval, negative_weights=True, dag=is_dag)
+        except ValueError as ve:
+            print(ve)
+            # remove negative cycle
+            set_edge_weight(graph, ccov, b0, b1, relax=True)
+            sp_vlist, _ = shortest_path(graph, s, t, graph.ep.eval, negative_weights=False, dag=is_dag)
+        return sp_vlist
+
+    def eval_score(flow, ccov, threshold):
+        diff = flow - ccov
+        if diff < -threshold:
+            return "P4"
+        elif diff >= -threshold and diff <= threshold:
+            return "P1"
+        elif diff > threshold and diff <= 2*threshold:
+            return "P3"
+        elif diff > 2*threshold:
+            return "P2"
+        return None
+    global TEMP_DIR
     global_src, global_sink = add_global_source_sink(graph, simp_node_dict, simp_edge_dict, overlap, True)
-    contig_hist = {}
-    sorted_contigdict = sorted(contig_dict.items(), key=lambda v: v[1][2])
+    strain_dict = {}
+    contig_hist = dict_to_hist(graph, contig_dict)
+    is_dag = graph_is_DAG(graph, simp_node_dict)
+
+    # stat
     x = [cov for [_, _, cov] in contig_dict.values()]
     regions, bins = numpy.histogram(x)
     print(regions)
@@ -610,76 +734,60 @@ def extract_cand_path2(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict,
     plt.hist(x)
     plt.title("contig_cov")
     plt.savefig("{0}{1}".format(TEMP_DIR, "contig_cov.png"))
+    # end stat
 
-    for (cno, [contig, clen, ccov]) in sorted_contigdict:
-        print("-----------------------------------*****")
-        print_contig(cno, clen, ccov, contig)
-        lb = ccov - threshold
-        ub = ccov + threshold
-        min_eset = {}
-        min_vset = set()
-        for e in graph.edges():
-            if graph.ep.flow[e] > lb and graph.ep.flow[e] <= ub:
-                # if (reachable(graph, simp_node_dict, e.target(), simp_node_dict[contig[0]]) or
-                #     reachable(graph, simp_node_dict, simp_node_dict[contig[-1]], e.source())):
-                    min_eset[(graph.vp.id[e.source()], graph.vp.id[e.target()])] = e
-                    min_vset.add(e.source())
-                    min_vset.add(e.target())
-        x = [graph.ep.flow[e] for e in min_eset.values()]
-        regions, bins = numpy.histogram(x)
-        print(regions)
-        print(bins)
-        print("most related vertices: ", path_to_id_string(graph, list(min_vset)))
-
-        contig_hist[cno] = [clen, ccov, regions, bins]
-
+    graph.ep.eval = graph.new_edge_property("double")
     while len(contig_dict.keys()) > 0:
         print("----------------------------------------------------------------------------")
         cno = max(contig_dict.keys(), key=lambda k: sum(contig_hist[k][2]))
-        # cno = max(contig_dict.keys(), key=lambda k: path_len(graph, [simp_node_dict[id] for id in contig_dict[k][0]], overlap))
-        # cno = min(contig_dict.keys(), key=lambda k: contig_dict[k][2])
+        contig, _, ccov = contig_dict.pop(cno)
+        delta = 3*abs(b0 + b1 * ccov)
         print("REGION: ", contig_hist[cno][2])
         print("BIN: ", contig_hist[cno][3])
-        contig, clen, ccov = contig_dict.pop(cno)
-        lb = ccov - threshold
-        ub = ccov + threshold
-        print(cno, "->bound: ", lb, ccov, ub, "***" ,list_to_string(contig))
+        print(cno, "->bound: [", ccov - delta, ccov, ccov + delta, "], delta: ", delta, "***" ,list_to_string(contig))
 
         if ccov < threshold:
             print("current contig {0} is used previously {1}".format(ccov, threshold))
             continue
-        # check if contig can be concated self-t to self-s, if so then cycle
-        sphead, _, _ = dijkstra_sp_v3(graph, global_src, simp_node_dict[contig[0]], ccov, threshold, overlap, lb)
-        sptail, _, _ = dijkstra_sp_v3(graph, simp_node_dict[contig[-1]], global_sink, ccov, threshold, overlap, lb)
-        strain = []
-        if sphead != None:
-            strain.extend(sphead)
-        strain.extend([simp_node_dict[n] for n in contig])
-        if sptail != None:
-            strain.extend(sptail)
 
+        set_edge_weight(graph, ccov, b0, b1)
+        strain = []
+        # find self cycle first if exist
+        if reachable(graph, simp_node_dict, simp_node_dict[contig[-1]], simp_node_dict[contig[0]]):
+            print("concat self cycle")
+            sp_vlist = st_path(graph, ccov, simp_node_dict[contig[-1]], simp_node_dict[contig[0]], b0, b1, is_dag)
+            strain.extend([simp_node_dict[n] for n in contig])
+            strain.extend(sp_vlist[1:-1])
+        else:
+            print("concat st path")
+            sphead_vlist = st_path(graph, ccov, global_src, simp_node_dict[contig[0]], b0, b1, is_dag)
+            sptail_vlist = st_path(graph, ccov, simp_node_dict[contig[-1]], global_sink, b0, b1, is_dag)
+            strain.extend(sphead_vlist[1:-1])
+            strain.extend([simp_node_dict[n] for n in contig])
+            strain.extend(sptail_vlist[1:-1])
         score = []
         for flow in contig_flow(graph, simp_edge_dict, [graph.vp.id[n] for n in strain]):
-            s = eval_score(flow, ccov, threshold, lb)
+            delta = 3*abs(b0 + b1 * flow)
+            s = eval_score(flow, ccov, delta)
             if s == 'P4':
                 print("P4: ", flow)
             score.append(s)
         ccov = path_cov(graph, simp_node_dict, simp_edge_dict, [graph.vp.id[n] for n in strain])
-        print(path_to_id_string(graph, strain, "strain, len{0}ccov{1}".format(len(strain), ccov)))
+        plen = path_len(graph, strain, overlap)
+        print(path_to_id_string(graph, strain, "strain, len: {0}, ccov: {1}".format(plen, ccov)))
         print("related edges score: ", score)
-
-        print("cand strain found")
         graph_reduction_c(graph, strain, ccov)
-        strain_dict[itercount + cno] = [[graph.vp.id[n] for n in strain], path_len(graph, strain, overlap), ccov]
         
+        # strain_dict[strain_prefix + cno] = [[graph.vp.id[n] for n in strain], plen, ccov]
+        #filter low coverage strain
+        if ccov >= threshold:
+            print("cand strain found")
+            strain_dict[strain_prefix + cno] = [[graph.vp.id[n] for n in strain], plen, ccov]
+        else:
+            print("low cov strain, removed")
         contig_cov_fix(graph, simp_node_dict, simp_edge_dict, contig_dict)
         contig_hist = dict_to_hist(graph, contig_dict)
 
-    strains = sorted(strain_dict.items(), key=lambda k: k[1][2], reverse=True)
-    strain_dict = {}
-    for [cno, [contig, clen, ccov]] in strains:
-        if ccov >= threshold:
-            strain_dict[cno] = [contig, clen, ccov]
     return strain_dict
 
 if __name__ == "__main__":

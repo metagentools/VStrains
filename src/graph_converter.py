@@ -12,8 +12,6 @@ import pandas
 
 import numpy
 
-from hap_construction import DEBUG_MODE
-
 
 def gfa_to_graph(gfa_file, overlap, init_ori=1):
     """
@@ -221,8 +219,6 @@ def graph_simplification(graph: Graph, simp_node_dict: dict, simp_edge_dict: dic
     for id, node in list(simp_node_dict.items()):
         if graph.vp.dp[node] < min_cov:
             if id in node_to_contig_dict:
-                if DEBUG_MODE:
-                    print("node: {0} should not be removed although with ccov: {1}".format(id, graph.vp.dp[node]))
                 continue
 
             graph_remove_vertex(graph, simp_node_dict, id, printout=False)
@@ -232,8 +228,6 @@ def graph_simplification(graph: Graph, simp_node_dict: dict, simp_edge_dict: dic
                 uid = graph.vp.id[e.source()]
                 vid = graph.vp.id[e.target()]
                 if (uid, vid) in edge_to_contig_dict:
-                    if DEBUG_MODE:
-                        print("edge: {0} should not be removed".format((uid, vid)))
                     continue 
                 if (uid, vid) in simp_edge_dict:
                     graph_remove_edge(graph, simp_edge_dict, uid, vid, printout=False)
@@ -267,10 +261,9 @@ def graph_to_gfa(graph: Graph, simp_node_dict: dict, edge_dict: dict, filename):
                 continue
             if graph.ep.color[e] != 'black':
                 continue
-            # print_edge(graph, e, "adding edge to graph")
             gfa.write("L\t{0}\t{1}\t{2}\t{3}\t{4}M\n".format(u, "+", v, "+", graph.ep.overlap[e]))
         gfa.close()
-    print("--------------------", filename, "is stored--------------------")
+    print(filename, " is stored..")
     return 0
 
 def flip_graph_bfs(graph: Graph, node_dict: dict, edge_dict: dict, dp_dict: dict, init_ori=1):
@@ -285,8 +278,6 @@ def flip_graph_bfs(graph: Graph, node_dict: dict, edge_dict: dict, dp_dict: dict
         return the pos-neg node with maximum depth
         """
         seg_no = max(dp_dict, key=dp_dict.get)
-        if DEBUG_MODE:
-            print("source node id: ", seg_no, ", depth: ", dp_dict[seg_no])
         return seg_no
 
     def reverse_edge(graph: Graph, edge, node_dict: dict, edge_dict: dict):
@@ -310,7 +301,7 @@ def flip_graph_bfs(graph: Graph, node_dict: dict, edge_dict: dict, dp_dict: dict
         edge_dict[(graph.vp.id[s], graph.vp.ori[s], graph.vp.id[t], graph.vp.ori[t])] = e
 
         return graph, e, edge_dict
-    print("-------------------------flip graph orientation----------------------")
+    print("flip graph orientation..")
     pick_dict = {}
     while set(dp_dict):
         seg_no = source_node_via_dp(dp_dict)
@@ -348,7 +339,7 @@ def flip_graph_bfs(graph: Graph, node_dict: dict, edge_dict: dict, dp_dict: dict
                     fifo_queue.append([node_dict[graph.vp.id[adj_node]], graph.vp.ori[adj_node]])
 
     # verify sorted graph
-    print("-------------------------verify graph----------------------")
+    print("verify graph..")
     check = True
 
     assert len(pick_dict) == len(node_dict)
@@ -374,8 +365,7 @@ def flip_graph_bfs(graph: Graph, node_dict: dict, edge_dict: dict, dp_dict: dict
             graph.vp.id[v_neg] = graph.vp.id[v_neg] + "b"
 
     assert check
-    if check: print("Graph is verified")
-    print("-------------------------end verify------------------------")
+    print("Graph is verified")
 
     simp_node_dict = {}
     for seg_no, pick in pick_dict.items():
@@ -387,13 +377,12 @@ def flip_graph_bfs(graph: Graph, node_dict: dict, edge_dict: dict, dp_dict: dict
         simp_node_dict[seg_no] = picked
 
     simp_edge_dict = simplify_edge_dict(edge_dict)
-    print("-------------------------flip graph orientation end------------------")
+    print("done")
     return graph, simp_node_dict, simp_edge_dict
 
 def map_ref_to_graph(ref_file, simp_node_dict: dict, graph_file, store_mapping=False, output_file="overlap.paf", fasta_file="temp_gfa_to_fasta.fasta"):
     """
     map reference strain to the graph, debug only
-    assumption: graph is stored in acc/simplifed_graph, 
     """
     if not ref_file:
         print("No ref file imported")
@@ -408,9 +397,7 @@ def map_ref_to_graph(ref_file, simp_node_dict: dict, graph_file, store_mapping=F
             fasta.close()
         gfa.close()
     
-    # minimap2. you may need to replace the exec path to minimap to fit your case
-    subprocess.check_call("/Users/luorunpeng/opt/miniconda3/envs/spades-hapConstruction-env/bin/minimap2 {0} {1} -c > {2}".format(
-    ref_file, fasta_file, output_file), shell=True)
+    subprocess.check_call("minimap2 {0} {1} -c > {2}".format(ref_file, fasta_file, output_file), shell=True)
 
     strain_dict = {}
     with open(output_file, 'r') as paf:
@@ -433,7 +420,7 @@ def map_ref_to_graph(ref_file, simp_node_dict: dict, graph_file, store_mapping=F
         paf.close()
         
     if not store_mapping:
-        subprocess.check_call("rm {0}".format(output_file), shell=True)
+        subprocess.check_call("rm {0}; rm {1}".format(output_file, fasta_file), shell=True)
     
     print("strain dict mapping")
     for seg_no, strains in strain_dict.items():
@@ -486,7 +473,7 @@ def gfa_to_fasta(gfa_file, fasta_file):
         gfa.close()
 
 def minimap_api(ref_file, fasta_file, output_file):
-    subprocess.check_call("/Users/luorunpeng/opt/miniconda3/envs/spades-hapConstruction-env/bin/minimap2 {0} {1} -c > {2}".format(
+    subprocess.check_call("minimap2 {0} {1} -c > {2}".format(
         ref_file, fasta_file, output_file), shell=True)
     return  
 
@@ -536,7 +523,7 @@ def get_contig(contig_file, simp_node_dict: dict, simp_edge_dict: dict, min_len=
     """
     Map SPAdes's contig to the graph, return all the contigs with length >= 250 or minimum 2 nodes in contig.
     """
-    print("-----------------get contig-----------------------")
+    print("processing contigs..")
     if not contig_file:
         print("contig file not imported")
         return -1
@@ -580,21 +567,23 @@ def get_contig(contig_file, simp_node_dict: dict, simp_edge_dict: dict, min_len=
                     e1_r = (contigs_rev[i], contigs_rev[i+1])
                     i = i + 1
                     if e1 not in simp_edge_dict and e1_r not in simp_edge_dict:
-                        print("edge is not exist in both direction, continue to select, contig: ", cno)
+                        print("edge is not exist in both direction, skip contig: ", cno)
+                        break
                     elif e1 not in simp_edge_dict:
                         c = contigs_rev[:]
                         pick = True
-                        print("pick forward side for contig: ", cno)
+                        # print("pick forward side for contig: ", cno)
                     elif e1_r not in simp_edge_dict:
                         c = contigs[:]
                         pick = True
-                        print("pick reverse side for contig: ", cno)
+                        # print("pick reverse side for contig: ", cno)
                     else:
-                        print("both direction edge, error edge case, contig: ", cno)
+                        print("both direction edge, error edge case, skip contig: ", cno)
+                        break
                     
                     if not pick and i == contig_len - 1:
                         # still not pick until last edge
-                        print("all the edge is removed, no pick until last point")
+                        print("all the edge is removed, no pick until last point, skip contig: ", cno)
                         break
 
                 if not pick:
@@ -602,34 +591,23 @@ def get_contig(contig_file, simp_node_dict: dict, simp_edge_dict: dict, min_len=
                     continue
                 else:
                     contig_dict[cno] = [c, clen, ccov]
-                    succ_add = True
                     for i in range(len(c)):
                         c_i = c[i]
                         c_i_1 = c[i+1] if (i < len(c) - 1) else None
                         if c_i not in simp_node_dict:
                             print("node {0} not in contig {1}, error".format(c_i, cno))
-                            succ_add = False
 
                         if c_i_1 != None and c_i_1 not in simp_node_dict:
                             print("node {0} not in contig {1}, error".format(c_i_1, cno))
-                            succ_add = False
                         
                         if c_i_1 != None and (c_i, c_i_1) not in simp_edge_dict:
                             print("edge {0} not in contig {1}, error".format((c_i, c_i_1), cno))
-                            succ_add = False
-                    if succ_add:
-                        print("contig {0} is successfully added".format(cno))
-                    else:
-                        print("contig {0} is failed to be added".format(cno))
             else:
                 c = contigs
-                if c[0] not in simp_node_dict:
-                    print("only left up node is removed already: ", cno)
-                else:
+                if c[0] in simp_node_dict:
                     contig_dict[cno] = [c, clen, ccov]
-                    print("only left up node is picked for contig: ", cno)
         contigs_file.close()
-    print("-----------------get contig end-----------------------")
+    print("done")
     return contig_dict
 
 def contig_map_node(contig_dict: dict):
@@ -702,13 +680,14 @@ def contig_cov_fix(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, con
                     print(eflow)
     return
 
-def graph_reduction_c(graph: Graph, cand_path, cand_cov):
+def graph_reduction_c(graph: Graph, cand_path, usage_dict: dict, cand_cov):
     """
     reduce the graph coverage based on given path and cov,
     only applied after udp be deployed in the graph
     """
     for i in range(len(cand_path)):
         graph.vp.dp[cand_path[i]] -= cand_cov
+        usage_dict[graph.vp.id[cand_path[i]]] += 1
 
     for i in range(len(cand_path) - 1):
         e = graph.edge(cand_path[i], cand_path[i+1])
@@ -725,7 +704,6 @@ def graph_splitting(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, co
     n-n branch splitting, # FIXME add more restrict rule to avoid false positive split
     """
     print("-------------------------graph split----------------------")
-    print("Threshold: ", threshold)
     split_branches = []
     node_to_contig_dict, _ = contig_map_node(contig_dict)
     no_mapping = {}
@@ -737,8 +715,8 @@ def graph_splitting(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, co
         if len(ine) > 1 and len(oute) > 1:
             threshold2 = 2*abs(b0 + b1*graph.vp.dp[node])
             support_contigs = [cno for cno in node_to_contig_dict[no]] if no in node_to_contig_dict else []
-            print_vertex(graph, node, "---------- branch node, support by contig {0}".format(support_contigs))
-            print("threshold2: ", threshold2)
+            # print_vertex(graph, node, "---------- branch node, support by contig {0}".format(support_contigs))
+            # print("threshold2: ", threshold2)
             ine_usage = {}
             for ie in ine:
                 ine_usage[ie] = 0
@@ -754,53 +732,53 @@ def graph_splitting(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, co
                         ine_usage[ie] += 1
                         oute_usage[oe] += 1
 
-            if cproduct == []:
-                print("no matching edges to split")
-            else:
+            if cproduct != []:
                 for i, (ie, oe, subcov, delta) in enumerate(cproduct):
-                    print("---------------")
-                    print_edge(graph, ie, "in")
-                    print_edge(graph, oe, "out")
+                    # print("---------------")
+                    # print_edge(graph, ie, "in")
+                    # print_edge(graph, oe, "out")
                     prev_node = ie.source()
                     prev_no = graph.vp.id[prev_node]
                     next_node = oe.target()
                     next_no = graph.vp.id[next_node]
                     if ((prev_no, no) not in simp_edge_dict or (no, next_no) not in simp_edge_dict):
-                        print("edge has been removed already")
+                        # print("edge has been removed already")
                         continue
-                    print("Delta: ", delta)
+                    # print("Delta: ", delta)
                     involved_contigs = []
                     is_conf = False
                     cross_talk = False
                     for cno in support_contigs:
                         contig, clen, ccov = contig_dict[cno]
                         if len(contig) < 3:
-                            print("unnecessary contig (len < 3) check: ", contig)
+                            # print("unnecessary contig (len < 3) check: ", contig)
                             if prev_no in contig or next_no in contig:
                                 involved_contigs.append(cno)
                         elif prev_no in contig and next_no in contig:
                             is_conf = True
                             involved_contigs.append(cno)
-                            print_contig(cno, clen, ccov, contig, "support contig ")
+                            # print_contig(cno, clen, ccov, contig, "support contig ")
                         elif prev_no in contig and next_no not in contig:
-                            print("contig {0}, {1} pass cross edge".format(cno, ccov))
+                            # print("contig {0}, {1} pass cross edge".format(cno, ccov))
                             cross_talk = True
                             break
                         elif prev_no not in contig and next_no in contig:
-                            print("contig {0}, {1} pass cross edge".format(cno, ccov))
+                            # print("contig {0}, {1} pass cross edge".format(cno, ccov))
                             cross_talk = True
                             break
                         else:
                             None
                     involved_contig_sumcov = sum([contig_dict[cno][2] for cno in involved_contigs])
-                    print("involved contig cov sum: {0}, triple-node mean flow: {1}".format(involved_contig_sumcov, subcov))
-                    print("in edge usage: {0}, out edge usage: {1}".format(ine_usage[ie], oute_usage[oe]))
+                    # print("involved contig cov sum: {0}, triple-node mean flow: {1}".format(involved_contig_sumcov, subcov))
+                    # print("in edge usage: {0}, out edge usage: {1}".format(ine_usage[ie], oute_usage[oe]))
                     if cross_talk:
-                        print("- current branch split forbidden, cross talk", prev_no, no, next_no)
+                        None
+                        # print("- current branch split forbidden, cross talk", prev_no, no, next_no)
                     elif not is_conf and (ine_usage[ie] > 1 or oute_usage[oe] > 1):
-                        print("- current branch split forbidden, no supporting contig path, ambigous split", prev_no, no, next_no)
+                        None
+                        # print("- current branch split forbidden, no supporting contig path, ambigous split", prev_no, no, next_no)
                     else:
-                        print("- branch split performed")
+                        # print("- branch split performed")
                         split_branches.append(no)
 
                         subid = "X" + no + "X" + str(i)
@@ -838,15 +816,15 @@ def graph_splitting(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, co
     for cno, [contig, clen, _] in list(contig_dict.items()):
         if len(contig) <= 1 and contig[0] not in simp_node_dict:
             contig_dict.pop(cno)
-            print("isolated contig node {0}, prepared to pop, check any replacement".format(cno))
+            # print("isolated contig node {0}, prepared to pop, check any replacement".format(cno))
             if contig[0] in no_mapping:
-                print("mapping: {0} -> {1}".format(contig[0], no_mapping[contig[0]]))
+                # print("mapping: {0} -> {1}".format(contig[0], no_mapping[contig[0]]))
                 s = 'A'
                 for i, mapped in enumerate(no_mapping[contig[0]]):
                     if mapped in simp_node_dict:
                         mapped_node = simp_node_dict[mapped]
                         contig_dict[cno+chr(ord(s) + i)] = [[mapped], path_len(graph, [mapped_node], overlap), graph.vp.dp[mapped_node]]
-                        print("mapped cno: ", cno+chr(ord(s) + i), mapped)  
+                        # print("mapped cno: ", cno+chr(ord(s) + i), mapped)  
     
     print("No of branch be removed: ", len(set(split_branches)))
     print("Split branches: ", list_to_string(set(split_branches)))
@@ -868,14 +846,12 @@ def graph_split_trivial(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict
             node = simp_node_dict[id]
             if graph.vp.color[node] != 'black':
                 continue
-            # if id in contig_nodes:
-            #     continue
             if id not in id_mapping:
                 id_mapping[id] = set()
             ines = [ue for ue in node.in_edges() if graph.ep.color[ue] == 'black']
             outes = [ve for ve in node.out_edges() if graph.ep.color[ve] == 'black']
             if len(ines) == 0 and len(outes) > 1:
-                print(id, len(ines), len(outes), "current node is source node, split left")
+                # print(id, len(ines), len(outes), "current node is source node, split left")
                 graph.vp.color[node] = 'gray'
                 # create len(outes) subnodes
                 s = 'A'
@@ -892,7 +868,7 @@ def graph_split_trivial(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict
                 has_split = True
                 trivial_split_count += 1
             elif len(ines) > 1 and len(outes) == 0:
-                print(id, len(ines), len(outes), "current node is sink node, split right")
+                # print(id, len(ines), len(outes), "current node is sink node, split right")
                 graph.vp.color[node] = 'gray'
                 # create len(ines) subnodes
                 s = 'A'
@@ -909,7 +885,7 @@ def graph_split_trivial(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict
                 has_split = True
                 trivial_split_count += 1
             elif len(ines) == 1 and len(outes) > 1:
-                print(id, len(ines), len(outes), "split left")
+                # print(id, len(ines), len(outes), "split left")
                 graph.vp.color[node] = 'gray'
                 ine = ines[0]
                 src = ine.source()
@@ -932,7 +908,7 @@ def graph_split_trivial(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict
                 has_split = True
                 trivial_split_count += 1
             elif len(ines) > 1 and len(outes) == 1:
-                print(id, len(ines), len(outes), "split right")   
+                # print(id, len(ines), len(outes), "split right")   
                 graph.vp.color[node] = 'gray'
                 oute = outes[0]
                 tgt = oute.target()
@@ -955,7 +931,8 @@ def graph_split_trivial(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict
                 has_split = True
                 trivial_split_count += 1
             else:
-                print(id, len(ines), len(outes), ", unable to split, skip")
+                None
+                # print(id, len(ines), len(outes), ", unable to split, skip")
     print("No of trivial branch be removed: ", trivial_split_count)
     return trivial_split_count, id_mapping
 
@@ -983,9 +960,9 @@ def contig_dict_remapping(graph: Graph, simp_node_dict: dict, simp_edge_dict: di
                         if (last, nextm) in simp_edge_dict:
                             acc_paths.append((p+[nextm]))
             paths = acc_paths
-        print("----------------> curr contig tree mapping: ", cno, " mapped count: ", len(paths))
-        for p in paths:
-            print(list_to_string(p))
+        # print("----------------> curr contig tree mapping: ", cno, " mapped count: ", len(paths))
+        # for p in paths:
+        #     print(list_to_string(p))
         return paths
     def merge_id(id_mapping_r: dict, curr_set: set, myid):
         if len(curr_set) == 0:
@@ -995,37 +972,34 @@ def contig_dict_remapping(graph: Graph, simp_node_dict: dict, simp_edge_dict: di
             for id in curr_set:
                 rtn_set = rtn_set.union(merge_id(id_mapping_r, id_mapping_r[id], id))
             return rtn_set
-    print("---------->Contig dict resolution")
+    print("contig resolution..")
     # id_mapping merging, recursive merge down.
     red_id_mapping = {}
 
     for id in prev_ids:
         all_set = merge_id(id_mapping, id_mapping[id], id)
         red_id_mapping[id] = all_set
-        print("Node {0} maps to {1}".format(id, all_set))
+        # print("Node {0} maps to {1}".format(id, all_set))
 
     for cno, (contig, clen, ccov) in list(contig_dict.items()):
-        print("---------------------------------------------")
-        print("Current mapping contig: ", cno, list_to_string(contig))
+        # print("---------------------------------------------")
+        # print("Current mapping contig: ", cno, list_to_string(contig))
         paths = map_contig_tree(cno, contig, red_id_mapping)
         # split the contig tree to avoid the ambiguity variation
         if len(paths) < 1:
             print("error, contig missed: ", cno, contig)
         elif len(paths) == 1:
             if paths[0] == contig:
-                print("single mapping, keep original")
+                None
+                # print("single mapping, keep original")
             else:
-                print("single mapping, replace", list_to_string(paths[0]))
+                # print("single mapping, replace", list_to_string(paths[0]))
                 contig_dict.pop(cno)
                 subcov = path_cov(graph, simp_node_dict, simp_edge_dict, paths[0])
                 contig_dict[cno] = [paths[0], path_len(graph, [simp_node_dict[no] for no in paths[0]], overlap), subcov]
         else:
             contig_dict.pop(cno)
-            print("multi mapping for the current contig: whole contig is ambiguous mapping", cno)
-            # FIXME keep the largest coverage mapping
-            # path = max(paths, key=lambda p: path_cov(graph, simp_node_dict, simp_edge_dict, p))
-            # contig_dict[cno+'d'] = [path, path_len(graph, [simp_node_dict[no] for no in path], overlap), path_cov(graph, simp_node_dict, simp_edge_dict, path)] 
-            # print("duplicated mapped contig: ", list_to_string(path), "only keep largest one")
+            # print("multi mapping for the current contig: whole contig is ambiguous mapping", cno)
             for i, path in enumerate(paths):
                 dupcno = cno + "^" + str(i)
                 if dupcno in contig_dict:
@@ -1033,7 +1007,8 @@ def contig_dict_remapping(graph: Graph, simp_node_dict: dict, simp_edge_dict: di
                 else:
                     subcov = path_cov(graph, simp_node_dict, simp_edge_dict, path)
                     contig_dict[dupcno] = [path, path_len(graph, [simp_node_dict[no] for no in path], overlap), subcov]
-                    print("duplicated mapped contig: ", dupcno, list_to_string(path))
+                    # print("duplicated mapped contig: ", dupcno, list_to_string(path))
+    print("done")
     return
 
 def simp_path(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict):
@@ -1078,7 +1053,7 @@ def simple_paths_to_dict(graph: Graph, simp_node_dict: dict, simp_edge_dict: dic
         clen = path_len(graph, p, overlap)
         cov = numpy.max([graph.vp.dp[n] for n in p])
         simp_path_dict[name] = [pids, clen, cov]
-        print("Simple PATH: ", list_to_string(pids))
+        # print("Simple PATH: ", list_to_string(pids))
     return simp_path_dict
 
 def simp_path_compactification(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, contig_dict: dict, overlap):
@@ -1150,7 +1125,7 @@ def simp_path_compactification(graph: Graph, simp_node_dict: dict, simp_edge_dic
                 else:
                     if node_to_simp_node[no] != new_contig[-1]:
                         new_contig.append(node_to_simp_node[no])
-        print("cno: {0} from {1} to {2}".format(cno, list_to_string(contig), list_to_string(new_contig)))
+        # print("cno: {0} from {1} to {2}".format(cno, list_to_string(contig), list_to_string(new_contig)))
         contig_dict[cno] = [new_contig, path_len(graph, [simp_node_dict[no] for no in new_contig], overlap), ccov]
     
     return
@@ -1179,10 +1154,10 @@ def coincident_min_node(graph: Graph, simp_edge_dict: dict, cno1, contig1: list,
         return (None,None)
     elif len(intersect) == len(contig1) and len(intersect) == len(contig2):
         # total duplicated contig
-        print("duplicated")
+        # print("duplicated")
         return (cno2, cno1)
     elif len(intersect) == len(contig1):
-        print(min_ind_1, min_ind_2)
+        # print(min_ind_1, min_ind_2)
         # contig1 is covered by contig2
         if len(contig1) == 1:
             if contig1[0] in contig2[min_ind_2:min_ind_2+2]:
@@ -1192,7 +1167,7 @@ def coincident_min_node(graph: Graph, simp_edge_dict: dict, cno1, contig1: list,
                 return (cno1, cno2)
     elif len(intersect) == len(contig2):
         # contig2 is covered by contig1
-        print(min_ind_1, min_ind_2)
+        # print(min_ind_1, min_ind_2)
         if len(contig2) == 1:
             if contig2[0] in contig1[min_ind_1:min_ind_1+2]:
                 return (cno2, cno1)
@@ -1202,7 +1177,7 @@ def coincident_min_node(graph: Graph, simp_edge_dict: dict, cno1, contig1: list,
     return (None,None)
 
 def contig_dup_removed(graph: Graph, simp_edge_dict: dict, contig_dict: dict):
-    print("---------->Drop duplicated contig")
+    print("drop duplicated contigs..")
     dup_contig_ids = set()
     for cno in contig_dict.keys():
         contig, _, _ = contig_dict[cno]       
@@ -1212,12 +1187,147 @@ def contig_dup_removed(graph: Graph, simp_edge_dict: dict, contig_dict: dict):
                 # use set equality to avoid cyclic contig
                 (del_cno,keep_cno) = coincident_min_node(graph, simp_edge_dict, cno, contig, cno2, contig2)
                 if del_cno != None:
-                    print("coincident min edge, del covered contig: ", del_cno, contig_dict[del_cno][0], " from long contig: ", keep_cno, contig_dict[keep_cno][0])
+                    # print("coincident min edge, del covered contig: ", del_cno, contig_dict[del_cno][0], " from long contig: ", keep_cno, contig_dict[keep_cno][0])
                     dup_contig_ids.add(del_cno)
     for cno in dup_contig_ids:
         contig_dict.pop(cno)
-
+    print("done")
     return contig_dict
+
+def contig_dup_removed_s(contig_dict: dict):
+    print("drop duplicated contigs..")
+    dup_contig_ids = set()
+    for cno1 in contig_dict.keys():
+        contig1, _, _ = contig_dict[cno1]       
+        for cno2 in contig_dict.keys():
+            if cno1 not in dup_contig_ids and cno2 not in dup_contig_ids and cno1 != cno2:
+                contig2, _, _ = contig_dict[cno2]
+                # use set equality to avoid cyclic contig
+                intersect = set(contig1).intersection(set(contig2))
+                if len(intersect) == len(contig1) and len(intersect) == len(contig2):
+                    # duplicated
+                    # print("duplicated contig: ", cno1, contig1, cno2, contig2)
+                    dup_contig_ids.add(cno2)
+                elif len(intersect) == len(contig1):
+                    # contig1 is subcontig of contig2
+                    # print("covered contig: ", cno1, contig1, cno2, contig2)
+                    dup_contig_ids.add(cno1)
+                elif len(intersect) == len(contig2):
+                    # contig2 is subcontig of contig1
+                    # print("covered contig: ", cno1, contig1, cno2, contig2)
+                    dup_contig_ids.add(cno2)
+    for cno in dup_contig_ids:
+        contig_dict.pop(cno)
+    print("done")
+    return contig_dict
+
+def concat_overlap_contig(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, contig_dict: dict, overlap):
+    print("concat overlapped contig..")
+    overlaps = {}
+    for cno in contig_dict.keys():
+        overlaps[cno] = ([], None)
+    for cno in list(contig_dict.keys()):
+        for cno2 in list(contig_dict.keys()):
+            if cno == cno2:
+                continue
+            isParallel, intersects, status = check_contig_intersection(cno, contig_dict[cno][0], cno2, contig_dict[cno2][0])
+            if not isParallel:
+                if status == 'f':
+                    # forward e2e overlap
+                    if path_len(graph, overlaps[cno][0], overlap) < path_len(graph, [simp_node_dict[k] for k in intersects], overlap):
+                        overlaps[cno] = (intersects, cno2)
+                elif status == 'd':
+                    if cno not in [c for _, c in overlaps[cno2]]:
+                        if path_len(graph, overlaps[cno][0], overlap) < path_len(graph, [simp_node_dict[k] for k in intersects], overlap):
+                            overlaps[cno] = (intersects, cno2)
+    
+    # print(overlaps)
+    for cno in list(contig_dict.keys()):
+        if cno in overlaps and overlaps[cno][1] != None:
+            i, c = overlaps.pop(cno)
+            concat_plan = [(None, cno)]
+            while c != None:
+                concat_plan.append((i, c))
+                i, c = overlaps.pop(c)
+            concat_contig = []
+            cnos = ""
+            print("plan: ", concat_plan)
+            for ind, (intersect, ccno) in enumerate(concat_plan):
+                contig, _, _ = contig_dict.pop(ccno)
+                s = ccno + "c"
+                if ind != 0:
+                    contig = contig[len(intersect):]
+                    s = ccno
+                concat_contig.extend(contig)
+                cnos += s
+            print("concat e2e contig: ", cnos, "after concat: ", concat_contig)
+            contig_dict[cnos] = [concat_contig, path_len(graph, [simp_node_dict[k] for k in concat_contig], overlap), path_cov(graph, simp_node_dict, simp_edge_dict, concat_contig)]
+
+    return
+
+def check_contig_intersection(cno, contig, cno2, contig2):
+    """
+    check if contig1 and 2 are overlapped end-to-end or intersect as parallel
+    return true if two contigs are parallel, false if overlap end-to-end
+    direction:
+    'o': overlap
+    'f': forward
+    'b': backward
+    'd': double, both forward and backward
+    """
+    # intersection region is proper subset for both contig1 and contig2
+    # check intersection
+    intersect = set(contig).intersection(set(contig2))
+    # print("intersect check: {0} vs {1}, count: {2}".format(cno, cno2, len(intersect)))
+    if len(intersect) <= 0:
+        return False, intersect, 'n'
+
+    if len(intersect) == len(contig):
+        # print("{0} is covered by {1}".format(cno, cno2))
+        return True, intersect, 'o'
+
+    if len(intersect) == len(contig2):
+        # print("{0} is covered by {1}".format(cno2, cno))
+        return True, intersect, 'o'
+
+    intermediate_nodes_index = [False for _ in contig]
+    for i in [contig.index(e) for e in intersect]:
+        intermediate_nodes_index[i] = True
+    # print("cno: {0} intersect at: {1}".format(cno, list(enumerate(intermediate_nodes_index))))
+    if not intermediate_nodes_index[0] and not intermediate_nodes_index[-1]:
+        # print("intersection in the middle")
+        return True, intersect, 'o'
+    prev_false_index = intermediate_nodes_index.index(False)
+    for j in range(prev_false_index + 1, len(intermediate_nodes_index)):
+        if not intermediate_nodes_index[j]:
+            if prev_false_index + 1 == j:
+                prev_false_index = j
+            else:
+                # print("intersection in the middle")
+                return True, intersect, 'o'
+
+    intermediate_nodes_index2 = [False for _ in contig2]
+    for i in [contig2.index(e) for e in intersect]:
+        intermediate_nodes_index2[i] = True
+    # print("cno2: {0} intersect at: {1}".format(cno2, list(enumerate(intermediate_nodes_index2))))
+    if not intermediate_nodes_index2[0] and not intermediate_nodes_index2[-1]:
+        # print("intersection in the middle")
+        return True, intersect, 'o'
+    prev_false_index = intermediate_nodes_index2.index(False)
+    for j in range(prev_false_index + 1, len(intermediate_nodes_index2)):
+        if not intermediate_nodes_index2[j]:
+            if prev_false_index + 1 == j:
+                prev_false_index = j
+            else:
+                # print("intersection in the middle")
+                return True, intersect, 'o'
+    direction = None
+    if intermediate_nodes_index[0]:
+        direction = 'b'
+    if intermediate_nodes_index[-1]:
+        direction = 'f' if direction == None else 'd'
+    # print("overlap end-to-end")
+    return False, intersect, direction
 
 def path_len(graph: Graph, path, overlap):
     """
@@ -1327,7 +1437,7 @@ def graph_color_other_to_gray(graph: Graph, simp_node_dict: dict, ids: set):
         graph.vp.color[simp_node_dict[id]] = 'gray'
     return 
 
-def graph_add_vertex(graph: Graph, simp_node_dict: dict, id, dp, seq, kc, s="add vertex", color='black', printout=True):
+def graph_add_vertex(graph: Graph, simp_node_dict: dict, id, dp, seq, kc, s="add vertex", color='black', printout=False):
     node = graph.add_vertex()
     graph.vp.id[node] = id
     graph.vp.dp[node] = dp
@@ -1339,7 +1449,7 @@ def graph_add_vertex(graph: Graph, simp_node_dict: dict, id, dp, seq, kc, s="add
         print_vertex(graph, node, s)
     return node
 
-def graph_remove_vertex(graph, simp_node_dict: dict, id, s="remove vertex", color='gray', printout=True):
+def graph_remove_vertex(graph, simp_node_dict: dict, id, s="remove vertex", color='gray', printout=False):
     node = simp_node_dict[id]
     graph.vp.color[node] = color
     simp_node_dict.pop(id)
@@ -1347,7 +1457,7 @@ def graph_remove_vertex(graph, simp_node_dict: dict, id, s="remove vertex", colo
         print_vertex(graph, node, s)
     return node
 
-def graph_add_edge(graph: Graph, simp_edge_dict: dict, src, src_id, tgt, tgt_id, overlap, flow=0, s="add edge", color='black', printout=True):
+def graph_add_edge(graph: Graph, simp_edge_dict: dict, src, src_id, tgt, tgt_id, overlap, flow=0, s="add edge", color='black', printout=False):
     edge = graph.add_edge(src, tgt)
     graph.ep.overlap[edge] = overlap
     graph.ep.color[edge] = color
@@ -1357,7 +1467,7 @@ def graph_add_edge(graph: Graph, simp_edge_dict: dict, src, src_id, tgt, tgt_id,
         print_edge(graph, edge, s)
     return edge
 
-def graph_remove_edge(graph: Graph, simp_edge_dict: dict, src_id, tgt_id, s="remove edge", color='gray', printout=True):
+def graph_remove_edge(graph: Graph, simp_edge_dict: dict, src_id, tgt_id, s="remove edge", color='gray', printout=False):
     edge = simp_edge_dict.pop((src_id, tgt_id))
     graph.ep.color[edge] = color
     if printout:
@@ -1433,7 +1543,7 @@ def add_global_source_sink(graph: Graph, simp_node_dict: dict, simp_edge_dict: d
         graph.vp.dp[global_src] += graph.ep.flow[e]
         if store_dict:
             simp_edge_dict[(graph.vp.id[global_src], graph.vp.id[src])] = e
-    print("srcs:  ", list_to_string([graph.vp.id[src] for src in src_nodes]))
+    # print("srcs:  ", list_to_string([graph.vp.id[src] for src in src_nodes]))
 
     global_sink = graph.add_vertex()
     graph.vp.id[global_sink] = 'global_sink'
@@ -1449,7 +1559,7 @@ def add_global_source_sink(graph: Graph, simp_node_dict: dict, simp_edge_dict: d
         graph.vp.dp[global_sink] += graph.ep.flow[e]
         if store_dict:
             simp_edge_dict[(graph.vp.id[tgt], graph.vp.id[global_sink])] = e
-    print("sinks: ", list_to_string([graph.vp.id[tgt] for tgt in tgt_nodes]))
+    # print("sinks: ", list_to_string([graph.vp.id[tgt] for tgt in tgt_nodes]))
     return global_src, global_sink
 
 def remove_global_source_sink(graph: Graph, gs, gt):
@@ -1503,9 +1613,7 @@ def graph_is_DAG(graph: Graph, simp_node_dict: dict):
     for node in simp_node_dict.values():
         if not visited[node]:
             if isCyclicUtil(graph, node, visited, recStack):
-                print("graph is cyclic")
                 return False
-    print("graph is not cyclic")
     return True
 
 def reachable(graph: Graph, simp_node_dict: dict, src, tgt):

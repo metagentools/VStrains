@@ -26,6 +26,7 @@ def sep_ref(ref_file, id=0):
             ref_file_list.append(file_name)
             i = i + 1
         ref.close()
+    print("ref list: ", ref_file_list)
     return ref_file_list
 
 def quast_eval(c1=None, c2=None, c3=None, ref=None, o=None, id=0):
@@ -39,6 +40,7 @@ def quast_eval(c1=None, c2=None, c3=None, ref=None, o=None, id=0):
     for file in ref_file_list:
         command = command + file + ","
     command = command[:-1]
+    print(command)
     subprocess.check_call(command, shell=True)
 
     # clean up

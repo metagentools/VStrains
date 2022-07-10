@@ -13,13 +13,13 @@ author = "Runpeng Luo"
 def para_eval(config, t_rank):
     logging.info("Thread %s: starting reconstruction", t_rank)
 
-    name, gfa_addr, contig_addr, ref_addr, odir_addr, log_addr, mincov, minlen, maxlen, overlap = config
-    comm = "time python src/hap_construction.py -gfa {0} -c {1} -mincov {2} -minlen {3} -maxlen {4} -overlap {5} -ref {6} -o {7} > {8}".format(gfa_addr, contig_addr, mincov, minlen, maxlen, overlap, ref_addr, odir_addr, log_addr)
+    name, gfa_addr, contig_addr, ref_addr, odir_addr, log_addr, overlap = config
+    comm = "time python src/hap_construction.py -gfa {0} -c {1} -overlap {2} -ref {3} -o {4} > {5}".format(gfa_addr, contig_addr, overlap, ref_addr, odir_addr, log_addr)
     subprocess.check_call(comm, shell=True)
 
     logging.info("Thread %s: finishing reconstruction, start quast evaluation", t_rank)
 
-    quast_eval("{0}cand_strains.fasta".format(odir_addr), ref_addr, "quast_{0}/".format(name), t_rank)
+    quast_eval("{0}strain.fasta".format(odir_addr), ref_addr, "quast_{0}/".format(name), t_rank)
 
     logging.info("Thread %s: finishing quast evaluation", t_rank)
 
@@ -44,13 +44,10 @@ if __name__ == "__main__":
             ref_addr = config_file.readline()[:-1]
             odir_addr = config_file.readline()[:-1]
             log_addr = config_file.readline()[:-1]
-            mincov = config_file.readline()[:-1]
-            minlen = config_file.readline()[:-1]
-            maxlen = config_file.readline()[:-1]
             overlap = config_file.readline()[:-1]
             config_file.readline()
 
-            configs.append((name, gfa_addr, contig_addr, ref_addr, odir_addr, log_addr, mincov, minlen, maxlen, overlap))
+            configs.append((name, gfa_addr, contig_addr, ref_addr, odir_addr, log_addr, overlap))
         config_file.close()
 
     format = "%(asctime)s: %(message)s"

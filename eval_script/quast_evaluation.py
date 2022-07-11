@@ -2,7 +2,9 @@
 import subprocess
 import argparse
 
-usage = "separate ref"
+usage = "Use meta-Quast to evaluate assembly result"
+Author = "Runpeng Luo"
+
 def sep_ref(ref_file, id=0):
     ref_file_list = []
     i = 0
@@ -48,7 +50,7 @@ def quast_eval(c1=None, c2=None, c3=None, ref=None, o=None, id=0):
     return
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(prog='quast_query.py', description=usage)
+    parser = argparse.ArgumentParser(prog='quast_evaluation.py', description=usage)
     parser.add_argument('-c1', '--contig_file1', dest='contig_file1', type=str, required=True, help='contig file 01')
     parser.add_argument('-c2', '--contig_file2', dest='contig_file2', type=str, required=True, help='contig file 02')
     parser.add_argument('-c3', '--contig_file3', dest='contig_file3', type=str, required=True, help='contig file 02')

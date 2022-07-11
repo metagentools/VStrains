@@ -29,9 +29,9 @@ def main():
     start = time.time()
     parser = argparse.ArgumentParser(prog='hap_construction.py', description=usage)
     parser.add_argument('-gfa', '--gfa_file', dest='gfa_file', type=str, required=True, help='assembly graph, .gfa format')
-    parser.add_argument('-c', '--contig', dest='contig_file', type=str, required=True, help='contig file from SPAdes, .paths format')
-    parser.add_argument('-mincov' '--minimum_coverage', dest='min_cov', type=int, help=("minimum coverage for strains (optional)"))
-    parser.add_argument('-overlap', '--kmer_overlap', dest='overlap', default=127, type=int, help=("assembly graph k-mer size"))
+    parser.add_argument('-c', '--contig', dest='contig_file', type=str, help='contig file from SPAdes, .paths format')
+    parser.add_argument('-mincov' '--minimum_coverage', dest='min_cov', type=int, help=("minimum strain coverage (optional)"))
+    parser.add_argument('-minlen' '--minimum_contig_length', dest='min_len', default=250, type=int, help=("minimum initial contig length for strains (default 250)"))
     parser.add_argument('-ref', "--reference_fa", dest='ref_file', type=str, help='reference strain, fasta format, DEBUG_MODE only')
     parser.add_argument('-o', '--output_dir', dest='output_dir', default='acc/', type=str, help='output directory (default: acc/)')
     args = parser.parse_args()
@@ -41,10 +41,9 @@ def main():
     subprocess.check_call("rm -rf {0}; mkdir {0}; mkdir {0}/gfa/; mkdir {0}/tmp/; mkdir {0}/paf/".format(TEMP_DIR), shell=True)
 
     print("----------------------------------INPUT---------------------------------------")
-    graph, simp_node_dict, simp_edge_dict = gfa_to_graph(args.gfa_file, args.overlap)
-    contig_dict = get_contig(args.contig_file, simp_node_dict, simp_edge_dict, 250)
-    
+    graph, simp_node_dict, simp_edge_dict = gfa_to_graph(args.gfa_file)
     graph_to_gfa(graph, simp_node_dict, simp_edge_dict, "{0}/gfa/graph_L0.gfa".format(TEMP_DIR))
+    contig_dict = get_contig(args.contig_file, simp_node_dict, simp_edge_dict, args.min_len)
     graph0, simp_node_dict0, simp_edge_dict0 = flipped_gfa_to_graph("{0}/gfa/graph_L0.gfa".format(TEMP_DIR))
 
     print("----------------------------------TIP REMOVAL---------------------------------------")
@@ -52,9 +51,9 @@ def main():
         print("Graph is Cyclic, tip removal start..")
         tip_removed = False
         while not tip_removed:
-            tip_removed = tip_removal(graph0, simp_node_dict0, args.overlap)
+            tip_removed = tip_removal(graph0, simp_node_dict0)
         print("done")
-        contig_dict_fix(graph0, simp_node_dict0, contig_dict, args.overlap)
+        contig_dict_fix(graph0, simp_node_dict0, contig_dict)
     else:
         print("Graph is DAG, tip removal skipped.")
     graph_to_gfa(graph0, simp_node_dict0, simp_edge_dict0, "{0}/gfa/t_graph_L1.gfa".format(TEMP_DIR))
@@ -87,7 +86,7 @@ def main():
     
     # stat evaluation
     contig_dict_to_path(contig_dict, "{0}/tmp/pre_contigs.paths".format(TEMP_DIR))
-    contig_dict_to_fasta(graph3, simp_node_dict3, contig_dict, args.overlap, "{0}/tmp/pre_contigs.fasta".format(TEMP_DIR))
+    contig_dict_to_fasta(graph3, simp_node_dict3, contig_dict, "{0}/tmp/pre_contigs.fasta".format(TEMP_DIR))
     if args.ref_file:
         map_ref_to_graph(args.ref_file, simp_node_dict3, "{0}/gfa/cst_graph_L3.gfa".format(TEMP_DIR), False, "{0}/paf/node_to_ref.paf".format(TEMP_DIR), 
             "{0}tmp/temp_gfa_to_fasta_pre.fasta".format(TEMP_DIR))
@@ -114,21 +113,21 @@ def main():
         assign_edge_flow(graphb, simp_node_dictb, simp_edge_dictb)
 
         # fix trivial splitted contig
-        contig_dict_remapping(graphb, simp_node_dictb, simp_edge_dictb, contig_dict, id_mapping, prev_ids, args.overlap)
+        contig_dict_remapping(graphb, simp_node_dictb, simp_edge_dictb, contig_dict, id_mapping, prev_ids)
         # non-trivial branch split
-        num_split = graph_splitting(graphb, simp_node_dictb, simp_edge_dictb, contig_dict, b0, b1, THRESHOLD, args.overlap)
+        num_split = graph_splitting(graphb, simp_node_dictb, simp_edge_dictb, contig_dict, b0, b1, THRESHOLD)
     
         graph_to_gfa(graphb, simp_node_dictb, simp_edge_dictb, "{0}/gfa/split_graph_L{1}2.gfa".format(TEMP_DIR, iterCount))
         graphc, simp_node_dictc, simp_edge_dictc = flipped_gfa_to_graph("{0}/gfa/split_graph_L{1}2.gfa".format(TEMP_DIR, iterCount))
 
-        simp_path_compactification(graphc, simp_node_dictc, simp_edge_dictc, contig_dict, args.overlap)
+        simp_path_compactification(graphc, simp_node_dictc, simp_edge_dictc, contig_dict)
 
         graph_to_gfa(graphc, simp_node_dictc, simp_edge_dictc, "{0}/gfa/split_graph_L{1}3.gfa".format(TEMP_DIR, iterCount))
         grapha, simp_node_dicta, simp_edge_dicta = flipped_gfa_to_graph("{0}/gfa/split_graph_L{1}3.gfa".format(TEMP_DIR, iterCount))
         assign_edge_flow(grapha, simp_node_dicta, simp_edge_dicta)
 
         contig_dup_removed(grapha, simp_edge_dicta, contig_dict)
-        trim_contig_dict(grapha, simp_node_dicta, contig_dict, args.overlap)
+        trim_contig_dict(grapha, simp_node_dicta, contig_dict)
         contig_cov_fix(grapha, simp_node_dicta, simp_edge_dicta, contig_dict)
 
         if num_split != 0 or trivial_split_count != 0:
@@ -140,7 +139,7 @@ def main():
             graph_to_gfa(grapha, simp_node_dicta, simp_edge_dicta, "{0}/gfa/rbsdt_graph_L5.gfa".format(TEMP_DIR))
             graph5, simp_node_dict5, simp_edge_dict5 = flipped_gfa_to_graph("{0}/gfa/rbsdt_graph_L5.gfa".format(TEMP_DIR))
             assign_edge_flow(graph5, simp_node_dict5, simp_edge_dict5)
-            concat_overlap_contig(graph5, simp_node_dict5, simp_edge_dict5, contig_dict, args.overlap)
+            concat_overlap_contig(graph5, simp_node_dict5, simp_edge_dict5, contig_dict)
             contig_dup_removed_s(contig_dict)
             contig_cov_fix(graph5, simp_node_dict5, simp_edge_dict5, contig_dict)
             break
@@ -148,7 +147,7 @@ def main():
 
     # stat evaluation
     contig_dict_to_path(contig_dict, "{0}/tmp/post_contigs.paths".format(TEMP_DIR))
-    contig_dict_to_fasta(graph5, simp_node_dict5, contig_dict, args.overlap, "{0}/tmp/post_contigs.fasta".format(TEMP_DIR))
+    contig_dict_to_fasta(graph5, simp_node_dict5, contig_dict, "{0}/tmp/post_contigs.fasta".format(TEMP_DIR))
     if args.ref_file:
         map_ref_to_graph(args.ref_file, simp_node_dict5, "{0}/gfa/rbsdt_graph_L5.gfa".format(TEMP_DIR), False, "{0}/paf/node_to_ref_red.paf".format(TEMP_DIR), 
             "{0}/tmp/temp_gfa_to_fasta.fasta".format(TEMP_DIR))
@@ -157,13 +156,13 @@ def main():
     # end stat
 
     print("-----------------------CONTIG PATH EXTENSION-------------------------------")
-    strain_dict = extract_cand_path(graph5, simp_node_dict5, simp_edge_dict5, contig_dict, args.overlap, b0, b1, THRESHOLD)
+    strain_dict = extract_cand_path(graph5, simp_node_dict5, simp_edge_dict5, contig_dict, b0, b1, THRESHOLD)
     
     print("-----------------------FINAL CLEAN UP-------------------------------")
     contig_dup_removed_s(strain_dict)  
-    trim_contig_dict(graph5, simp_node_dict5, strain_dict, args.overlap)  
-    contig_dict_to_fasta(graph5, simp_node_dict5, strain_dict, args.overlap, "{0}strain.fasta".format(TEMP_DIR))
-    contig_dict_to_path(strain_dict, "{0}strain.paths".format(TEMP_DIR))
+    trim_contig_dict(graph5, simp_node_dict5, strain_dict)  
+    contig_dict_to_fasta(graph5, simp_node_dict5, strain_dict, "{0}strain.fasta".format(TEMP_DIR))
+    contig_dict_to_path(strain_dict, "{0}strain.paths".format(TEMP_DIR), True)
     if args.ref_file:
         minimap_api(args.ref_file, "{0}strain.fasta".format(TEMP_DIR), "{0}/paf/strain_to_ref.paf".format(TEMP_DIR))
     
@@ -178,17 +177,18 @@ def delta_estimation(graph: Graph, cutoff_size=200):
     print("Start delta estimation")
     xs = []
     ys = []
+    sample_size = 0
     for node in graph.vertices():
         if (sum([x.out_degree() for x in node.in_neighbors()]) == node.in_degree() 
             and sum([y.in_degree() for y in node.out_neighbors()]) == node.out_degree()):
+            sample_size += 1 if node.in_degree() > 1 else sample_size
             lv = sum([graph.vp.dp[n] for n in node.in_neighbors()])
             rv = sum([graph.vp.dp[n] for n in node.out_neighbors()])
             m = graph.vp.dp[node]
             xs.extend([lv, rv])
             ys.extend([m, m])
-    sample_size = len(xs)//2
     print("sample size: ", sample_size)
-    if sample_size <= cutoff_size:
+    if sample_size < cutoff_size:
         b0 = 32.23620072586657
         b1 = 0.009936800927088535
         print("use default delta estimation function: Delta = |", b0, "+", b1, "* Coverage |")
@@ -346,7 +346,7 @@ def node_partition(graph: Graph, simp_node_dict: dict):
     print("done")
     return noncyc_nodes, simple_paths
 
-def tip_removal(graph: Graph, simp_node_dict: dict, overlap, accept_rate = 0.99):
+def tip_removal(graph: Graph, simp_node_dict: dict, accept_rate = 0.99):
     """
     retrieve all the source/tail simple path, and merge them into adjacent neighbor path if possible
     
@@ -370,7 +370,7 @@ def tip_removal(graph: Graph, simp_node_dict: dict, overlap, accept_rate = 0.99)
         print(path_to_id_string(graph, to_path, "Tip Node {0} collapsed to path".format(graph.vp.id[from_node])))
         return
 
-    def cand_collapse_path(graph: Graph, from_node, to_paths, temp_dir, overlap):
+    def cand_collapse_path(graph: Graph, from_node, to_paths, temp_dir):
         """
         use minimap2 -c to evaluation the node-path similarity, sort based on matching score in DESC order
         
@@ -389,7 +389,7 @@ def tip_removal(graph: Graph, simp_node_dict: dict, overlap, accept_rate = 0.99)
         with open(ref_loc, 'w') as ref_file:
             for id, path in id_path_dict.items():
                 name = ">" + str(id) + "\n"
-                seq = path_to_seq(graph, path, id, overlap) + "\n"
+                seq = path_to_seq(graph, path, id) + "\n"
                 ref_file.write(name)
                 ref_file.write(seq)
             ref_file.close()
@@ -397,7 +397,7 @@ def tip_removal(graph: Graph, simp_node_dict: dict, overlap, accept_rate = 0.99)
         # save from node info to query.fa
         with open(query_loc, 'w') as query_file:
             name = ">" + graph.vp.id[from_node] + "\n"
-            seq = path_to_seq(graph, [from_node], name, overlap) + "\n"
+            seq = path_to_seq(graph, [from_node], name) + "\n"
             query_file.write(name)
             query_file.write(seq)
             query_file.close()
@@ -454,7 +454,7 @@ def tip_removal(graph: Graph, simp_node_dict: dict, overlap, accept_rate = 0.99)
     src_nodes = sorted(src_nodes, key=lambda x: graph.vp.dp[x])
     for src in src_nodes:
         # print("--------------------------src: {0} --------------".format(graph.vp.id[src]))
-        src_len = path_len(graph, [src], overlap)
+        src_len = path_len(graph, [src])
         potential_paths = []
         # path retrieve
         for out_branch in src.out_neighbors():
@@ -469,8 +469,8 @@ def tip_removal(graph: Graph, simp_node_dict: dict, overlap, accept_rate = 0.99)
                     # collapsed path in previous iteration
                     continue
                 # print("current in tgt: ", graph.vp.id[in_tgt])
-                potential_paths.extend(paths_to_tgt(graph, simp_node_dict, src, in_tgt, overlap, src_len))
-        cand_path = cand_collapse_path(graph, src, potential_paths, TEMP_DIR, overlap)
+                potential_paths.extend(paths_to_tgt(graph, simp_node_dict, src, in_tgt, src_len))
+        cand_path = cand_collapse_path(graph, src, potential_paths, TEMP_DIR)
         if cand_path != None:
             remove_tip(graph, simp_node_dict, src, cand_path)
             is_removed = False
@@ -481,7 +481,7 @@ def tip_removal(graph: Graph, simp_node_dict: dict, overlap, accept_rate = 0.99)
     tgt_nodes = sorted(tgt_nodes, key=lambda x: graph.vp.dp[x])
     for tgt in tgt_nodes:
         print("--------------------------tgt: {0} --------------".format(graph.vp.id[tgt]))
-        tgt_len = path_len(graph, [tgt], overlap)
+        tgt_len = path_len(graph, [tgt])
         potential_paths = []
         # path retrieve
         for in_branch in tgt.in_neighbors():
@@ -496,8 +496,8 @@ def tip_removal(graph: Graph, simp_node_dict: dict, overlap, accept_rate = 0.99)
                     # collapsed path in previous iteration
                     continue
                 # print("current out src: ", graph.vp.id[out_src])
-                potential_paths.extend(paths_from_src(graph, simp_node_dict, tgt, out_src, overlap, tgt_len))
-        cand_path = cand_collapse_path(graph, tgt, potential_paths, TEMP_DIR, overlap)
+                potential_paths.extend(paths_from_src(graph, simp_node_dict, tgt, out_src, tgt_len))
+        cand_path = cand_collapse_path(graph, tgt, potential_paths, TEMP_DIR)
         if cand_path != None:
             remove_tip(graph, simp_node_dict, tgt, cand_path)
             is_removed = False
@@ -654,7 +654,7 @@ def coverage_rebalance(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict,
 
     return prev_dp_dict, curr_dp_dict, node_ratio_dict, ratio_div
 
-def extract_cand_path(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, contig_dict: dict, overlap, b0, b1, threshold, strain_prefix='A', min_clen=600):
+def extract_cand_path(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, contig_dict: dict, b0, b1, threshold, strain_prefix='A', min_clen=600):
     def dict_to_hist(graph: Graph, contig_dict: dict):
         print("contig histogram generating..")
         contig_hist = {}
@@ -666,8 +666,8 @@ def extract_cand_path(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, 
             min_vset = set()
             for e in graph.edges():
                 if graph.ep.flow[e] >= lb and graph.ep.flow[e] <= ub:
-                    if (reachable(graph, simp_node_dict, e.target(), simp_node_dict[contig[0]]) or
-                        reachable(graph, simp_node_dict, simp_node_dict[contig[-1]], e.source())):
+                    # if (reachable(graph, simp_node_dict, e.target(), simp_node_dict[contig[0]]) or
+                    #     reachable(graph, simp_node_dict, simp_node_dict[contig[-1]], e.source())):
                         min_eset[(graph.vp.id[e.source()], graph.vp.id[e.target()])] = e
                         min_vset.add(e.source())
                         min_vset.add(e.target())
@@ -725,7 +725,7 @@ def extract_cand_path(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, 
             return "P2"
         return None
     global TEMP_DIR
-    global_src, global_sink = add_global_source_sink(graph, simp_node_dict, simp_edge_dict, overlap, True)
+    global_src, global_sink = add_global_source_sink(graph, simp_node_dict, simp_edge_dict, True)
     strain_dict = {}
     contig_hist = dict_to_hist(graph, contig_dict)
     is_dag = graph_is_DAG(graph, simp_node_dict)
@@ -811,7 +811,7 @@ def extract_cand_path(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, 
             s = eval_score(flow, ccov, delta)
             score.append(s)
         ccov = path_cov(graph, simp_node_dict, simp_edge_dict, [graph.vp.id[n] for n in strain])
-        plen = path_len(graph, strain, overlap)
+        plen = path_len(graph, strain)
         print(path_to_id_string(graph, strain, "strain, len: {0}, ccov: {1}".format(plen, ccov)))
         print("related edges score: ", score)
         graph_reduction_c(graph, strain, usage_dict, ccov)

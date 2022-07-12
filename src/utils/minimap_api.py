@@ -1,4 +1,4 @@
-from graph_converter import graph_to_gfa, map_ref_to_graph, gfa_to_graph
+from utilities import graph_to_gfa, map_ref_to_graph, gfa_to_graph
 import argparse
 
 if __name__ == "__main__":

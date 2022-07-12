@@ -7,9 +7,9 @@ from graph_tool.search import dfs_iterator
 from graph_tool.topology import is_DAG, topological_sort, all_circuits
 from graph_tool.draw import graph_draw
 
-from graph_converter import *
+from utils.ns_Utilities import *
 from search_algos import *
-from legacy import *
+from tmp.legacy import *
 """
 This file is used to store out of date scripts to keep a record for further usage needed.
 """

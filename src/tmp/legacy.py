@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-from graph_converter import *
-from search_algos import *
+from utils.ns_Utilities import *
 from graph_tool import Graph
 import heapq
 from collections import deque

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 from utils.ns_Preprocess import delta_estimation, graph_simplification, tip_removal_s
-from utils.ns_CovBalance import coverage_rebalance_s, expectation_edge_flow
+from utils.ns_CovBalance import assign_edge_flow, coverage_rebalance_s
 from utils.ns_Path import extract_cand_path
 from utils.ns_Split import iterated_graph_split
 from utils.ns_IO import (
@@ -43,11 +43,11 @@ def run(args):
     graph_to_gfa(graph1, simp_node_dict1, simp_edge_dict1, "{0}/gfa/st_graph_L2.gfa".format(TEMP_DIR))
     graph2, simp_node_dict2, simp_edge_dict2 = flipped_gfa_to_graph("{0}/gfa/st_graph_L2.gfa".format(TEMP_DIR))
 
-    coverage_rebalance_s(graph2, simp_node_dict2, simp_edge_dict2, contig_dict, TEMP_DIR, True)
+    coverage_rebalance_s(graph2, simp_node_dict2, simp_edge_dict2, TEMP_DIR, True)
 
     graph_to_gfa(graph2, simp_node_dict2, simp_edge_dict2, "{0}/gfa/cst_graph_L3.gfa".format(TEMP_DIR))
     graph3, simp_node_dict3, simp_edge_dict3 = flipped_gfa_to_graph("{0}/gfa/cst_graph_L3.gfa".format(TEMP_DIR))
-    expectation_edge_flow(graph3, simp_node_dict3, simp_edge_dict3)
+    assign_edge_flow(graph3, simp_node_dict3, simp_edge_dict3)
     
     print("-------------------------------CONTIG COVERAGE REBALANCE-----------------------------------")
     contig_cov_fix(graph3, simp_node_dict3, simp_edge_dict3, contig_dict)

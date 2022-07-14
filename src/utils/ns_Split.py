@@ -13,7 +13,7 @@ import pandas
 import numpy
 
 from utils.ns_Utilities import *
-from utils.ns_CovBalance import coverage_rebalance_s, expectation_edge_flow
+from utils.ns_CovBalance import assign_edge_flow, coverage_rebalance_s
 from utils.ns_IO import graph_to_gfa, flipped_gfa_to_graph
 
 
@@ -33,7 +33,7 @@ def iterated_graph_split(graph: Graph, simp_node_dict: dict, simp_edge_dict: dic
 
         graph_to_gfa(grapha, simp_node_dicta, simp_edge_dicta, "{0}/gfa/split_graph_L{1}1.gfa".format(tempdir, iterCount))
         graphb, simp_node_dictb, simp_edge_dictb = flipped_gfa_to_graph("{0}/gfa/split_graph_L{1}1.gfa".format(tempdir, iterCount))
-        expectation_edge_flow(graphb, simp_node_dictb, simp_edge_dictb)
+        assign_edge_flow(graphb, simp_node_dictb, simp_edge_dictb)
 
         # fix trivial splitted contig
         contig_dict_remapping(graphb, simp_node_dictb, simp_edge_dictb, contig_dict, id_mapping, prev_ids)
@@ -46,7 +46,7 @@ def iterated_graph_split(graph: Graph, simp_node_dict: dict, simp_edge_dict: dic
 
         graph_to_gfa(graphc, simp_node_dictc, simp_edge_dictc, "{0}/gfa/split_graph_L{1}3.gfa".format(tempdir, iterCount))
         grapha, simp_node_dicta, simp_edge_dicta = flipped_gfa_to_graph("{0}/gfa/split_graph_L{1}3.gfa".format(tempdir, iterCount))
-        expectation_edge_flow(grapha, simp_node_dicta, simp_edge_dicta)
+        assign_edge_flow(grapha, simp_node_dicta, simp_edge_dicta)
 
         contig_dup_removed(grapha, simp_edge_dicta, contig_dict)
         trim_contig_dict(grapha, simp_node_dicta, contig_dict)
@@ -57,10 +57,10 @@ def iterated_graph_split(graph: Graph, simp_node_dict: dict, simp_edge_dict: dic
             total_removed_branch_t += trivial_split_count
             iterCount = chr(ord(iterCount) + 1)
         else:
-            coverage_rebalance_s(grapha, simp_node_dicta, simp_edge_dicta, contig_dict, tempdir, True)
+            coverage_rebalance_s(grapha, simp_node_dicta, simp_edge_dicta, tempdir, True)
             graph_to_gfa(grapha, simp_node_dicta, simp_edge_dicta, "{0}/gfa/rbsdt_graph_L5.gfa".format(tempdir))
             grapho, simp_node_dicto, simp_edge_dicto = flipped_gfa_to_graph("{0}/gfa/rbsdt_graph_L5.gfa".format(tempdir))
-            expectation_edge_flow(grapho, simp_node_dicto, simp_edge_dicto)
+            assign_edge_flow(grapho, simp_node_dicto, simp_edge_dicto)
             # concat_overlap_contig(grapho, simp_node_dicto, simp_edge_dicto, contig_dict)
             contig_dup_removed_s(contig_dict)
             contig_cov_fix(grapho, simp_node_dicto, simp_edge_dicto, contig_dict)

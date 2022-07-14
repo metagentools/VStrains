@@ -1,10 +1,36 @@
 ## The project is aiming to construct full-length haplotype from metagenomic environment, using pair-end reads
 
+### Installation ###
+tool requires a 64-bit Linux system or Mac OS and python (supported versions are python3: 3.2 and higher), 
 
-alternative plan
-Thus the equation is: Coverage_2 = | 32.23620072586657 + 0.009936800927088535 * Coverage |
+#### Option 1 (**recommended**) ####
+Install [(mini)conda](https://conda.io/miniconda.html) as a light-weighted package management tool. Run following commands to initialize&setup the conda environment for tool
+```bash
+# add channels
+conda config --add channels defaults
+conda config --add channels bioconda
+conda config --add channels conda-forge
 
-conda activate spades-hapConstruction-env
+# create conda environment
+conda create --name env_name
+
+# activate conda environment
+conda activate env_name
+
+conda install -c bioconda -c conda-forge python=3 graph-tool minimap2 numpy pandas scikit-learn
+```
+#### Option 2 ####
+Manually install dependencies: 
+- [minimap2](https://github.com/lh3/minimap2)  
+
+And python modules:
+- [graph-tool](https://graph-tool.skewed.de)
+- [numpy](https://numpy.org)
+- [scikit-learn](https://scikit-learn.org/stable/install.html)
+- [pandas](https://pandas.pydata.org/docs/getting_started/install.html)
+
+### Running tools ###
+Tools natively support output from SPAdes, 
 
 what contig can help us?
 contig can help us to find correct direction when meeting a non-trivial branch
@@ -18,32 +44,8 @@ when do graph split, we split two type of branches
    1. when we split the trivial branch, the splitted contig may also lead to *multiple mappings*, how to select the correct contig? 
 2. non-trivial branch (node with in degree > 1 and out degree > 1)
    1. we can use splitter contig to help us split the branch.
+   2. provide more P1 contig, guide the path finding
 
-bubble swap part:
-1. when linear programming to solve the branch assignment, alpha value
-   setting may lead to infeasible answer, since overbound.
-2. alternative way: use additional percentage instead of threshold
-
-
-
--->5HIV
-time python src/hap_construction.py -gfa benchmark/fastq/5-strain-HIV-20000x/output/assembly_graph_after_simplification.gfa -c benchmark/fastq/5-strain-HIV-20000x/output/contigs.paths -overlap 127 -ref benchmark/strains/5-strain-HIV.fasta -o acc_5_hiv/ > 5hiv.log
-
-python eval_script/quast_evaluation.py -c1 benchmark/fastq/5-strain-HIV-20000x/output/contigs.fasta -c2 acc_5_hiv/final_contigs.fasta -c3 acc_5_hiv/final_contigs.fasta -ref benchmark/strains/5-strain-HIV.fasta -o quast5hiv/
-
--->6POLIO
-time python src/hap_construction.py -gfa benchmark/fastq/6-strain-poliovirus/output/assembly_graph_after_simplification.gfa -c benchmark/fastq/6-strain-poliovirus/output/contigs.paths -overlap 127 -ref benchmark/strains/6-strain-polio.fasta -o acc_6_polio/ > 6polio.log
-
-python eval_script/quast_evaluation.py -c1 benchmark/fastq/6-strain-poliovirus/output/contigs.fasta -c2 ../vg-flow/vgflow6polioResult/haps.final.fasta -c3 acc_6_polio/final_contigs.fasta -ref benchmark/strains/6-strain-polio.fasta -o quast6polio/
-
---> 15ZIKV
-time python src/hap_construction.py -gfa benchmark/fastq/15-strain-ZIKV-20000x/output/assembly_graph_after_simplification.gfa -c benchmark/fastq/15-strain-ZIKV-20000x/output/contigs.paths -overlap 127 -ref benchmark/strains/15-strain-ZIKV.fasta -o acc_15_zikv/ > 15zikv.log
-
-time python src/hap_construction.py -gfa ../savage-benchmarks/fastq/15-strain-ZIKV-20000x/output_careful/assembly_graph_after_simplification.gfa -c ../savage-benchmarks/fastq/15-strain-ZIKV-20000x/output_careful/contigs.paths -overlap 127 -ref benchmark/strains/15-strain-ZIKV.fasta -o acc_15_zikv_careful/ > 15zikv_careful.log
-
-python eval_script/quast_evaluation.py -c1 benchmark/fastq/15-strain-ZIKV-20000x/output/contigs.fasta -c2 ../vg-flow/vgflow15o/haps.final.fasta -c3 acc_15_zikv/final_contigs.fasta -ref benchmark/strains/15-strain-ZIKV.fasta -o quast15zikv/
-
-python eval_script/quast_evaluation.py -c1 ../savage-benchmarks/fastq/15-strain-ZIKV-20000x/output_careful/contigs.fasta -c2 ../vg-flow/vgflow15o/haps.final.fasta -c3 acc_15_zikv_careful/final_contigs.fasta -ref benchmark/strains/15-strain-ZIKV.fasta -o quast15zikv
     """
     --------------------------------------------OVERALL FLOW----------------------------------------
     Input: Graph, contig
@@ -134,16 +136,6 @@ level 0 graph: full-length spades contig reduced graph
 level 1 graph: with concatenated candidate strain be reduced
 ...
 
-
-TODO: after delete the concated contig, we need to ensure the existence of the rest of the contigs by aligning the path.
-
-TODO: 
-1. best recover the contig, when shared-contig node be deleted from specific node, recover it back with original dp.
-2. get all the contig from spades with particular constraint.
-
-TODO: what do we do about a satisfied length contig with nodes less than mincov existence for the contig
-
-# graph_draw(graph, vprops={'text': graph.vp.id}, eprops={'text': graph.ep.flow}, output="graph.pdf", output_size=(2000,2000))
 
 Methods & Procedure
 

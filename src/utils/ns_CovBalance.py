@@ -51,6 +51,8 @@ def coverage_rebalance_s(graph: Graph, simp_node_dict: dict, simp_edge_dict: dic
             graph.vp.dp[cnode] = merge_dp   
     else:
         print("no linear subgraph available..")
+    print("done")
+    return
 
 curr_path = []
 def node_partition(graph: Graph, simp_node_dict: dict, tempdir):

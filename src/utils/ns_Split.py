@@ -13,7 +13,7 @@ import pandas
 import numpy
 
 from utils.ns_Utilities import *
-from utils.ns_CovBalance import coverage_rebalance_s, assign_edge_flow
+from utils.ns_CovBalance import coverage_rebalance_s, expectation_edge_flow
 from utils.ns_IO import graph_to_gfa, flipped_gfa_to_graph
 
 
@@ -33,13 +33,12 @@ def iterated_graph_split(graph: Graph, simp_node_dict: dict, simp_edge_dict: dic
 
         graph_to_gfa(grapha, simp_node_dicta, simp_edge_dicta, "{0}/gfa/split_graph_L{1}1.gfa".format(tempdir, iterCount))
         graphb, simp_node_dictb, simp_edge_dictb = flipped_gfa_to_graph("{0}/gfa/split_graph_L{1}1.gfa".format(tempdir, iterCount))
-        assign_edge_flow(graphb, simp_node_dictb, simp_edge_dictb)
+        expectation_edge_flow(graphb, simp_node_dictb, simp_edge_dictb)
 
         # fix trivial splitted contig
         contig_dict_remapping(graphb, simp_node_dictb, simp_edge_dictb, contig_dict, id_mapping, prev_ids)
         # non-trivial branch split
         num_split = graph_splitting(graphb, simp_node_dictb, simp_edge_dictb, contig_dict, b0, b1, threshold)
-    
         graph_to_gfa(graphb, simp_node_dictb, simp_edge_dictb, "{0}/gfa/split_graph_L{1}2.gfa".format(tempdir, iterCount))
         graphc, simp_node_dictc, simp_edge_dictc = flipped_gfa_to_graph("{0}/gfa/split_graph_L{1}2.gfa".format(tempdir, iterCount))
 
@@ -47,7 +46,7 @@ def iterated_graph_split(graph: Graph, simp_node_dict: dict, simp_edge_dict: dic
 
         graph_to_gfa(graphc, simp_node_dictc, simp_edge_dictc, "{0}/gfa/split_graph_L{1}3.gfa".format(tempdir, iterCount))
         grapha, simp_node_dicta, simp_edge_dicta = flipped_gfa_to_graph("{0}/gfa/split_graph_L{1}3.gfa".format(tempdir, iterCount))
-        assign_edge_flow(grapha, simp_node_dicta, simp_edge_dicta)
+        expectation_edge_flow(grapha, simp_node_dicta, simp_edge_dicta)
 
         contig_dup_removed(grapha, simp_edge_dicta, contig_dict)
         trim_contig_dict(grapha, simp_node_dicta, contig_dict)
@@ -58,11 +57,11 @@ def iterated_graph_split(graph: Graph, simp_node_dict: dict, simp_edge_dict: dic
             total_removed_branch_t += trivial_split_count
             iterCount = chr(ord(iterCount) + 1)
         else:
-            coverage_rebalance_s(grapha, simp_node_dicta, simp_edge_dicta, tempdir, True)
+            coverage_rebalance_s(grapha, simp_node_dicta, simp_edge_dicta, contig_dict, tempdir, True)
             graph_to_gfa(grapha, simp_node_dicta, simp_edge_dicta, "{0}/gfa/rbsdt_graph_L5.gfa".format(tempdir))
             grapho, simp_node_dicto, simp_edge_dicto = flipped_gfa_to_graph("{0}/gfa/rbsdt_graph_L5.gfa".format(tempdir))
-            assign_edge_flow(grapho, simp_node_dicto, simp_edge_dicto)
-            concat_overlap_contig(grapho, simp_node_dicto, simp_edge_dicto, contig_dict)
+            expectation_edge_flow(grapho, simp_node_dicto, simp_edge_dicto)
+            # concat_overlap_contig(grapho, simp_node_dicto, simp_edge_dicto, contig_dict)
             contig_dup_removed_s(contig_dict)
             contig_cov_fix(grapho, simp_node_dicto, simp_edge_dicto, contig_dict)
             break
@@ -281,14 +280,6 @@ def graph_splitting(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, co
                             else:
                                 print("contig error, previous node {0} is not in contig or multiple occurance in contig {1}, potential bug".format(no, icno))
     
-    # remove all the isolated low cov node&edge
-    for node in list(graph.vertices()):
-        alle = [e for e in node.all_edges() if graph.ep.color[e] == 'black']
-        if graph.vp.dp[node] < threshold:
-            graph_remove_vertex(graph, simp_node_dict, graph.vp.id[node], "remove isolated low cov node")
-            for e in alle:
-                graph_remove_edge(graph, simp_edge_dict, graph.vp.id[e.source()], graph.vp.id[e.target()])
-    
     # fix single node contig
     for cno, [contig, clen, _] in list(contig_dict.items()):
         if len(contig) <= 1 and contig[0] not in simp_node_dict:
@@ -303,6 +294,16 @@ def graph_splitting(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, co
                         contig_dict[cno+chr(ord(s) + i)] = [[mapped], path_len(graph, [mapped_node]), graph.vp.dp[mapped_node]]
                         # print("mapped cno: ", cno+chr(ord(s) + i), mapped)  
     
+    # remove all the isolated low cov node&edge not in contig
+    node_to_contig_dict, _ = contig_map_node(contig_dict)
+    for node in list(graph.vertices()):
+        if graph.vp.id[node] not in node_to_contig_dict:
+            alle = [e for e in set(node.all_edges()) if graph.ep.color[e] == 'black']
+            if graph.vp.dp[node] < threshold:
+                graph_remove_vertex(graph, simp_node_dict, graph.vp.id[node], "remove isolated low cov node")
+                for e in alle:
+                    graph_remove_edge(graph, simp_edge_dict, graph.vp.id[e.source()], graph.vp.id[e.target()])
+
     print("No of branch be removed: ", len(set(split_branches)))
     print("Split branches: ", list_to_string(set(split_branches)))
     return len(set(split_branches))

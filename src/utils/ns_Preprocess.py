@@ -55,9 +55,9 @@ def tip_removal(graph: Graph, simp_node_dict: dict, tempdir, accept_rate):
         
         return: the most similar path if there exist a path with score >= accept rate, else return None
         """
-        ref_loc = "{0}ref.fa".format(temp_dir)
-        query_loc = "{0}query.fa".format(temp_dir)
-        overlap_loc = "{0}overlap.paf".format(temp_dir)
+        ref_loc = "{0}/ref.fa".format(temp_dir)
+        query_loc = "{0}/query.fa".format(temp_dir)
+        overlap_loc = "{0}/overlap.paf".format(temp_dir)
         subprocess.check_call('touch {0}; touch {1}'.format(ref_loc, query_loc), shell=True)
         
         id_path_dict = {}
@@ -86,7 +86,7 @@ def tip_removal(graph: Graph, simp_node_dict: dict, tempdir, accept_rate):
         minimap_api(ref_loc, query_loc, overlap_loc)
         with open(overlap_loc, 'r') as overlap_file:
             for Line in overlap_file:
-                splited = Line.split('\t')
+                splited = (Line[:-1]).split('\t')
                 path_no = int(splited[5])
                 nmatch = int(splited[9])
                 nblock = int(splited[10])
@@ -192,7 +192,8 @@ def delta_estimation(graph: Graph, tempdir, cutoff_size=200):
     for node in graph.vertices():
         if (sum([x.out_degree() for x in node.in_neighbors()]) == node.in_degree() 
             and sum([y.in_degree() for y in node.out_neighbors()]) == node.out_degree()):
-            sample_size += 1 if node.in_degree() > 1 else sample_size
+            if node.in_degree() > 1:
+                sample_size += 1
             lv = sum([graph.vp.dp[n] for n in node.in_neighbors()])
             rv = sum([graph.vp.dp[n] for n in node.out_neighbors()])
             m = graph.vp.dp[node]
@@ -306,7 +307,7 @@ def graph_simplification(graph: Graph, simp_node_dict: dict, simp_edge_dict: dic
             graph_remove_vertex(graph, simp_node_dict, id, printout=False)
             removed_node_dict[id] = node
 
-            for e in node.all_edges():
+            for e in set(node.all_edges()):
                 uid = graph.vp.id[e.source()]
                 vid = graph.vp.id[e.target()]
                 if (uid, vid) in edge_to_contig_dict:

@@ -9,7 +9,7 @@ def map_ref_to_graph(paf_file):
     all = set()
     with open(paf_file, 'r') as paf:
         for Line in paf:
-            splited = Line.split('\t')
+            splited = (Line[:-1]).split('\t')
             seg_no = str(splited[0])
             seg_no = splited[0]
             seg_l = int(splited[1])

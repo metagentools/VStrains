@@ -83,6 +83,8 @@ def extract_cand_path(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, 
     contig_hist = dict_to_hist(graph, contig_dict)
     is_dag = graph_is_DAG(graph, simp_node_dict)
     graph.ep.eval = graph.new_edge_property("double")
+    graph.ep.keep = graph.new_edge_property("boolean")
+    graph.vp.keep = graph.new_vertex_property("boolean")
     usage_dict = {}
     for node in simp_node_dict.keys():
         usage_dict[node] = 0
@@ -94,8 +96,12 @@ def extract_cand_path(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, 
             contig_dict.pop(cno)
             print("st path/self cycle contig, retrieve first: ", cno)
             pcov = path_cov(graph, simp_node_dict, simp_edge_dict, contig)
-            strain_dict[strain_prefix + cno] = [contig, clen, pcov]
             graph_reduction_c(graph, [simp_node_dict[n] for n in contig], usage_dict, pcov)
+            if pcov >= threshold:
+                print("cand strain found")
+                strain_dict[strain_prefix + cno] = [contig, clen, pcov]
+            else:
+                print("low cov strain, removed")
 
     while len(contig_dict.keys()) > 0:
         print("----------------------------------------------------------------------------")
@@ -134,9 +140,20 @@ def extract_cand_path(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, 
                     graph.remove_edge(e)
                 s = nt
                 t = ns
+            for e in graph.edges():
+                graph.ep.keep[e] = True
+            for (u,v) in contig_edges(contig):
+                e = simp_edge_dict[(u,v)]
+                graph.ep.keep[e] = False
+            for v in graph.vertices():
+                graph.vp.keep[v] = True
+            for v in [simp_node_dict[n] for n in contig[1:-1]]:
+                graph.vp.keep[v] = False
             
+            graph.set_filters(graph.ep.keep, graph.vp.keep)
             sp_vlist = st_path(graph, ccov, s, t, b0, b1, is_dag)
             strain.extend([simp_node_dict[n] for n in contig])
+            print("found path: ", list_to_string([graph.vp.id[n] for n in sp_vlist]))
             strain.extend(sp_vlist[1:-1])
 
             if ns != None:
@@ -151,6 +168,7 @@ def extract_cand_path(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, 
                     graph.ep.flow[ie] = f
                     graph.ep.eval[ie] = w
                     simp_edge_dict[(graph.vp.id[src], graph.vp.id[s])] = ie
+            graph.clear_filters()
         else:
             print("concat st path")
             sphead_vlist = st_path(graph, ccov, global_src, simp_node_dict[contig[0]], b0, b1, is_dag)

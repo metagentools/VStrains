@@ -4,6 +4,7 @@ import argparse
 import sys
 import os
 import time
+import numpy
 from datetime import date
 
 from utils import (
@@ -20,6 +21,7 @@ __email__ = ""
 __status__ = ""
 
 def run(args):
+    numpy.seterr(all='raise')
     RUNNER = {
         "spades": ns_SPAdes.run,
         "flye": ns_Flye.run,
@@ -88,15 +90,15 @@ def main():
         print("\nPlease make sure to provide the correct assembler type (SPAdes or Flye).")
         print("\nExiting...\n")
         sys.exit(1)
-    if args.output_dir[:-1] != "/":
-        args.output_dir += "/"
+    if args.output_dir[-1] == "/":
+        args.output_dir = args.output_dir[:-1]
 
     # initialize output directory
     os.makedirs(args.output_dir, exist_ok=True)
     try:
-        os.makedirs(args.output_dir+"gfa/")
-        os.makedirs(args.output_dir+"tmp/")
-        os.makedirs(args.output_dir+"paf/")
+        os.makedirs(args.output_dir+"/gfa/")
+        os.makedirs(args.output_dir+"/tmp/")
+        os.makedirs(args.output_dir+"/paf/")
     except OSError as _:
         print("\nCurrent output directory is not empty")
         print("Please empty/re-create the output directory")

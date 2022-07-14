@@ -6,14 +6,20 @@ import gfapy
 import subprocess
 import sys
 
-import matplotlib.pyplot as plt
-import seaborn
-import pandas
+from utils.ns_Utilities import reverse_seq, print_vertex, path_ids_to_seq, print_edge
 
-import numpy
+def init_graph():
+    graph = Graph(directed=True)
+    graph.vp.seq = graph.new_vertex_property("string", val="")
+    graph.vp.dp = graph.new_vertex_property("double")
+    graph.vp.id = graph.new_vertex_property("string", val="UD")
+    graph.vp.color = graph.new_vertex_property("string")
 
-from utils.ns_Utilities import reverse_seq, print_vertex
+    graph.ep.overlap = graph.new_edge_property("int", val=0)
+    graph.ep.flow = graph.new_edge_property("double", val=0.0)
+    graph.ep.color = graph.new_edge_property("string")
 
+    return graph
 def gfa_to_graph(gfa_file, init_ori=1):
     """
     Convert assembly graph gfa file to graph
@@ -21,23 +27,14 @@ def gfa_to_graph(gfa_file, init_ori=1):
     """
 
     print("Parsing GFA format graph")
-    gfa = gfapy.Gfa(version='gfa2').from_file(filename=gfa_file)
+    gfa = gfapy.Gfa().from_file(filename=gfa_file)
     print("Parsed gfa file length: {0}, version: {1}".format(len(gfa.lines), gfa.version))
 
-    graph = Graph(directed=True)
-    graph.vp.seq = graph.new_vertex_property("string", val="")
-    graph.vp.dp = graph.new_vertex_property("double")
-    graph.vp.id = graph.new_vertex_property("string", val="UD")
+    graph = init_graph()
     graph.vp.visited = graph.new_vertex_property("int16_t", val=0)
     graph.vp.ori = graph.new_vertex_property("int16_t") # 1 = +, -1 = -
-    graph.vp.group = graph.new_vertex_property("int16_t", val=-1)
-    graph.vp.partition = graph.new_vertex_property("int16_t", val=0)
-    graph.vp.color = graph.new_vertex_property("string")
 
-    graph.ep.overlap = graph.new_edge_property("int", val=0)
     graph.ep.visited = graph.new_edge_property("int", val=0)
-    graph.ep.flow = graph.new_edge_property("double", val=0.0)
-    graph.ep.color = graph.new_edge_property("string")
 
     # S
     node_dict = {}
@@ -45,7 +42,9 @@ def gfa_to_graph(gfa_file, init_ori=1):
     edge_dict = {}
     for line in gfa.segments:
         # segment, convert into Node^- and Node^+
-        [t, seg_no, seg, dp] = (str(line).split("\t"))[:4]
+        [t, seg_no, seg] = (str(line).split("\t"))[:3]
+        tags = (str(line).split("\t"))[3:]
+        dp = [tag for tag in tags if tag.startswith('dp') or tag.startswith("DP")][0]
         assert dp[:2] == 'DP' or dp[:2] == 'dp'
         assert t == 'S'
         dp_float = float(dp.split(":")[2])
@@ -54,9 +53,7 @@ def gfa_to_graph(gfa_file, init_ori=1):
         graph.vp.dp[v_pos] = dp_float
         graph.vp.id[v_pos] = seg_no
         graph.vp.ori[v_pos] = 1
-        graph.vp.group[v_pos] = -1
         graph.vp.visited[v_pos] = -1
-        graph.vp.partition[v_pos] = -1
         graph.vp.color[v_pos] = 'black'
 
         v_neg = graph.add_vertex()
@@ -64,9 +61,7 @@ def gfa_to_graph(gfa_file, init_ori=1):
         graph.vp.dp[v_neg] = dp_float
         graph.vp.id[v_neg] = seg_no
         graph.vp.ori[v_neg] = -1
-        graph.vp.group[v_neg] = -1
         graph.vp.visited[v_neg] = -1
-        graph.vp.partition[v_neg] = -1
         graph.vp.color[v_neg] = 'black'
         
 
@@ -75,7 +70,10 @@ def gfa_to_graph(gfa_file, init_ori=1):
     # L
     for edge in gfa.edges:
         [t, seg_no_l, ori_l, seg_no_r, ori_r, overlap_len] = (str(edge).split("\t"))[:6]
-        assert t == 'L' or t == 'C'
+        assert t == 'L' or t == 'C' or t == 'E'
+        if seg_no_l == seg_no_r:
+            print("self-loop edge, skip: ", seg_no_l, ori_l, "->", seg_no_r, ori_r)
+            continue
         u_pos, u_neg = node_dict[seg_no_l]
         v_pos, v_neg = node_dict[seg_no_r]
         u = u_pos if ori_l == '+' else u_neg
@@ -146,15 +144,15 @@ def flip_graph_bfs(graph: Graph, node_dict: dict, edge_dict: dict, dp_dict: dict
             if ori == 1:
                 u = v_pos
                 pick_dict[graph.vp.id[u]] = '+'
-                # print_vertex(graph, v_neg, "node to reverse")
-                for e in list(v_neg.all_edges()):
+                # print_vertex(graph, v_neg, "node to reverse pos")
+                for e in set(v_neg.all_edges()):
                     graph, r_e, edge_dict = reverse_edge(graph, e, node_dict, edge_dict)
                     # print_edge(graph, r_e, "after reverse: ")
             else:
                 u = v_neg
                 pick_dict[graph.vp.id[u]] = '-'
-                # print_vertex(graph, v_pos, "node to reverse")
-                for e in list(v_pos.all_edges()):
+                # print_vertex(graph, v_pos, "node to reverse neg")
+                for e in set(v_pos.all_edges()):
                     graph, r_e, edge_dict = reverse_edge(graph, e, node_dict, edge_dict)
                     # print_edge(graph, r_e, "after reverse: ")
             
@@ -163,7 +161,10 @@ def flip_graph_bfs(graph: Graph, node_dict: dict, edge_dict: dict, dp_dict: dict
             # add further nodes into the fifo_queue
             for adj_node in u.all_neighbors():
                 if graph.vp.visited[adj_node] == -1:
-                    graph.vp.visited[adj_node] = 0
+                    vpos, vneg = node_dict[graph.vp.id[adj_node]]
+                    graph.vp.visited[vpos] = 0
+                    graph.vp.visited[vneg] = 0
+                    # print("appending node {0} to queue".format(graph.vp.id[adj_node]))
                     fifo_queue.append([node_dict[graph.vp.id[adj_node]], graph.vp.ori[adj_node]])
 
     # verify sorted graph
@@ -175,18 +176,22 @@ def flip_graph_bfs(graph: Graph, node_dict: dict, edge_dict: dict, dp_dict: dict
             if v_neg.in_degree() + v_neg.out_degree() > 0:
                 print_vertex(graph, v_neg, "pick ambiguous found")
                 print("force selection, remove opposite edges")
-                for e in list(v_neg.all_edges()):
+                for e in set(v_neg.all_edges()):
+                    print_edge(graph, e, "force edge deletion")
                     tmp_s = e.source()
                     tmp_t = e.target()
+                    print(graph.vp.ori[tmp_s], graph.vp.ori[tmp_t])
                     edge_dict.pop((graph.vp.id[tmp_s], graph.vp.ori[tmp_s], 
                         graph.vp.id[tmp_t], graph.vp.ori[tmp_t]))
                     graph.remove_edge(e)
         else:
             if v_pos.in_degree() + v_pos.out_degree() > 0:
                 print_vertex(graph, v_pos, "pick ambiguous found")
-                for e in list(v_pos.all_edges()):
+                for e in set(v_pos.all_edges()):
+                    print_edge(graph, e, "force edge deletion")
                     tmp_s = e.source()
                     tmp_t = e.target()
+                    print(graph.vp.ori[tmp_s], graph.vp.ori[tmp_t])
                     edge_dict.pop((graph.vp.id[tmp_s], graph.vp.ori[tmp_s], 
                         graph.vp.id[tmp_t], graph.vp.ori[tmp_t]))
                     graph.remove_edge(e)
@@ -208,17 +213,7 @@ def flip_graph_bfs(graph: Graph, node_dict: dict, edge_dict: dict, dp_dict: dict
     return graph, simp_node_dict, simp_edge_dict
 
 def reduce_graph(unsimp_graph: Graph, simp_node_dict: dict, simp_edge_dict: dict):
-    graph = Graph(directed=True)
-
-    graph.vp.seq = graph.new_vertex_property("string", val="")
-    graph.vp.dp = graph.new_vertex_property("double")
-    graph.vp.id = graph.new_vertex_property("string", val="UD")
-    graph.vp.color = graph.new_vertex_property("string")
-
-    graph.ep.overlap = graph.new_edge_property("int", val=0)
-    graph.ep.flow = graph.new_edge_property("float", val=0.0)
-    graph.ep.color = graph.new_edge_property("string")
-
+    graph = init_graph()
     red_node_dict = {}
     red_edge_dict = {}
 
@@ -247,19 +242,10 @@ def flipped_gfa_to_graph(gfa_file):
     read flipped gfa format graph in.
     """
     print("Parsing GFA format graph")
-    gfa = gfapy.Gfa(version='gfa2').from_file(filename=gfa_file)
+    gfa = gfapy.Gfa().from_file(filename=gfa_file)
     print("Parsed gfa file length: {0}, version: {1}".format(len(gfa.lines), gfa.version))
 
-    graph = Graph(directed=True)
-    graph.vp.seq = graph.new_vertex_property("string", val="")
-    graph.vp.dp = graph.new_vertex_property("double")
-    graph.vp.id = graph.new_vertex_property("string", val="UD")
-    graph.vp.color = graph.new_vertex_property("string")
-
-    graph.ep.overlap = graph.new_edge_property("int", val=0)
-    graph.ep.flow = graph.new_edge_property("float", val=0.0)
-    graph.ep.color = graph.new_edge_property("string")
-
+    graph = init_graph()
     red_node_dict = {}
     red_edge_dict = {}
 
@@ -315,7 +301,47 @@ def graph_to_gfa(graph: Graph, simp_node_dict: dict, edge_dict: dict, filename):
     print(filename, " is stored..")
     return 0
 
-def get_contig(contig_file, simp_node_dict: dict, simp_edge_dict: dict, min_len=250):
+def flye_info2path(info_file, tempdir):
+    print("translating flye {0} into .paths format..".format(info_file))
+    contig_file = tempdir + "/tmp/contigs.paths"
+    with open(info_file, 'r') as cfile:
+        with open(contig_file, 'w') as ofile:
+            cfile.readline() # header
+            lines = cfile.readlines()
+            for line in lines:
+                seg_name, length, cov, circ, repeat, mult, alt_group, graph_path = (line[:-1]).split('\t')
+                header = str(seg_name) + "_length_" + str(length) + "_cov_" + str(cov)
+                path = ""
+                ps = graph_path.split(",")
+                ps = list(dict.fromkeys(ps))
+                for n in ps:
+                    if n != '*' and n != '??':
+                        # consider the info segment name start with - if neg orientation
+                        if n[0] == '-':
+                            path += "edge_" + n[1:] + '-' + ","
+                        else:
+                            path += "edge_" + n[:] + '+' + ","
+                path = path[:-1]
+                ofile.write(header + "\n")
+                ofile.write(path + "\n")
+
+                rev_path = ""
+                for n in reversed(ps):
+                    if n != '*' and n != '??':
+                        # consider the info segment name start with - if neg orientation
+                        if n[0] == '-':
+                            rev_path += "edge_" + n[1:] + '+' + ","
+                        else:
+                            rev_path += "edge_" + n[:] + '-' + ","
+                rev_path = rev_path[:-1]
+                ofile.write(header + "\'\n")
+                ofile.write(rev_path + "\n")
+            ofile.close()
+        cfile.close()
+    print("done")
+    return contig_file
+
+def get_contig(contig_file, simp_node_dict: dict, simp_edge_dict: dict, min_len=250, at_least_one_edge=False):
     """
     Map SPAdes's contig to the graph, return all the contigs with length >= 250 or minimum 2 nodes in contig.
     """
@@ -385,22 +411,84 @@ def get_contig(contig_file, simp_node_dict: dict, simp_edge_dict: dict, min_len=
                     # whole contig is reduced already, no split chance, potential error
                     continue
                 else:
-                    contig_dict[cno] = [c, clen, ccov]
-                    for i in range(len(c)):
+                    skip = False
+                    for i in range(len(c)-1):
                         c_i = c[i]
-                        c_i_1 = c[i+1] if (i < len(c) - 1) else None
+                        c_i_1 = c[i+1]
                         if c_i not in simp_node_dict:
-                            print("node {0} not in contig {1}, error".format(c_i, cno))
-
-                        if c_i_1 != None and c_i_1 not in simp_node_dict:
-                            print("node {0} not in contig {1}, error".format(c_i_1, cno))
-                        
-                        if c_i_1 != None and (c_i, c_i_1) not in simp_edge_dict:
-                            print("edge {0} not in contig {1}, error".format((c_i, c_i_1), cno))
+                            print("node {0} not in contig {1}, skip".format(c_i, cno))
+                            skip = True
+                        if c_i_1 not in simp_node_dict:
+                            print("node {0} not in contig {1}, skip".format(c_i_1, cno))
+                            skip = True
+                        if (c_i, c_i_1) not in simp_edge_dict:
+                            print("edge {0} not in contig {1}, skip".format((c_i, c_i_1), cno))
+                            skip = True
+                        if skip:
+                            break
+                    if not skip:
+                        contig_dict[cno] = [c, clen, ccov]
             else:
                 c = contigs
                 if c[0] in simp_node_dict:
-                    contig_dict[cno] = [c, clen, ccov]
+                    if not at_least_one_edge:
+                        contig_dict[cno] = [c, clen, ccov]
+                    else:
+                        # check connectivity
+                        if simp_node_dict[c[0]].in_degree() > 0 or simp_node_dict[c[0]].out_degree() > 0:
+                            contig_dict[cno] = [c, clen, ccov]
         contigs_file.close()
     print("done, total input contig: ", len(contig_dict))
     return contig_dict
+
+def gfa_to_fasta(gfa_file, fasta_file):
+    if not gfa_file:
+        print("No gfa file imported")
+        return -1
+    subprocess.check_call("touch {0}".format(fasta_file), shell=True)
+    with open(gfa_file, 'r') as gfa:
+        with open(fasta_file, 'w') as fasta:
+            for Line in gfa:
+                splited = (Line[:-1]).split('\t')
+                if splited[0] == 'S':
+                    fasta.write(">{0}\n{1}\n".format(splited[1],splited[2]))
+            fasta.close()
+        gfa.close()
+
+def contig_dict_to_fasta(graph: Graph, simp_node_dict: dict, contig_dict: dict, output_file):
+    """
+    Store contig dict into fastq file
+    """
+    subprocess.check_call("touch {0}".format(
+    output_file), shell=True)
+
+    with open(output_file, 'w') as fasta:
+        for cno, (contig, clen, ccov) in contig_dict.items():
+            contig_name = ">" + str(cno) + "_" + str(clen) + "_" + str(round(ccov, 2)) + "\n"
+            seq = path_ids_to_seq(graph, contig, contig_name, simp_node_dict) + "\n"
+            fasta.write(contig_name)
+            fasta.write(seq)
+        fasta.close()
+
+def contig_dict_to_path(contig_dict: dict, output_file, keep_original=False):
+    """
+    Store contig dict into paths file
+    """
+    subprocess.check_call("touch {0}".format(output_file), shell=True)
+    with open(output_file, 'w') as paths:
+        for cno, (contig, clen, ccov) in sorted(contig_dict.items(), key=lambda x: x[1][2]):
+            contig_name = "NODE_" + str(cno) + "_" + str(clen) + "_" + str(ccov) + "\n"
+            path_ids = ""
+            for id in contig:
+                if keep_original:
+                    for iid in str(id).split('_'):
+                        if iid.find('*') != -1:
+                            path_ids += iid[:iid.find('*')] + ","
+                        else:
+                            path_ids += iid + ","
+                else:
+                    path_ids += str(id) + ","
+            path_ids = path_ids[:-1]  + "\n"
+            paths.write(contig_name)
+            paths.write(path_ids)
+        paths.close()

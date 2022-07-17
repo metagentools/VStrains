@@ -3607,3 +3607,25 @@ min_cov, min_len, max_len, overlap, threshold, tempdir):
     # draw_cliq_graph(cliq_graph, len(cliq_node_dict), len(cliq_edge_dict), tempdir, "cliq_graphL3.png")
 
     return contig_dict
+    
+    
+    # store the no-cycle nodes in nc_graph_L3p.gfa
+    # noncyc_nodes = None
+    # simple_paths = None
+    # # graphtool is_DAG() may not work if the graph is not connected as several parts
+    # if not graph_is_DAG(graph, simp_node_dict):
+    #     noncyc_nodes, simple_paths = node_partition(graph, simp_node_dict, tempdir)
+
+
+    # if noncyc_nodes != None and simple_paths != None:
+    #     print("rebalance linear subgraph now..")
+    #     graphnc, simp_node_dictnc, simp_edge_dictnc = flipped_gfa_to_graph("{0}/gfa/nc_graph_L2p.gfa".format(tempdir))
+    #     coverage_rebalance_ave(graphnc, simp_node_dictnc, simp_edge_dictnc)
+    #     print("Done, start coverage merge")
+
+    #     for no, node in simp_node_dictnc.items():
+    #         cnode = simp_node_dict[no]
+    #         merge_dp = graphnc.vp.dp[node] + graph.vp.dp[cnode]
+    #         graph.vp.dp[cnode] = merge_dp   
+    # else:
+    #     print("no linear subgraph available..")

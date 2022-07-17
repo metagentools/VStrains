@@ -14,6 +14,64 @@ from sklearn.cluster import KMeans
 from sklearn.linear_model import LinearRegression
 from sklearn.metrics import silhouette_score
 
+def paths_from_src(graph: Graph, simp_node_dict: dict, self_node, src, maxlen):
+    """
+    retrieve all the path from src node to any node 
+    within maxlen restriction, in straight direction
+    """
+    def dfs_rev(graph: Graph, u, curr_path: list, maxlen, visited, all_path):
+        visited[u] = True
+        curr_path.append(u)
+        curr_len = path_len(graph, curr_path)
+        if curr_len >= maxlen:
+            all_path.append(list(curr_path))
+        else:
+            for v in u.out_neighbors():
+                if not visited[v]:
+                    dfs_rev(graph, v, curr_path, maxlen, visited, all_path)
+        curr_path.pop(-1)
+        visited[u] = False
+        return
+    visited = {}
+    for u in graph.vertices():
+        if graph.vp.id[u] not in simp_node_dict:
+            visited[u] = True
+        else:
+            visited[u] = False
+    visited[self_node] = True
+    all_path = []
+    dfs_rev(graph, src, [], maxlen, visited, all_path)
+    return all_path
+
+def paths_to_tgt(graph: Graph, simp_node_dict: dict, self_node, tgt, maxlen):
+    """
+    retrieve all the path from any node to tgt node
+    within maxlen restriction, in reverse direction
+    """
+    def dfs_rev(graph: Graph, v, curr_path: list, maxlen, visited, all_path):
+        visited[v] = True
+        curr_path.insert(0, v)
+        curr_len = path_len(graph, curr_path)
+        if curr_len >= maxlen:
+            all_path.append(list(curr_path))
+        else:
+            for u in v.in_neighbors():
+                if not visited[u]:
+                    dfs_rev(graph, u, curr_path, maxlen, visited, all_path)
+        curr_path.pop(0)
+        visited[v] = False
+        return
+    visited = {}
+    for u in graph.vertices():
+        if graph.vp.id[u] not in simp_node_dict:
+            visited[u] = True
+        else:
+            visited[u] = False
+    visited[self_node] = True
+    all_path = []
+    dfs_rev(graph, tgt, [], maxlen, visited, all_path)   
+    return all_path
+
 def tip_removal_s(graph: Graph, simp_node_dict: dict, contig_dict: dict, tempdir, accept_rate = 0.99):
     if not graph_is_DAG(graph, simp_node_dict):
         print("Graph is Cyclic, tip removal start..")
@@ -21,7 +79,27 @@ def tip_removal_s(graph: Graph, simp_node_dict: dict, contig_dict: dict, tempdir
         while not tip_removed:
             tip_removed = tip_removal(graph, simp_node_dict, tempdir, accept_rate)
         print("done")
-        contig_dict_fix(graph, simp_node_dict, contig_dict)
+        for cno, [contig, _, ccov] in list(contig_dict.items()):
+            if not all([no in simp_node_dict for no in contig]):
+                subcontigs = []
+                curr_contig = []
+                addLast = False
+                for no in contig:
+                    if no in simp_node_dict:
+                        addLast = True
+                        curr_contig.append(no)
+                    else:
+                        addLast = False
+                        if curr_contig != []:
+                            subcontigs.append(curr_contig[:])
+                        curr_contig = []
+                if addLast:
+                    subcontigs.append(curr_contig[:])
+                
+                contig_dict.pop(cno)
+                for i, subc in enumerate(subcontigs):
+                    sublen = path_len(graph, [simp_node_dict[c] for c in subc])
+                    contig_dict[cno + "^" + str(i)] = [subc, sublen, ccov]
     else:
         print("Graph is DAG, tip removal skipped.")
 

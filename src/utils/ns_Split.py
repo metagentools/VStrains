@@ -1,15 +1,6 @@
 #!/usr/bin/env python3
 
 from graph_tool.all import Graph
-from graph_tool.draw import graph_draw
-import gfapy
-import subprocess
-import sys
-
-import matplotlib.pyplot as plt
-import seaborn
-import pandas
-
 import numpy
 
 from utils.ns_Utilities import *
@@ -48,24 +39,26 @@ def iterated_graph_split(graph: Graph, simp_node_dict: dict, simp_edge_dict: dic
         grapha, simp_node_dicta, simp_edge_dicta = flipped_gfa_to_graph("{0}/gfa/split_graph_L{1}3.gfa".format(tempdir, iterCount))
         assign_edge_flow(grapha, simp_node_dicta, simp_edge_dicta)
 
-        contig_dup_removed(grapha, simp_edge_dicta, contig_dict)
-        trim_contig_dict(grapha, simp_node_dicta, contig_dict)
-        contig_cov_fix(grapha, simp_node_dicta, simp_edge_dicta, contig_dict)
-
         if num_split != 0 or trivial_split_count != 0:
             total_removed_branch_nt += num_split
             total_removed_branch_t += trivial_split_count
             iterCount = chr(ord(iterCount) + 1)
+            contig_cov_fix(grapha, simp_node_dicta, simp_edge_dicta, contig_dict)
         else:
-            coverage_rebalance_s(grapha, simp_node_dicta, simp_edge_dicta, tempdir, True)
-            graph_to_gfa(grapha, simp_node_dicta, simp_edge_dicta, "{0}/gfa/rbsdt_graph_L5.gfa".format(tempdir))
-            grapho, simp_node_dicto, simp_edge_dicto = flipped_gfa_to_graph("{0}/gfa/rbsdt_graph_L5.gfa".format(tempdir))
-            assign_edge_flow(grapho, simp_node_dicto, simp_edge_dicto)
-            # concat_overlap_contig(grapho, simp_node_dicto, simp_edge_dicto, contig_dict)
-            contig_dup_removed_s(contig_dict)
-            contig_cov_fix(grapho, simp_node_dicto, simp_edge_dicto, contig_dict)
             break
     print("Total non-trivial branches removed: ", total_removed_branch_nt, " total trivial branches removed: ", total_removed_branch_t)
+    coverage_rebalance_s(grapha, simp_node_dicta, simp_edge_dicta)
+    graph_to_gfa(grapha, simp_node_dicta, simp_edge_dicta, "{0}/gfa/rbsdt_graph_L5.gfa".format(tempdir))
+    grapho, simp_node_dicto, simp_edge_dicto = flipped_gfa_to_graph("{0}/gfa/rbsdt_graph_L5.gfa".format(tempdir))
+    assign_edge_flow(grapho, simp_node_dicto, simp_edge_dicto)
+
+    # remove duplicated contigs
+    contig_dup_removed_s(contig_dict)
+    # concat overlapped contigs
+    concat_overlap_contig(grapho, simp_node_dicto, simp_edge_dicto, contig_dict)
+    trim_contig_dict(grapho, simp_node_dicto, contig_dict)
+    contig_cov_fix(grapho, simp_node_dicto, simp_edge_dicto, contig_dict)
+
     return grapho, simp_node_dicto, simp_edge_dicto
 
 def graph_split_trivial(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict):
@@ -210,9 +203,6 @@ def graph_splitting(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, co
 
             if cproduct != []:
                 for i, (ie, oe, subcov, delta) in enumerate(cproduct):
-                    # print("---------------")
-                    # print_edge(graph, ie, "in")
-                    # print_edge(graph, oe, "out")
                     prev_node = ie.source()
                     prev_no = graph.vp.id[prev_node]
                     next_node = oe.target()
@@ -244,9 +234,6 @@ def graph_splitting(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, co
                             break
                         else:
                             None
-                    # involved_contig_sumcov = sum([contig_dict[cno][2] for cno in involved_contigs])
-                    # print("involved contig cov sum: {0}, triple-node mean flow: {1}".format(involved_contig_sumcov, subcov))
-                    # print("in edge usage: {0}, out edge usage: {1}".format(ine_usage[ie], oute_usage[oe]))
                     if cross_talk:
                         None
                         # print("- current branch split forbidden, cross talk", prev_no, no, next_no)
@@ -281,7 +268,7 @@ def graph_splitting(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, co
                                 print("contig error, previous node {0} is not in contig or multiple occurance in contig {1}, potential bug".format(no, icno))
     
     # fix single node contig
-    for cno, [contig, clen, _] in list(contig_dict.items()):
+    for cno, [contig, _, _] in list(contig_dict.items()):
         if len(contig) <= 1 and contig[0] not in simp_node_dict:
             contig_dict.pop(cno)
             # print("isolated contig node {0}, prepared to pop, check any replacement".format(cno))
@@ -297,12 +284,11 @@ def graph_splitting(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, co
     # remove all the isolated low cov node&edge not in contig
     node_to_contig_dict, _ = contig_map_node(contig_dict)
     for node in list(graph.vertices()):
-        if graph.vp.id[node] not in node_to_contig_dict:
+        if graph.vp.id[node] not in node_to_contig_dict and graph.vp.dp[node] < threshold:
             alle = [e for e in set(node.all_edges()) if graph.ep.color[e] == 'black']
-            if graph.vp.dp[node] < threshold:
-                graph_remove_vertex(graph, simp_node_dict, graph.vp.id[node], "remove isolated low cov node")
-                for e in alle:
-                    graph_remove_edge(graph, simp_edge_dict, graph.vp.id[e.source()], graph.vp.id[e.target()])
+            graph_remove_vertex(graph, simp_node_dict, graph.vp.id[node], "remove isolated low cov node")
+            for e in alle:
+                graph_remove_edge(graph, simp_edge_dict, graph.vp.id[e.source()], graph.vp.id[e.target()])
 
     print("No of branch be removed: ", len(set(split_branches)))
     print("Split branches: ", list_to_string(set(split_branches)))

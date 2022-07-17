@@ -52,7 +52,7 @@ def main():
 
     parser.add_argument(
         '-mc' '--minimum_coverage', dest='min_cov', type=int, default=0,
-        help=("minimum node coverage cutoff, automatically estimated if not provided"))
+        help=("minimum node coverage cutoff, [default: auto]"))
 
     parser.add_argument(
         '-ml' '--minimum_contig_length', dest='min_len', default=250, type=int, 

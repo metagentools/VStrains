@@ -22,116 +22,71 @@ def assign_edge_flow(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict):
         v_node = simp_node_dict[v]
         v_in_sum = numpy.sum([graph.vp.dp[n] for n in v_node.in_neighbors()])
 
-        flow = max((graph.vp.dp[v_node] / u_out_sum) * graph.vp.dp[u_node], (graph.vp.dp[u_node] / v_in_sum) * graph.vp.dp[v_node])
-        graph.ep.flow[e] = max(graph.ep.flow[e], flow)
+        graph.ep.flow[e] = numpy.mean([(graph.vp.dp[v_node] / u_out_sum) * graph.vp.dp[u_node], 
+            (graph.vp.dp[u_node] / v_in_sum) * graph.vp.dp[v_node]])
     return
 
-def coverage_rebalance_s(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, tempdir, strict=False):
-    # store the no-cycle nodes in nc_graph_L3p.gfa
-    noncyc_nodes = None
-    simple_paths = None
-    # graphtool is_DAG() may not work if the graph is not connected as several parts
+def coverage_rebalance_s(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict):
+    
+    # break the cycle first
+    removed_edges = []
     if not graph_is_DAG(graph, simp_node_dict):
-        noncyc_nodes, simple_paths = node_partition(graph, simp_node_dict, tempdir)
+        removed_edges = cyclic_to_dag(graph, simp_node_dict, simp_edge_dict)
+    # incident node insertion
+    assign_edge_flow(graph, simp_node_dict, simp_edge_dict)
+    print("add incident nodes")
+    incident_vs = []
+    for edge in set(graph.edges()):
+        u = edge.source()
+        uid = graph.vp.id[u]
+        v = edge.target()
+        vid = graph.vp.id[v]
+        node = graph_add_vertex(graph, simp_node_dict, uid+"*"+vid, graph.ep.flow[edge], "*")
+        incident_vs.append((u, node, v, graph.ep.overlap[edge]))
+        graph_remove_edge(graph, simp_edge_dict, uid, vid)
+        graph.remove_edge(edge)
+        graph_add_edge(graph, simp_edge_dict, u, uid, node, graph.vp.id[node], 0, 0)
+        graph_add_edge(graph, simp_edge_dict, node, graph.vp.id[node], v, vid, 0, 0)
 
     print("-------------------------------COVERAGE REBALANCE-----------------------------------")
     # all the previous depth has been stored in the dict
     # ratio: normalised balanced node depth / previous node depth
-    _, _, _, ratio = coverage_rebalance(graph, simp_node_dict, simp_edge_dict, strict)
-    
-    if noncyc_nodes != None and simple_paths != None:
-        print("rebalance linear subgraph now..")
-        graphnc, simp_node_dictnc, simp_edge_dictnc = flipped_gfa_to_graph("{0}/gfa/nc_graph_L2p.gfa".format(tempdir))
-        coverage_rebalance(graphnc, simp_node_dictnc, simp_edge_dictnc, strict)
-        print("Done, start coverage merge")
+    coverage_rebalance_ave(graph, simp_node_dict, simp_edge_dict)
 
-        for no, node in simp_node_dictnc.items():
-            cnode = simp_node_dict[no]
-            merge_dp = graphnc.vp.dp[node] + graph.vp.dp[cnode]
-            graph.vp.dp[cnode] = merge_dp   
-    else:
-        print("no linear subgraph available..")
+    print("remove incident nodes")
+    for (src, node, tgt, overlap) in sorted(incident_vs, key=lambda t: t[1], reverse=True):
+        for edge in set(node.all_edges()):
+            u = edge.source()
+            uid = graph.vp.id[u]
+            v = edge.target()
+            vid = graph.vp.id[v]
+            graph_remove_edge(graph, simp_edge_dict, uid, vid)
+            graph.remove_edge(edge)
+        graph_add_edge(graph, simp_edge_dict, src, graph.vp.id[src], tgt, graph.vp.id[tgt], overlap, graph.vp.dp[node])
+        graph_remove_vertex(graph, simp_node_dict, graph.vp.id[node])
+        graph.remove_vertex(node)
+
+    for (uid,vid,o) in removed_edges:
+        graph_add_edge(graph, simp_edge_dict, simp_node_dict[uid], uid, simp_node_dict[vid], vid, o)
     print("done")
     return
 
-curr_path = []
-def node_partition(graph: Graph, simp_node_dict: dict, tempdir):
-    """
-    partition the graph into cyclic node and linear intersect cyclic + linear node
+def coverage_rebalance_ave(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict):
+    print("coverage rebalance..")
+    # set cutoff delta
+    cutoff = 0.00001 * len(simp_node_dict)
+    print("cutoff coverage-unbalance rate: ", cutoff)
+    # store previous node depth
+    prev_dp_dict = {}
+    for no, v in simp_node_dict.items():
+        prev_dp_dict[no] = graph.vp.dp[v]
 
-    store the cyc node into one graph object, where noncyc node into another object
-    """
-    def noncyc_path(graph: Graph, src, tgt):
-        all_noncyc_paths = []
-        visited = {}
-        for v in graph.vertices():
-            visited[v] = False
-
-        def dfs(u, v):
-            global curr_path
-            visited[u] = True
-            curr_path.append(u)
-            # print(path_to_id_string(graph, curr_path, graph.vp.id[u]))
-            if u == v:
-                # print(path_to_id_string(graph, curr_path, "path found"))
-                all_noncyc_paths.append(curr_path[:])
-            else:
-                for next in u.out_neighbors():
-                    if not visited[next]:
-                        dfs(next, v)
-            curr_path = curr_path[:-1]
-            visited[u] = False
-            return
-        dfs(src, tgt)
-        return all_noncyc_paths
-    print("node partition..")
-    # init path acc variable
-    global curr_path
-    curr_path = []
-    # for any source and target node pair in the graph, the tranversing non-cycle/simple path
-    # would only include the linear&cycle intersection nodes.
-
-    noncyc_nodes = set()
-    simple_paths = []
-
-    srcs = []
-    tgts = []
-    for node in simp_node_dict.values():
-        if node.in_degree() == 0 and node.out_degree() == 0:
-            None
-            # print_vertex(graph, node, "isolated node")
-        elif node.in_degree() == 0:
-            srcs.append(node)
-        elif node.out_degree() == 0:
-            tgts.append(node)
-        else:
-            None
-    if srcs == [] or tgts == []:
-        print("no src or tgt be found on the graph")
-        return None, None
-
-    for src in srcs:
-        for tgt in tgts:
-            paths = noncyc_path(graph, src, tgt)
-            for p in paths:
-                [noncyc_nodes.add(graph.vp.id[n]) for n in p]
-                simple_paths.append([graph.vp.id[n] for n in p])
-
-    # print(list_to_string(list(noncyc_nodes), "non-cyclic+intersection ids"))
-    # [print(p) for p in simple_paths]
-
-    # partitate into linear graph
-    noncyc_graph = graph.copy()
-    simp_node_dict_noncyc, simp_edge_dict_noncyc = graph_to_dict(noncyc_graph)
-    graph_color_other_to_gray(noncyc_graph, simp_node_dict_noncyc, noncyc_nodes)
-    graph_to_gfa(noncyc_graph, simp_node_dict_noncyc, simp_edge_dict_noncyc, "{0}/gfa/nc_graph_L2p.gfa".format(tempdir))
-    print("done")
-    return noncyc_nodes, simple_paths
-
-def coverage_rebalance(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, strict=False):
-    def expectation_edge_flow(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict):
+    # EM optimization
+    sum_delta = 0
+    sum_depth_before = numpy.sum([dp for dp in prev_dp_dict.values()])
+    while True:
+        # ****************************-E Step
         for (u,v),e in simp_edge_dict.items():
-
             if graph.ep.color[e] != 'black':
                 #forbidden edge
                 continue
@@ -142,62 +97,9 @@ def coverage_rebalance(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict,
             v_node = simp_node_dict[v]
             v_in_sum = numpy.sum([graph.vp.dp[n] for n in v_node.in_neighbors()])
 
-            flow = max((graph.vp.dp[v_node] / u_out_sum) * graph.vp.dp[u_node], (graph.vp.dp[u_node] / v_in_sum) * graph.vp.dp[v_node])
-            graph.ep.flow[e] = max(graph.ep.flow[e], flow)
-        return
-
-    def maximization_node_depth(graph: Graph, simp_node_dict: dict):
-        """
-        return True if any updates happened
-        """
-        is_update = False
-        for no, node in simp_node_dict.items():
-            us = [e.source() for e in node.in_edges() if graph.ep.color[e] == 'black']
-            u_out_degrees = numpy.sum([(len([e for e in u_node.out_edges() if graph.ep.color[e] == 'black'])) for u_node in us]) 
-            node_in_degree = len([e for e in node.in_edges() if graph.ep.color[e] == 'black'])
-            in_neighbor_dp_sum = -1
-            if u_out_degrees == node_in_degree:
-                in_neighbor_dp_sum = numpy.sum([graph.vp.dp[u] for u in us])
-            
-            vs = [e.target() for e in node.out_edges() if graph.ep.color[e] == 'black']
-            v_in_degrees = numpy.sum([(len([e for e in v_node.in_edges() if graph.ep.color[e] == 'black'])) for v_node in vs]) 
-            node_out_degree = len([e for e in node.out_edges() if graph.ep.color[e] == 'black'])
-            out_neighbor_dp_sum = -1
-            if v_in_degrees == node_out_degree:
-                out_neighbor_dp_sum = numpy.sum([graph.vp.dp[v] for v in vs])
-
-            curr_dp = graph.vp.dp[node]
-            inflow = numpy.sum([graph.ep.flow[e] for e in node.in_edges()])
-            outflow = numpy.sum([graph.ep.flow[e] for e in node.out_edges()])
-            graph.vp.dp[node] = numpy.max([curr_dp, inflow, outflow, in_neighbor_dp_sum, out_neighbor_dp_sum])
-            # print_vertex(graph, node, "prev dp: {0}".format(curr_dp))
-            # print("inflow: ", inflow, "outflow: ", outflow, "in n sum: ", in_neighbor_dp_sum, " out n sum: ", out_neighbor_dp_sum)
-            if curr_dp != graph.vp.dp[node]:
-                is_update = True
-        return is_update
-    
-    # set cutoff delta
-    cutoff = 0
-    if graph_is_DAG(graph, simp_node_dict):
-        cutoff = 0.00001 * len(simp_node_dict) if strict else 0.0001 * len(simp_node_dict)
-    else:
-        cutoff = 0.0001 * len(simp_node_dict) if strict else 0.01 * len(simp_node_dict)
-    # store previous node depth
-    prev_dp_dict = {}
-    for no, v in simp_node_dict.items():
-        prev_dp_dict[no] = graph.vp.dp[v]
-    print("cutoff coverage-unbalance rate: ", cutoff)
-
-    # EM optimization
-    sum_delta = 0
-    is_update = True
-    while is_update:
-        # E Step
-        expectation_edge_flow(graph, simp_node_dict, simp_edge_dict)
-        # Validation
-        sum_delta = 0.0
-        sum_dp = numpy.sum([graph.vp.dp[node] for node in graph.vertices()])
-        dom_delta = 0.0
+            graph.ep.flow[e] = numpy.mean([(graph.vp.dp[v_node] / u_out_sum) * graph.vp.dp[u_node], 
+                (graph.vp.dp[u_node] / v_in_sum) * graph.vp.dp[v_node]])
+        # ****************************-Validation
         deltas = []
         for no, node in simp_node_dict.items():
             node_in_degree = len([e for e in node.in_edges() if graph.ep.color[e] == 'black'])
@@ -214,37 +116,43 @@ def coverage_rebalance(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict,
 
             dominator = (inflow + outflow)/ 2
             if dominator != 0.0:
-                sum_delta += abs(inflow - outflow)
-                dom_delta += dominator
                 deltas.append((no, (graph.vp.dp[node] * abs(inflow - outflow))/dominator))
 
-        if strict:
-            sum_delta = sum([k[1] for k in deltas]) / sum_dp
-        else:
-            sum_delta = sum_delta / dom_delta
+        sum_delta = sum([k[1] for k in deltas]) / sum([graph.vp.dp[node] for node in graph.vertices()])
         # print("sum delta: ", sum_delta, "worst delta: ", sorted(deltas, key=lambda p: p[1], reverse=True)[:10])
         if sum_delta < cutoff:
+            print("final delta: ", sum_delta)
             break
-        # M Step
-        is_update = maximization_node_depth(graph, simp_node_dict)
-
+        # rescal 
+        sum_ratio = (numpy.sum([graph.vp.dp[u] for u in simp_node_dict.values()]) / sum_depth_before)
+        if sum_ratio > 2 or sum_ratio < 0.5:
+            print("ratio doubled: ", sum_ratio, "rescalling..")
+            for node in graph.vertices():
+                if node.in_degree() > 0 or node.out_degree() > 0:
+                    graph.vp.dp[node] = graph.vp.dp[node]/sum_ratio
+            for edge in graph.edges():
+                graph.ep.flow[edge] = graph.ep.flow[edge]/sum_ratio
+        # ****************************-M Step
+        for no, node in simp_node_dict.items():
+            inflow = numpy.sum([graph.ep.flow[e] for e in node.in_edges()])
+            outflow = numpy.sum([graph.ep.flow[e] for e in node.out_edges()])
+            if node.in_degree() == 0 and node.out_degree() == 0:
+                graph.vp.dp[node] = graph.vp.dp[node]
+            elif node.in_degree() == 0 and node.out_degree() != 0:
+                graph.vp.dp[node] = outflow
+            elif node.in_degree() != 0 and node.out_degree() == 0:
+                graph.vp.dp[node] = inflow
+            else:
+                graph.vp.dp[node] = numpy.mean([inflow, outflow])
     # final evaluation
-    ratios = [(graph.vp.dp[u] / prev_dp_dict[no]) for no, u in simp_node_dict.items()]
-    sum_depth_before = numpy.sum([dp for dp in prev_dp_dict.values()])
-    sum_ratio = (numpy.sum([graph.vp.dp[u] for u in simp_node_dict.values()]) / sum_depth_before)
-    print("Sum Ratio: ", sum_ratio, "Ave Ratio: ", numpy.mean(ratios), "Max Ratio: ", numpy.max(ratios), "Min Ratio: ", numpy.min(ratios), "Delta: ", sum_delta)
+    sum_ratio = (sum([graph.vp.dp[u] for u in simp_node_dict.values()]) / sum_depth_before)
 
-    ratio_div = sum_ratio
-    print("selected ratio: ", ratio_div)
+    print("scaled ratio, normalizing: ", sum_ratio)
     for node in simp_node_dict.values():
-        graph.vp.dp[node] = graph.vp.dp[node] / ratio_div
-
-    node_ratio_dict = {}
-    for no in prev_dp_dict.keys():
-        if prev_dp_dict[no] != 0:
-            node_ratio_dict[no] = (graph.vp.dp[simp_node_dict[no]] / prev_dp_dict[no]) if prev_dp_dict[no] != 0 else 0
-    curr_dp_dict = {}
-    for no, v in simp_node_dict.items():
-        curr_dp_dict[no] = graph.vp.dp[v]
-
-    return prev_dp_dict, curr_dp_dict, node_ratio_dict, ratio_div
+        # only scale the connected nodes
+        if node.in_degree() > 0 or node.out_degree() > 0:
+            graph.vp.dp[node] = graph.vp.dp[node] / sum_ratio
+    for edge in graph.edges():
+        graph.ep.flow[edge] = graph.ep.flow[edge] / sum_ratio
+    print("done")
+    return

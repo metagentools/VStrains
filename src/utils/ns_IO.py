@@ -20,6 +20,7 @@ def init_graph():
     graph.ep.color = graph.new_edge_property("string")
 
     return graph
+
 def gfa_to_graph(gfa_file, init_ori=1):
     """
     Convert assembly graph gfa file to graph
@@ -45,8 +46,8 @@ def gfa_to_graph(gfa_file, init_ori=1):
         [t, seg_no, seg] = (str(line).split("\t"))[:3]
         tags = (str(line).split("\t"))[3:]
         dp = [tag for tag in tags if tag.startswith('dp') or tag.startswith("DP")][0]
-        assert dp[:2] == 'DP' or dp[:2] == 'dp'
-        assert t == 'S'
+        # gfa format check
+        assert t == 'S' and (dp[:2] == 'DP' or dp[:2] == 'dp')
         dp_float = float(dp.split(":")[2])
         v_pos = graph.add_vertex()
         graph.vp.seq[v_pos] = seg
@@ -69,26 +70,33 @@ def gfa_to_graph(gfa_file, init_ori=1):
         dp_dict[seg_no] = dp_float
     # L
     for edge in gfa.edges:
-        [t, seg_no_l, ori_l, seg_no_r, ori_r, overlap_len] = (str(edge).split("\t"))[:6]
-        assert t == 'L' or t == 'C' or t == 'E'
-        if seg_no_l == seg_no_r:
-            print("self-loop edge, skip: ", seg_no_l, ori_l, "->", seg_no_r, ori_r)
-            continue
+        [t, seg_no_l, ori_l, seg_no_r, ori_r] = (str(edge).split("\t"))[:5]
+        tags = (str(edge).split("\t"))[5:]
+        overlap_len = [tag for tag in tags if tag.endswith('m') or tag.endswith('M')][0]
+        # gfa format check
+        assert t == 'L' and overlap_len[-1] == 'M'
+
         u_pos, u_neg = node_dict[seg_no_l]
         v_pos, v_neg = node_dict[seg_no_r]
         u = u_pos if ori_l == '+' else u_neg
         v = v_pos if ori_r == '+' else v_neg
+
+        if (seg_no_l, graph.vp.ori[u], seg_no_r, graph.vp.ori[v]) in edge_dict:
+            print("parallel edge found, invalid case in assembly graph, please double-check the assembly graph format")
+            sys.exit(1)
+
+        if seg_no_l == seg_no_r:
+            print("self-loop edge, mark sequence as lower case: ", seg_no_l, ori_l, "->", seg_no_r, ori_r)
+            graph.vp.seq[u] = str.lower(graph.vp.seq[u])
+            graph.vp.seq[v] = str.lower(graph.vp.seq[v])
+            continue
+
         e = graph.add_edge(source=u, target=v)
-        # gfa format check
-        assert overlap_len[-1] == 'M'
         graph.ep.overlap[e] = int(overlap_len[:-1])
         graph.ep.color[e] = 'black'
 
         edge_dict[(seg_no_l, graph.vp.ori[u], seg_no_r, graph.vp.ori[v])] = e
         
-    # P
-    # for path in gfa.paths:
-    #     [line_type, path_no, seg_names, seg_overlap] = str(path).split("\t")
     graph, simp_node_dict, simp_edge_dict = flip_graph_bfs(graph, node_dict, edge_dict, dp_dict, init_ori)
     red_graph, red_node_dict, red_edge_dict = reduce_graph(graph, simp_node_dict, simp_edge_dict)
     return red_graph, red_node_dict, red_edge_dict
@@ -304,6 +312,7 @@ def graph_to_gfa(graph: Graph, simp_node_dict: dict, edge_dict: dict, filename):
 def flye_info2path(info_file, tempdir):
     print("translating flye {0} into .paths format..".format(info_file))
     contig_file = tempdir + "/tmp/contigs.paths"
+    repeat_dict = {}
     with open(info_file, 'r') as cfile:
         with open(contig_file, 'w') as ofile:
             cfile.readline() # header
@@ -311,9 +320,10 @@ def flye_info2path(info_file, tempdir):
             for line in lines:
                 seg_name, length, cov, circ, repeat, mult, alt_group, graph_path = (line[:-1]).split('\t')
                 header = str(seg_name) + "_length_" + str(length) + "_cov_" + str(cov)
-                path = ""
                 ps = graph_path.split(",")
                 ps = list(dict.fromkeys(ps))
+                
+                path = ""
                 for n in ps:
                     if n != '*' and n != '??':
                         # consider the info segment name start with - if neg orientation
@@ -336,10 +346,13 @@ def flye_info2path(info_file, tempdir):
                 rev_path = rev_path[:-1]
                 ofile.write(header + "\'\n")
                 ofile.write(rev_path + "\n")
+
+                if repeat > 1:
+                    repeat_dict[seg_name.split('_')[1]] = (circ, repeat, mult, alt_group)
             ofile.close()
         cfile.close()
     print("done")
-    return contig_file
+    return contig_file, repeat_dict
 
 def get_contig(contig_file, simp_node_dict: dict, simp_edge_dict: dict, min_len=250, at_least_one_edge=False):
     """

@@ -31,7 +31,7 @@ And python modules:
 
 ### Running tools ###
 Tools natively support output from SPAdes, 
-
+# avoid to use '+', '-', '&', '*' for node/contig name
 what contig can help us?
 contig can help us to find correct direction when meeting a non-trivial branch
 

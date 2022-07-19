@@ -1991,3 +1991,17 @@ def swap_node_ori_name(graph: Graph, node_dict: dict, seg_no):
     node_dict[seg_no] = (v_neg, v_pos)
 
     return graph, node_dict
+
+def gfa_to_fasta(gfa_file, fasta_file):
+    if not gfa_file:
+        print("No gfa file imported")
+        return -1
+    subprocess.check_call("touch {0}".format(fasta_file), shell=True)
+    with open(gfa_file, 'r') as gfa:
+        with open(fasta_file, 'w') as fasta:
+            for Line in gfa:
+                splited = (Line[:-1]).split('\t')
+                if splited[0] == 'S':
+                    fasta.write(">{0}\n{1}\n".format(splited[1],splited[2]))
+            fasta.close()
+        gfa.close()

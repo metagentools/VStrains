@@ -90,6 +90,12 @@ def main():
         print("\nPlease make sure to provide the correct assembler type (SPAdes or Flye).")
         print("\nExiting...\n")
         sys.exit(1)
+    
+    if args.min_len < 0 or args.min_cov < 0:
+        print("\nPlease make sure to provide the correct option (invalid value for min_len or min_cov).")
+        print("\nExiting...\n")
+        sys.exit(1)
+
     if args.output_dir[-1] == "/":
         args.output_dir = args.output_dir[:-1]
 
@@ -109,7 +115,7 @@ def main():
     start = time.time()
     run(args)
     elapsed = time.time() - start
-    print("\nresult is stored in {0}strain.fasta".format(args.output_dir))
+    print("\nresult is stored in {0}/strain.fasta".format(args.output_dir))
     print("Finished: ", date.today().strftime("%B %d, %Y"))
     print("Elapsed time: ", elapsed)
     print("\nExiting...\n")

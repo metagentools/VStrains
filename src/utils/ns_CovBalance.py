@@ -4,7 +4,6 @@ from graph_tool.all import Graph
 import numpy
 
 from utils.ns_Utilities import *
-from utils.ns_IO import graph_to_gfa, flipped_gfa_to_graph
 
 def assign_edge_flow(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict):
     """
@@ -29,9 +28,7 @@ def assign_edge_flow(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict):
 def coverage_rebalance_s(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict):
     
     # break the cycle first
-    removed_edges = []
-    if not graph_is_DAG(graph, simp_node_dict):
-        removed_edges = cyclic_to_dag(graph, simp_node_dict, simp_edge_dict)
+    removed_edges = cyclic_to_dag(graph, simp_node_dict, simp_edge_dict)
     # incident node insertion
     assign_edge_flow(graph, simp_node_dict, simp_edge_dict)
     print("add incident nodes")

@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 
 from graph_tool.all import Graph
-from graph_tool.draw import graph_draw
 import gfapy
 import subprocess
 import sys
+import re
 
-from utils.ns_Utilities import reverse_seq, print_vertex, path_ids_to_seq, print_edge
+from utils.ns_Utilities import path_len, reverse_seq, print_vertex, path_ids_to_seq, print_edge
 
 def init_graph():
     graph = Graph(directed=True)
@@ -83,10 +83,11 @@ def gfa_to_graph(gfa_file, init_ori=1):
 
         if (seg_no_l, graph.vp.ori[u], seg_no_r, graph.vp.ori[v]) in edge_dict:
             print("parallel edge found, invalid case in assembly graph, please double-check the assembly graph format")
+            print("\nExiting...\n")
             sys.exit(1)
 
         if seg_no_l == seg_no_r:
-            print("self-loop edge, mark sequence as lower case: ", seg_no_l, ori_l, "->", seg_no_r, ori_r)
+            # print("self-loop edge, mark sequence as lower case: ", seg_no_l, ori_l, "->", seg_no_r, ori_r)
             graph.vp.seq[u] = str.lower(graph.vp.seq[u])
             graph.vp.seq[v] = str.lower(graph.vp.seq[v])
             continue
@@ -188,7 +189,6 @@ def flip_graph_bfs(graph: Graph, node_dict: dict, edge_dict: dict, dp_dict: dict
                     print_edge(graph, e, "force edge deletion")
                     tmp_s = e.source()
                     tmp_t = e.target()
-                    print(graph.vp.ori[tmp_s], graph.vp.ori[tmp_t])
                     edge_dict.pop((graph.vp.id[tmp_s], graph.vp.ori[tmp_s], 
                         graph.vp.id[tmp_t], graph.vp.ori[tmp_t]))
                     graph.remove_edge(e)
@@ -199,7 +199,6 @@ def flip_graph_bfs(graph: Graph, node_dict: dict, edge_dict: dict, dp_dict: dict
                     print_edge(graph, e, "force edge deletion")
                     tmp_s = e.source()
                     tmp_t = e.target()
-                    print(graph.vp.ori[tmp_s], graph.vp.ori[tmp_t])
                     edge_dict.pop((graph.vp.id[tmp_s], graph.vp.ori[tmp_s], 
                         graph.vp.id[tmp_t], graph.vp.ori[tmp_t]))
                     graph.remove_edge(e)
@@ -309,164 +308,173 @@ def graph_to_gfa(graph: Graph, simp_node_dict: dict, edge_dict: dict, filename):
     print(filename, " is stored..")
     return 0
 
-def flye_info2path(info_file, tempdir):
-    print("translating flye {0} into .paths format..".format(info_file))
-    contig_file = tempdir + "/tmp/contigs.paths"
-    repeat_dict = {}
-    with open(info_file, 'r') as cfile:
-        with open(contig_file, 'w') as ofile:
-            cfile.readline() # header
-            lines = cfile.readlines()
-            for line in lines:
-                seg_name, length, cov, circ, repeat, mult, alt_group, graph_path = (line[:-1]).split('\t')
-                header = str(seg_name) + "_length_" + str(length) + "_cov_" + str(cov)
-                ps = graph_path.split(",")
-                ps = list(dict.fromkeys(ps))
-                
-                path = ""
-                for n in ps:
-                    if n != '*' and n != '??':
-                        # consider the info segment name start with - if neg orientation
-                        if n[0] == '-':
-                            path += "edge_" + n[1:] + '-' + ","
-                        else:
-                            path += "edge_" + n[:] + '+' + ","
-                path = path[:-1]
-                ofile.write(header + "\n")
-                ofile.write(path + "\n")
-
-                rev_path = ""
-                for n in reversed(ps):
-                    if n != '*' and n != '??':
-                        # consider the info segment name start with - if neg orientation
-                        if n[0] == '-':
-                            rev_path += "edge_" + n[1:] + '+' + ","
-                        else:
-                            rev_path += "edge_" + n[:] + '-' + ","
-                rev_path = rev_path[:-1]
-                ofile.write(header + "\'\n")
-                ofile.write(rev_path + "\n")
-
-                if repeat > 1:
-                    repeat_dict[seg_name.split('_')[1]] = (circ, repeat, mult, alt_group)
-            ofile.close()
-        cfile.close()
-    print("done")
-    return contig_file, repeat_dict
-
-def get_contig(contig_file, simp_node_dict: dict, simp_edge_dict: dict, min_len=250, at_least_one_edge=False):
+def spades_paths_parser(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, path_file, min_len=250, at_least_one_edge=False):
     """
-    Map SPAdes's contig to the graph, return all the contigs with length >= 250 or minimum 2 nodes in contig.
+    Map SPAdes's contig to the graph, return all the suitable contigs.
     """
-    print("processing contigs..")
-    if not contig_file:
-        print("contig file not imported")
-        return -1
+    def is_valid(p):
+        if len(p) == 0:
+            return False
+        for i in range(len(p) - 1):
+            if p[i] not in simp_node_dict:
+                return False
+            if p[i+1] not in simp_node_dict:
+                return False
+            if (p[i], p[i+1]) not in simp_edge_dict:
+                return False
+        return True
+    def get_paths(fd, path):
+        subpaths = []
+        total_nodes = 0
+        while path.endswith(";\n"):
+            subpath = str(path[:-2]).replace("+", "")
+            subpath = subpath.replace("-", "")
+            subpath = subpath.split(",")
+            # validity check
+            if is_valid(subpath):
+                subpaths.append(subpath)
+                total_nodes += len(subpath)
+            path = fd.readline()
+
+        subpath = path.rstrip().replace("+", "")
+        subpath = subpath.replace("-", "")
+        subpath = subpath.split(",")
+        if is_valid(subpath):
+            subpaths.append(subpath)
+            total_nodes += len(subpath)
+
+        return subpaths, total_nodes
+
+    print("parsing SPAdes .paths file..")
     contig_dict = {}
-    with open(contig_file, 'r') as contigs_file:
-        while True:
+    try:
+        with open(path_file, "r") as contigs_file:
             name = contigs_file.readline()
-            seg_nos = contigs_file.readline()
-            name_r = contigs_file.readline()
-            seg_nos_r = contigs_file.readline()
+            path = contigs_file.readline()
 
-            #TODO
-            if seg_nos.find(';') != -1:
-                print("find gaps in contig file, TODO")
-                continue
+            while name != "" and path != "":
+                (cno, clen, ccov) = re.search(
+                    "%s(.*)%s(.*)%s(.*)" % ("NODE_", "_length_", "_cov_"), name.strip()).group(1, 2, 3)
+                subpaths, total_nodes = get_paths(contigs_file, path)
 
-            if not name or not seg_nos or not name_r or not seg_nos_r: 
-                break
-            split_name = (name[:-1]).split('_')
-            cno = str(split_name[1])
-            clen = int(split_name[3])
-            ccov = float(split_name[5])
+                name_r = contigs_file.readline()
+                path_r = contigs_file.readline()
+                (cno_r, clen_r, ccov_r) = re.search(
+                    "%s(.*)%s(.*)%s(.*)%s" % ("NODE_", "_length_", "_cov_", "\'"), name_r.strip()).group(1, 2, 3)     
+                subpaths_r, total_nodes_r = get_paths(contigs_file, path_r)
 
-            # contig from both orientation
-            contigs = [n[:-1] if n[-1] in ['-', '+'] else n for n in seg_nos[:-1].split(',')]
-            contigs_rev = [n[:-1] if n[-1] in ['-', '+'] else n for n in seg_nos_r[:-1].split(',')]
-            contig_len = len(contigs)
-
-            # contig filter
-            # use as less in-confident contigs as possible.
-            if clen < min_len and len(contigs) < 2:
-                continue
-
-            if contig_len > 1:
-                i = 0
-                c = []
-                pick = False
-                while not pick:
-                    e1 = (contigs[i],contigs[i+1])
-                    e1_r = (contigs_rev[i], contigs_rev[i+1])
-                    i = i + 1
-                    if e1 not in simp_edge_dict and e1_r not in simp_edge_dict:
-                        print("edge is not exist in both direction, skip contig: ", cno)
-                        break
-                    elif e1 not in simp_edge_dict:
-                        c = contigs_rev[:]
-                        pick = True
-                        print("pick forward side for contig: ", cno)
-                    elif e1_r not in simp_edge_dict:
-                        c = contigs[:]
-                        pick = True
-                        print("pick reverse side for contig: ", cno)
-                    else:
-                        print("both direction edge, error edge case, skip contig: ", cno)
-                        break
-                    
-                    if not pick and i == contig_len - 1:
-                        # still not pick until last edge
-                        print("all the edge is removed, no pick until last point, skip contig: ", cno)
-                        break
-
-                if not pick:
-                    # whole contig is reduced already, no split chance, potential error
+                if not(cno == cno_r and clen == clen_r and ccov == ccov_r):
+                    raise BaseException
+                
+                # next contig group 
+                name = contigs_file.readline()
+                path = contigs_file.readline()
+                
+                # pick one direction only
+                (segments, total_n) = max([(subpaths, total_nodes), (subpaths_r, total_nodes_r)], key=lambda t: t[1])
+                
+                if segments == []:
                     continue
-                else:
-                    skip = False
-                    for i in range(len(c)-1):
-                        c_i = c[i]
-                        c_i_1 = c[i+1]
-                        if c_i not in simp_node_dict:
-                            print("node {0} not in contig {1}, skip".format(c_i, cno))
-                            skip = True
-                        if c_i_1 not in simp_node_dict:
-                            print("node {0} not in contig {1}, skip".format(c_i_1, cno))
-                            skip = True
-                        if (c_i, c_i_1) not in simp_edge_dict:
-                            print("edge {0} not in contig {1}, skip".format((c_i, c_i_1), cno))
-                            skip = True
-                        if skip:
-                            break
-                    if not skip:
-                        contig_dict[cno] = [c, clen, ccov]
-            else:
-                c = contigs
-                if c[0] in simp_node_dict:
-                    if not at_least_one_edge:
-                        contig_dict[cno] = [c, clen, ccov]
+                if int(clen) < min_len and total_n < 2:
+                    continue
+                for i, subpath in enumerate(segments):
+                    if at_least_one_edge and len(subpath) == 1:
+                        if (simp_node_dict[subpath[0]].in_degree() == 0 
+                            and simp_node_dict[subpath[-1]].out_degree() == 0):
+                            # isolated contig
+                            continue
+                    if len(segments) != 1:
+                        contig_dict[cno + "$" + str(i)] = [subpath, path_len(graph, [simp_node_dict[id] for id in subpath]), ccov]
                     else:
-                        # check connectivity
-                        if simp_node_dict[c[0]].in_degree() > 0 or simp_node_dict[c[0]].out_degree() > 0:
-                            contig_dict[cno] = [c, clen, ccov]
-        contigs_file.close()
-    print("done, total input contig: ", len(contig_dict))
+                        contig_dict[cno] = [subpath, clen, ccov]
+            
+            contigs_file.close()
+    except BaseException as err:
+        print(err, "\nPlease make sure the correct SPAdes contigs .paths file is provided.")
+        print("\nExiting...\n")
+        sys.exit(1)
+    print("done")
     return contig_dict
 
-def gfa_to_fasta(gfa_file, fasta_file):
-    if not gfa_file:
-        print("No gfa file imported")
-        return -1
-    subprocess.check_call("touch {0}".format(fasta_file), shell=True)
-    with open(gfa_file, 'r') as gfa:
-        with open(fasta_file, 'w') as fasta:
-            for Line in gfa:
-                splited = (Line[:-1]).split('\t')
-                if splited[0] == 'S':
-                    fasta.write(">{0}\n{1}\n".format(splited[1],splited[2]))
-            fasta.close()
-        gfa.close()
+def flye_info_parser(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, info_file, min_len=250, at_least_one_edge=False):
+    """
+     Map Flye's contig to the graph, return all the suitable contigs.
+    """
+    def is_valid(p):
+        if len(p) == 0:
+            return False
+        for i in range(len(p) - 1):
+            if p[i] not in simp_node_dict:
+                return False
+            if p[i+1] not in simp_node_dict:
+                return False
+            if (p[i], p[i+1]) not in simp_edge_dict:
+                return False
+        return True
+
+    print("parsing Flye .txt file..")
+    contig_dict = {}
+    contig_info = {}
+    try:
+        with open(info_file, 'r') as cfile:
+            for line in cfile.readlines():
+                if line.startswith("#"):
+                    # comment line
+                    continue
+                cno, clen, ccov, circ, repeat, mult, alt_group, graph_path = line.strip().split('\t')
+                #FIXME take care of repeat nodes in path
+                graph_path = graph_path.replace('-', '')
+                graph_path = graph_path.replace('+', '')
+                graph_path = graph_path.replace('*', '')
+                subpaths = []
+                total_nodes = 0
+                subpaths_r = []
+                total_nodes_r = 0
+                for sp in graph_path.split("??"):
+                    sp = list(filter(lambda x: x != '', sp.split(',')))
+                    sp = list(map(lambda v: "edge_"+str(v), sp))
+                    sp_r = list(reversed(sp))
+                    spred = list(dict.fromkeys(sp))
+                    spred_r = list(reversed(spred))
+                    if is_valid(spred):
+                        subpaths.append(sp)
+                        total_nodes += len(sp)
+                    if is_valid(spred_r):
+                        subpaths_r.insert(0, sp_r)
+                        total_nodes_r += len(sp_r)
+                (segments, total_n) = max([(subpaths, total_nodes), (subpaths_r, total_nodes_r)], key=lambda t: t[1])
+                if segments == []:
+                    continue
+                if int(clen) < min_len and total_n < 2:
+                    continue
+                for i, subpath in enumerate(segments):
+                    repeat_dict = {}
+                    for k in subpath:
+                        if k not in repeat_dict:
+                            repeat_dict[k] = 1
+                        else:
+                            repeat_dict[k] += 1
+                    subpath = list(dict.fromkeys(subpath))
+
+                    if at_least_one_edge and len(subpath) == 1:
+                        if (simp_node_dict[subpath[0]].in_degree() == 0 
+                            and simp_node_dict[subpath[-1]].out_degree() == 0):
+                            # isolated contig
+                            continue
+                    if len(segments) != 1:
+                        contig_dict[cno + "$" + str(i)] = [subpath, path_len(graph, [simp_node_dict[id] for id in subpath]), ccov]
+                        contig_info[cno + "$" + str(i)] = (circ, repeat, mult, alt_group, repeat_dict)
+                    else:
+                        contig_dict[cno] = [subpath, clen, ccov]
+                        contig_info[cno] = (circ, repeat, mult, alt_group, repeat_dict)
+            cfile.close()
+    except BaseException as err:
+        print(err, "\nPlease make sure the correct Flye contigs .txt file is provided.")
+        print("\nExiting...\n")
+        sys.exit(1)
+    print("done")
+    print(contig_dict, "\n", contig_info)
+    return contig_dict, contig_info
 
 def contig_dict_to_fasta(graph: Graph, simp_node_dict: dict, contig_dict: dict, output_file):
     """
@@ -494,7 +502,7 @@ def contig_dict_to_path(contig_dict: dict, output_file, keep_original=False):
             path_ids = ""
             for id in contig:
                 if keep_original:
-                    for iid in str(id).split('_'):
+                    for iid in str(id).split('&'):
                         if iid.find('*') != -1:
                             path_ids += iid[:iid.find('*')] + ","
                         else:

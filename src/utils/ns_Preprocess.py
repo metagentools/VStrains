@@ -14,6 +14,29 @@ from sklearn.cluster import KMeans
 from sklearn.linear_model import LinearRegression
 from sklearn.metrics import silhouette_score
 
+def reindexing(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, contig_dict: dict):
+    idx_mapping = {}
+    idx_node_dict = {}
+    idx_edge_dict = {}
+    idx_contig_dict = {}
+    idx = 0
+    for no, node in simp_node_dict.items():
+        if graph.vp.color[node] == 'black':
+            idx_mapping[no] = str(idx)
+            graph.vp.id[node] = str(idx)
+            idx_node_dict[str(idx)] = node
+            print("Node: {0} maps to {1}, seqlen: {2}".format(list_to_string(str(no).split('_')), idx, len(graph.vp.seq[node])))
+            idx += 1
+    for (u, v), e in simp_edge_dict.items():
+        if graph.ep.color[e] == 'black' and graph.vp.color[e.source()] == 'black' and graph.vp.color[e.target()] == 'black':
+            idx_edge_dict[(idx_mapping[u], idx_mapping[v])] = e
+
+    for cno, [contig, clen, ccov] in contig_dict.items():
+        idx_contig_dict[cno] = [[idx_mapping[no] for no in contig], clen, ccov]
+        print("indexed contig: ", cno, list_to_string(idx_contig_dict[cno][0]))
+
+    return graph, idx_node_dict, idx_edge_dict, idx_contig_dict
+
 def paths_from_src(graph: Graph, simp_node_dict: dict, self_node, src, maxlen):
     """
     retrieve all the path from src node to any node 
@@ -209,7 +232,6 @@ def tip_removal(graph: Graph, simp_node_dict: dict, tempdir, accept_rate):
     # src node collapse
     src_nodes = sorted(src_nodes, key=lambda x: graph.vp.dp[x])
     for src in src_nodes:
-        # print("--------------------------src: {0} --------------".format(graph.vp.id[src]))
         src_len = path_len(graph, [src])
         potential_paths = []
         # path retrieve
@@ -230,13 +252,10 @@ def tip_removal(graph: Graph, simp_node_dict: dict, tempdir, accept_rate):
         if cand_path != None:
             remove_tip(graph, simp_node_dict, src, cand_path)
             is_removed = False
-        else:
-            print_vertex(graph, src, "Tip cannot be removed, no matching path")
 
     # target node collapse
     tgt_nodes = sorted(tgt_nodes, key=lambda x: graph.vp.dp[x])
     for tgt in tgt_nodes:
-        print("--------------------------tgt: {0} --------------".format(graph.vp.id[tgt]))
         tgt_len = path_len(graph, [tgt])
         potential_paths = []
         # path retrieve
@@ -257,9 +276,6 @@ def tip_removal(graph: Graph, simp_node_dict: dict, tempdir, accept_rate):
         if cand_path != None:
             remove_tip(graph, simp_node_dict, tgt, cand_path)
             is_removed = False
-        else:
-            print_vertex(graph, tgt, "Tip cannot be removed, no matching path")
-
     return is_removed
 
 def delta_estimation(graph: Graph, tempdir, cutoff_size=200):

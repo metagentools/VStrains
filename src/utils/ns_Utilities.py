@@ -219,7 +219,7 @@ def contig_dict_remapping(graph: Graph, simp_node_dict: dict, simp_edge_dict: di
                 print("mapped contig: ", final_path)
                 sublen = path_len(graph, [simp_node_dict[no] for no in final_path])
                 subcov = path_cov(graph, simp_node_dict, simp_edge_dict, final_path)
-                contig_dict[cno+"d"] = [final_path, sublen, subcov]
+                contig_dict[cno] = [final_path, sublen, subcov]
     print("done")
     return
 
@@ -292,7 +292,7 @@ def simp_path_compactification(graph: Graph, simp_node_dict: dict, simp_edge_dic
         tgt = contig[-1]
         id = contig[0]
         for nid in contig[1:]:
-            id += "_" + nid
+            id += "&" + nid
         cseq = path_to_seq(graph_backup, [simp_node_dict_backup[n] for n in contig], cno)
         in_edges = list((graph_backup.vp.id[e.source()], src, graph_backup.ep.overlap[e]) for e in simp_node_dict_backup[src].in_edges())
         out_edges = list((tgt, graph_backup.vp.id[e.target()], graph_backup.ep.overlap[e]) for e in simp_node_dict_backup[tgt].out_edges())
@@ -370,8 +370,8 @@ def concat_overlap_contig(graph: Graph, simp_node_dict: dict, simp_edge_dict: di
         return (contig[-1], contig[0]) in simp_edge_dict
     print("concat overlapped contig..")
     contig_overlap_dict = {}
-    for cno in contig_dict.keys():
-        contig_overlap_dict[cno] = []
+    for key in contig_dict.keys():
+        contig_overlap_dict[key] = []
 
     for cno, [contig, _, _] in contig_dict.items():
         for cno2, [contig2, _, _] in contig_dict.items():
@@ -385,8 +385,9 @@ def concat_overlap_contig(graph: Graph, simp_node_dict: dict, simp_edge_dict: di
                     # forward/double e2e overlap
                     contig_overlap_dict[cno].append((cno2, intersects))
                 elif status == 'n':
-                    if simp_node_dict[contig2[0]] in simp_node_dict[contig[-1]].out_neighbors():
-                        # contig -> contig2, linear touch
+                    if (simp_node_dict[contig2[0]] in simp_node_dict[contig[-1]].out_neighbors() 
+                        and simp_node_dict[contig[0]] in simp_node_dict[contig2[-1]].out_neighbors()):
+                        # contig <-> contig2, circular touch
                         contig_overlap_dict[cno].append((cno2, []))
     print("contig overlap info: ", contig_overlap_dict)
     overlap_graph = Graph(directed=True)
@@ -403,37 +404,41 @@ def concat_overlap_contig(graph: Graph, simp_node_dict: dict, simp_edge_dict: di
             v = node_dict[cno2]
             edge = overlap_graph.add_edge(u,v)
             concat_dict[(cno, cno2)] = intersects
+    if not graph_is_DAG_simp(overlap_graph, node_dict):
+        # contig overlap graph contains circuits
+        # all_circuits can only be called if graph is not dag
+        circuits = list(all_circuits(overlap_graph, unique=True))
+        for k in range(len(circuits)):
+            cyc = circuits[k]
+            print("current cyc: ", [overlap_graph.vp.id[overlap_graph.vertex(v)] for v in cyc])
+            unique_cyc = True
+            for j in range(len(circuits)):
+                cyc2 = circuits[j]
+                if k != j and len(set(cyc).intersection(set(cyc2))) > 0:
+                    unique_cyc = False
+            for i in range(len(cyc)):
+                u = overlap_graph.vertex(cyc[i])
+                v = overlap_graph.vertex(cyc[(i+1)%len(cyc)])
+                cyc_e = overlap_graph.edge(u,v)
 
-    circuits = list(all_circuits(overlap_graph, unique=True))
-    for k in range(len(circuits)):
-        cyc = circuits[k]
-        print("current cyc: ", [overlap_graph.vp.id[overlap_graph.vertex(v)] for v in cyc])
-        unique_cyc = True
-        for j in range(len(circuits)):
-            cyc2 = circuits[j]
-            if k != j and len(set(cyc).intersection(set(cyc2))) > 0:
-                unique_cyc = False
-        for i in range(len(cyc)):
-            u = overlap_graph.vertex(cyc[i])
-            v = overlap_graph.vertex(cyc[(i+1)%len(cyc)])
-            cyc_e = overlap_graph.edge(u,v)
-
-            for e in set(u.out_edges()):
-                if e != cyc_e or not unique_cyc:
-                    overlap_graph.remove_edge(e)
-        if unique_cyc:
-            s = overlap_graph.vertex(cyc[0])
-            t = overlap_graph.vertex(cyc[1])
-            overlap_graph.remove_edge(overlap_graph.edge(s, t))
-
-    sorted_nodes = sorted(overlap_graph.vertices(), reverse=True)
-    for node in sorted_nodes:
-        if ((node.in_degree() == 0 and node.out_degree() == 0) 
-            or (node.in_degree() > 1 or node.out_degree() > 1)):
-            for edge in set(node.all_edges()):
-                overlap_graph.remove_edge(edge)
-            overlap_graph.remove_vertex(node)
-
+                for e in set(u.out_edges()):
+                    if e != cyc_e or not unique_cyc:
+                        overlap_graph.remove_edge(e)
+            if unique_cyc:
+                s = overlap_graph.vertex(cyc[0])
+                t = overlap_graph.vertex(cyc[1])
+                overlap_graph.remove_edge(overlap_graph.edge(s, t))
+    has_del = True
+    while has_del:
+        has_del = False
+        sorted_nodes = sorted(overlap_graph.vertices(), reverse=True)
+        for node in sorted_nodes:
+            if ((node.in_degree() == 0 and node.out_degree() == 0) 
+                or (node.in_degree() > 1 or node.out_degree() > 1)):
+                for edge in set(node.all_edges()):
+                    overlap_graph.remove_edge(edge)
+                overlap_graph.remove_vertex(node)
+                has_del = True
     srcs = filter(lambda n: n.in_degree() == 0, overlap_graph.vertices())
     for src in srcs:
         contig_path = []
@@ -448,7 +453,7 @@ def concat_overlap_contig(graph: Graph, simp_node_dict: dict, simp_edge_dict: di
             ccno = overlap_graph.vp.id[contig_node]
             contig, _, _ = contig_dict.pop(ccno)
             if ind < len(contig_path) - 1:
-                cnos += ccno + "c"
+                cnos += ccno + "&"
                 vid = overlap_graph.vp.id[contig_path[ind + 1]]
                 intersect = concat_dict[(ccno, vid)]
                 if intersect != []:
@@ -460,7 +465,7 @@ def concat_overlap_contig(graph: Graph, simp_node_dict: dict, simp_edge_dict: di
             else:
                 cnos += ccno
             concat_contig.extend(contig)
-        print("concat e2e contig: ", cnos, "\nafter concat: ", concat_contig)
+        print("concat end-to-end overlap contig: ", cnos, "\nafter concat: ", concat_contig)
         concat_len = path_len(graph, [simp_node_dict[id] for id in concat_contig])
         concat_cov = path_cov(graph, simp_node_dict, simp_edge_dict, concat_contig)
         contig_dict[cnos] = [concat_contig, concat_len, concat_cov]
@@ -487,36 +492,65 @@ def check_contig_intersection(contig, contig2):
         return True, None, 'o'
 
     # determine intermediate intersection
-    intermediate_nodes_index = [False for _ in contig]
-    for i in [contig.index(e) for e in intersect]:
-        intermediate_nodes_index[i] = True
-    prev_false_index = intermediate_nodes_index.index(False)
-    for j in range(prev_false_index + 1, len(intermediate_nodes_index)):
-        if not intermediate_nodes_index[j]:
+    intersect_maps = [intersect.__contains__(c) for c in contig]
+    prev_false_index = intersect_maps.index(False)
+    for j in range(prev_false_index + 1, len(intersect_maps)):
+        if not intersect_maps[j]:
             if prev_false_index + 1 == j:
                 prev_false_index = j
             else:
                 return True, None, 'o'
 
     # determine intermediate intersection
-    intermediate_nodes_index2 = [False for _ in contig2]
-    for i in [contig2.index(e) for e in intersect]:
-        intermediate_nodes_index2[i] = True
-    prev_false_index = intermediate_nodes_index2.index(False)
-    for j in range(prev_false_index + 1, len(intermediate_nodes_index2)):
-        if not intermediate_nodes_index2[j]:
+    intersect_maps2 = [intersect.__contains__(c) for c in contig2]
+    prev_false_index = intersect_maps2.index(False)
+    for j in range(prev_false_index + 1, len(intersect_maps2)):
+        if not intersect_maps2[j]:
             if prev_false_index + 1 == j:
                 prev_false_index = j
             else:
                 return True, None, 'o'
+    
+    # determine direction
+    if contig[0] == contig2[0]:
+        return True, None, 'o'
+    if contig[-1] == contig2[-1]:
+        return True, None, 'o'
 
-    intersect_path = [n if intermediate_nodes_index[i] else None for i, n in enumerate(contig)]
+    intersect_path = [n if intersect_maps[i] else None for i, n in enumerate(contig)]
     direction = None
-    if intermediate_nodes_index[0]:
+    if intersect_maps[0]:
         direction = 'b'
-    if intermediate_nodes_index[-1]:
+    if intersect_maps[-1]:
         direction = 'f' if direction == None else 'd'
     return False, intersect_path, direction
+
+def strain_repeat_resol(graph: Graph, simp_node_dict: dict, strain_dict: dict, contig_info: dict, copy_contig_dict: dict):
+    print("resolving repeat nodes in strain..")
+    # if contig is fully aligned to the strain, then map the repeat to the strain
+    for sno, [strain, _, scov] in list(strain_dict.items()):
+        cnos = set()
+        subids = []
+        for id in strain:
+            for iid in str(id).split('&'):
+                if iid.find('*') != -1:
+                    iid = iid[:iid.find('*')]
+                subids.append(iid)
+        for cno, [contig, _, _] in copy_contig_dict.items():
+            if (set(contig).issubset(set(subids))):
+                cnos.add(cno)
+
+        repeat_dec = dict.fromkeys(subids, 1)
+        # cnos: all related contig id for current strain
+        for cno in cnos:
+            (circ, repeat, mult, alt_group, repeat_dict) = contig_info[cno]
+            for no, rpc in repeat_dict.items():
+                repeat_dec[no] = max(repeat_dec[no], rpc)
+        strain_r = []
+        [strain_r.extend([id]*repeat_dec[id]) for id in subids]
+        strain_dict[sno] = [strain_r, path_len(graph, [simp_node_dict[no] for no in strain_r]), scov]
+    print("done")
+    return
 
 def path_len(graph: Graph, path):
     """
@@ -526,7 +560,9 @@ def path_len(graph: Graph, path):
     for i in range(len(path) - 1):
         u = path[i]
         v = path[i+1]
-        lens -= graph.ep.overlap[graph.edge(u, v)]
+        e = graph.edge(u, v)
+        if e != None:
+            lens -= graph.ep.overlap[graph.edge(u, v)]
     return lens
 
 def path_cov(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, path):
@@ -573,7 +609,8 @@ def path_ids_to_seq(graph: Graph, path_ids: list, path_name, simp_node_dict: dic
         if i == len(path_ids) - 1:
             seq = seq + graph.vp.seq[u]
         else:
-            overlap_len = graph.ep.overlap[graph.edge(u, simp_node_dict[path_ids[i+1]])]
+            e = graph.edge(u, simp_node_dict[path_ids[i+1]])
+            overlap_len = graph.ep.overlap[e] if e != None else 0
             if overlap_len == 0:
                 seq = seq + graph.vp.seq[u]
             else:
@@ -690,7 +727,6 @@ def add_global_source_sink(graph: Graph, simp_node_dict: dict, simp_edge_dict: d
         graph.ep.overlap[e] = 0
         graph.vp.dp[global_src] += graph.ep.flow[e]
         simp_edge_dict[(graph.vp.id[global_src], graph.vp.id[src])] = e
-    # print("srcs:  ", list_to_string([graph.vp.id[src] for src in src_nodes]))
 
     global_sink = graph.add_vertex()
     graph.vp.id[global_sink] = 'global_sink'
@@ -705,12 +741,50 @@ def add_global_source_sink(graph: Graph, simp_node_dict: dict, simp_edge_dict: d
         graph.ep.overlap[e] = 0
         graph.vp.dp[global_sink] += graph.ep.flow[e]
         simp_edge_dict[(graph.vp.id[tgt], graph.vp.id[global_sink])] = e
-    # print("sinks: ", list_to_string([graph.vp.id[tgt] for tgt in tgt_nodes]))
     return global_src, global_sink
 
 #######################################################################################################
 #######################################PATH FINDING ALGORITHM##########################################
 #######################################################################################################
+
+def graph_is_DAG_simp(graph: Graph, simp_node_dict: dict):
+    """
+    check if the graph is a DAG, advanced to check all the isolated subgraph by all mean
+    graphtool is_DAG() may not work if the graph is not connected as several parts
+    """
+    def isCyclicUtil(graph: Graph, v, visited, recStack):
+        # Mark current node as visited and
+        # adds to recursion stack
+        visited[v] = True
+        recStack[v] = True
+ 
+        # Recur for all neighbours
+        # if any neighbour is visited and in
+        # recStack then graph is cyclic
+        for e in v.out_edges():
+            neighbour = e.target()
+            if not visited[neighbour]:
+                if isCyclicUtil(graph, neighbour, visited, recStack):
+                    return True
+            elif recStack[neighbour]:
+                return True
+ 
+        # The node needs to be poped from
+        # recursion stack before function ends
+        recStack[v] = False
+        return False
+    
+    #init
+    visited = dict.fromkeys(simp_node_dict.values(), False)
+    recStack = dict.fromkeys(simp_node_dict.values(), False)
+    for node in simp_node_dict.values():
+        visited[node] = False
+        recStack[node] = False    
+    for node in simp_node_dict.values():
+        if not visited[node]:
+            if isCyclicUtil(graph, node, visited, recStack):
+                return False
+    return True
 
 def graph_is_DAG(graph: Graph, simp_node_dict: dict):
     """
@@ -783,12 +857,10 @@ def retrieve_cycle(graph: Graph, n=1):
 
     def store_cycle(stack: list, next):
         stack = stack[stack.index(next):]
-        print("Cycle: ", list_to_string([graph.vp.id[node] for node in stack]))
+        # print("Cycle: ", list_to_string([graph.vp.id[node] for node in stack]))
         cycles.append(stack)
 
-    visited = {}
-    for node in graph.vertices():
-        visited[node] = 'unvisited'
+    visited = dict.fromkeys(list(graph.vertices()), 'unvisited')
     
     for v in graph.vertices():
         if visited[v] == 'unvisited':
@@ -803,22 +875,25 @@ def cyclic_to_dag(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict):
     convert graph to dag by delete minimum coverage not-in-contig edge in cycle until reduced to dag, legacy
     """
     def remove_edge(fst, snd):
-        print("removing edge: {0} -> {1} to reduce a cycle".format(graph.vp.id[fst], graph.vp.id[snd]))
+        # print("removing edge: {0} -> {1} to reduce a cycle".format(graph.vp.id[fst], graph.vp.id[snd]))
         e = graph.edge(fst, snd)
         graph.ep.color[e] = 'gray'
         removed_edges.append((graph.vp.id[fst], graph.vp.id[snd], graph.ep.overlap[e]))
         return fst, snd
     removed_edges = []
     print("Turn cyclic graph to dag..")
-    while not graph_is_DAG(graph, simp_node_dict):
-        cycle = retrieve_cycle(graph)[0]
-        max_node = max(cycle, key=lambda v: graph.vp.dp[v])
-        prev_node = cycle[(cycle.index(max_node) - 1) % len(cycle)]
-        next_node = cycle[(cycle.index(max_node) + 1) % len(cycle)]
-        if graph.vp.dp[prev_node] < graph.vp.dp[next_node]:
-            remove_edge(prev_node, max_node)
-        else:
-            remove_edge(max_node, next_node)
+    if graph_is_DAG(graph, simp_node_dict):
+        print("graph is dag already, skip")
+    else:
+        while not graph_is_DAG(graph, simp_node_dict):
+            cycle = retrieve_cycle(graph)[0]
+            max_node = max(cycle, key=lambda v: graph.vp.dp[v])
+            prev_node = cycle[(cycle.index(max_node) - 1) % len(cycle)]
+            next_node = cycle[(cycle.index(max_node) + 1) % len(cycle)]
+            if graph.vp.dp[prev_node] < graph.vp.dp[next_node]:
+                remove_edge(prev_node, max_node)
+            else:
+                remove_edge(max_node, next_node)
     for (uid, vid, _) in removed_edges:
         e = simp_edge_dict.pop((uid, vid))
         graph.remove_edge(e)
@@ -829,9 +904,7 @@ def reachable(graph: Graph, simp_node_dict: dict, src, tgt):
     """
     determine whether src can possibly reach the tgt
     """
-    visited = {}
-    for no in simp_node_dict.keys():
-        visited[no] = False
+    visited = dict.fromkeys(simp_node_dict.keys(), False)
 
     count_down = 1 if src != tgt else 2
     queue = [src]

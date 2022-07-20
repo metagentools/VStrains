@@ -173,9 +173,9 @@ def contig_dict_remapping(graph: Graph, simp_node_dict: dict, simp_edge_dict: di
                         if (last, nextm) in simp_edge_dict:
                             acc_paths.append((p+[nextm]))
             paths = acc_paths
-        print("----------------> curr contig tree mapping: ", cno, " mapped count: ", len(paths))
-        for p in paths:
-            print(list_to_string(p))
+        # print("----------------> curr contig tree mapping: ", cno, " mapped count: ", len(paths))
+        # for p in paths:
+        #     print(list_to_string(p))
         return paths
     def merge_id(id_mapping_r: dict, curr_set: set, myid):
         if len(curr_set) == 0:
@@ -195,8 +195,8 @@ def contig_dict_remapping(graph: Graph, simp_node_dict: dict, simp_edge_dict: di
         # print("Node {0} maps to {1}".format(id, all_set))
 
     for cno, (contig, _, _) in list(contig_dict.items()):
-        print("---------------------------------------------")
-        print("Current mapping contig: ", cno, list_to_string(contig))
+        # print("---------------------------------------------")
+        # print("Current mapping contig: ", cno, list_to_string(contig))
         paths = map_contig_tree(cno, contig, red_id_mapping)
         # split the contig tree to avoid the ambiguity variation
         if len(paths) < 1:
@@ -204,19 +204,19 @@ def contig_dict_remapping(graph: Graph, simp_node_dict: dict, simp_edge_dict: di
         elif len(paths) == 1:
             if paths[0] == contig:
                 None
-                print("single mapping, keep original")
+                # print("single mapping, keep original")
             else:
-                print("single mapping, replace", list_to_string(paths[0]))
+                # print("single mapping, replace", list_to_string(paths[0]))
                 contig_dict.pop(cno)
                 subcov = path_cov(graph, simp_node_dict, simp_edge_dict, paths[0])
                 contig_dict[cno] = [paths[0], path_len(graph, [simp_node_dict[no] for no in paths[0]]), subcov]
         else:
             contig_dict.pop(cno)
-            print("multi mapping for the current contig: whole contig is ambiguous mapping, keep the intersection reduced one only", cno)
+            # print("multi mapping for the current contig: whole contig is ambiguous mapping, keep the intersection reduced one only", cno)
             final_path = reduce(lambda a, b: [i for i in a if i in b], paths)
             if len(final_path) > 0:
                 # at least one node
-                print("mapped contig: ", final_path)
+                # print("mapped contig: ", final_path)
                 sublen = path_len(graph, [simp_node_dict[no] for no in final_path])
                 subcov = path_cov(graph, simp_node_dict, simp_edge_dict, final_path)
                 contig_dict[cno] = [final_path, sublen, subcov]
@@ -543,7 +543,7 @@ def strain_repeat_resol(graph: Graph, simp_node_dict: dict, strain_dict: dict, c
         repeat_dec = dict.fromkeys(subids, 1)
         # cnos: all related contig id for current strain
         for cno in cnos:
-            (circ, repeat, mult, alt_group, repeat_dict) = contig_info[cno]
+            (_, repeat_dict) = contig_info[cno]
             for no, rpc in repeat_dict.items():
                 repeat_dec[no] = max(repeat_dec[no], rpc)
         strain_r = []
@@ -679,10 +679,8 @@ def graph_remove_edge(graph: Graph, simp_edge_dict: dict, src_id, tgt_id, s="rem
 def draw_graph_api(graph: Graph, output_file):
     output_size = 120 * (graph.num_edges() + graph.num_vertices())
     vsize= 30
-    esize = 30
-    graph_draw(g=graph, output=output_file, bg_color="white", 
-    vertex_size=vsize,
-    output_size=(output_size, output_size))  
+    graph_draw(g=graph, output=output_file, bg_color="white", vertex_size=vsize,
+        output_size=(output_size, output_size))  
 
 def reverse_seq(seq: str):
     return ''.join({'A': 'T', 'T': 'A', 'C': 'G', 'G': 'C'}[x] for x in reversed(seq))

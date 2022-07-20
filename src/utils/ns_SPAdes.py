@@ -1,9 +1,18 @@
 #!/usr/bin/env python3
 
-from utils.ns_Preprocess import delta_estimation, graph_simplification, tip_removal_s
-from utils.ns_CovBalance import assign_edge_flow, coverage_rebalance_s
 from utils.ns_Path import extract_cand_path
 from utils.ns_Split import iterated_graph_split
+from utils.ns_Utilities import *
+from utils.ns_Preprocess import (
+    delta_estimation, 
+    graph_simplification, 
+    tip_removal_s, 
+    reindexing
+)
+from utils.ns_CovBalance import (
+    assign_edge_flow, 
+    coverage_rebalance_s
+)
 from utils.ns_IO import (
     graph_to_gfa, 
     flipped_gfa_to_graph, 
@@ -12,7 +21,6 @@ from utils.ns_IO import (
     contig_dict_to_fasta,
     spades_paths_parser
 )
-from utils.ns_Utilities import *
 
 def run(args):
     TEMP_DIR = args.output_dir
@@ -21,9 +29,12 @@ def run(args):
     graph, simp_node_dict, simp_edge_dict = gfa_to_graph(args.gfa_file)
     graph_to_gfa(graph, simp_node_dict, simp_edge_dict, "{0}/gfa/graph_L0.gfa".format(TEMP_DIR))
     graph0, simp_node_dict0, simp_edge_dict0 = flipped_gfa_to_graph("{0}/gfa/graph_L0.gfa".format(TEMP_DIR))
-    
-    contig_dict = spades_paths_parser(graph0, simp_node_dict0, simp_edge_dict0, args.path_file, args.min_len)
-    
+    graph0, simp_node_dict0, simp_edge_dict0, idx_mapping = reindexing(graph0, simp_node_dict0, simp_edge_dict0)
+
+    contig_dict, contig_info = spades_paths_parser(graph0, simp_node_dict0, simp_edge_dict0, idx_mapping, args.path_file, args.min_len)
+    copy_contig_dict = {}
+    for cno, [contig, clen, ccov] in contig_dict.items():
+        copy_contig_dict[cno] = [list(contig), clen, ccov]
     print("----------------------------------PREPROCESS---------------------------------------")
     tip_removal_s(graph0, simp_node_dict0, contig_dict, TEMP_DIR)
     graph_to_gfa(graph0, simp_node_dict0, simp_edge_dict0, "{0}/gfa/t_graph_L1.gfa".format(TEMP_DIR))
@@ -77,8 +88,12 @@ def run(args):
     
     print("-----------------------FINAL CLEAN UP-------------------------------")
     contig_dup_removed_s(strain_dict)  
-    trim_contig_dict(graphf, simp_node_dictf, strain_dict)  
-    contig_dict_to_fasta(graphf, simp_node_dictf, strain_dict, "{0}/strain.fasta".format(TEMP_DIR))
+    trim_contig_dict(graphf, simp_node_dictf, strain_dict) 
+    # recover repeat nodes back to contig
+    strain_repeat_resol(graph0, simp_node_dict0, strain_dict, contig_info, copy_contig_dict)
+
+    print("----------------------------------OUTPUT---------------------------------------")
+    contig_dict_to_fasta(graph0, simp_node_dict0, strain_dict, "{0}/strain.fasta".format(TEMP_DIR))
     contig_dict_to_path(strain_dict, "{0}/strain.paths".format(TEMP_DIR), True)
     if args.ref_file:
         minimap_api(args.ref_file, "{0}/strain.fasta".format(TEMP_DIR), "{0}/paf/strain_to_ref.paf".format(TEMP_DIR))

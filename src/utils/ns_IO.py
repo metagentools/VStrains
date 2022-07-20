@@ -179,43 +179,36 @@ def flip_graph_bfs(graph: Graph, node_dict: dict, edge_dict: dict, dp_dict: dict
     # verify sorted graph
     print("final verifying graph..")
     assert len(pick_dict) == len(node_dict)
-    for key, item in pick_dict.items():
+    for key, item in list(pick_dict.items()):
         v_pos, v_neg = node_dict[key]
         if item == '+':
+            #FIXME split v_neg to a new node
             if v_neg.in_degree() + v_neg.out_degree() > 0:
-                print_vertex(graph, v_neg, "pick ambiguous found")
-                print("force selection, remove opposite edges")
-                for e in set(v_neg.all_edges()):
-                    print_edge(graph, e, "force edge deletion")
-                    tmp_s = e.source()
-                    tmp_t = e.target()
-                    edge_dict.pop((graph.vp.id[tmp_s], graph.vp.ori[tmp_s], 
-                        graph.vp.id[tmp_t], graph.vp.ori[tmp_t]))
-                    graph.remove_edge(e)
+                print_vertex(graph, v_neg, "pick ambiguous found, pick both, split node")
+                pick_dict[key] = 't'
         else:
+            #FIXME split v_neg to a new node
             if v_pos.in_degree() + v_pos.out_degree() > 0:
-                print_vertex(graph, v_pos, "pick ambiguous found")
-                for e in set(v_pos.all_edges()):
-                    print_edge(graph, e, "force edge deletion")
-                    tmp_s = e.source()
-                    tmp_t = e.target()
-                    edge_dict.pop((graph.vp.id[tmp_s], graph.vp.ori[tmp_s], 
-                        graph.vp.id[tmp_t], graph.vp.ori[tmp_t]))
-                    graph.remove_edge(e)
+                print_vertex(graph, v_pos, "pick ambiguous found, pick both, split node")
+                pick_dict[key] = 't'
     print("Graph is verified")
 
     simp_node_dict = {}
     for seg_no, pick in pick_dict.items():
         if pick == '+':
-            picked = node_dict[seg_no][0]
+            simp_node_dict[seg_no] = node_dict[seg_no][0]
+        elif pick == '-':
+            simp_node_dict['-' + seg_no] = node_dict[seg_no][1]
+            graph.vp.id[node_dict[seg_no][1]] = '-' + seg_no
         else:
-            picked = node_dict[seg_no][1]
-        graph.vp.ori[picked] = 1
-        simp_node_dict[seg_no] = picked
+            simp_node_dict[seg_no] = node_dict[seg_no][0]
+            graph.vp.id[node_dict[seg_no][0]] = seg_no
+            simp_node_dict['-' + seg_no] = node_dict[seg_no][1]
+            graph.vp.id[node_dict[seg_no][1]] = '-' + seg_no
 
     simp_edge_dict = {}
-    for (u, _, v, _), e in edge_dict.items():
-        simp_edge_dict[(u,v)] = e
+    for e in edge_dict.values():
+        simp_edge_dict[(graph.vp.id[e.source()],graph.vp.id[e.target()])] = e
     print("done")
     return graph, simp_node_dict, simp_edge_dict
 
@@ -308,38 +301,56 @@ def graph_to_gfa(graph: Graph, simp_node_dict: dict, edge_dict: dict, filename):
     print(filename, " is stored..")
     return 0
 
-def spades_paths_parser(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, path_file, min_len=250, at_least_one_edge=False):
+def is_valid(p: list, idx_mapping: dict, simp_node_dict: dict, simp_edge_dict: dict):
+    if len(p) == 0:
+        return False
+    if len(p) == 1:
+        if p[0] not in idx_mapping:
+            return False
+        if idx_mapping[p[0]] not in simp_node_dict:
+            return False
+        return True
+    for i in range(len(p) - 1):
+        if p[i] not in idx_mapping or p[i+1] not in idx_mapping:
+            return False
+        mu = idx_mapping[p[i]]
+        mv = idx_mapping[p[i+1]]
+        if mu not in simp_node_dict:
+            return False
+        if mv not in simp_node_dict:
+            return False
+        if (mu, mv) not in simp_edge_dict:
+            return False
+    return True
+
+def spades_paths_parser(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, idx_mapping: dict, path_file, min_len=250, at_least_one_edge=False):
     """
     Map SPAdes's contig to the graph, return all the suitable contigs.
     """
-    def is_valid(p):
-        if len(p) == 0:
-            return False
-        for i in range(len(p) - 1):
-            if p[i] not in simp_node_dict:
-                return False
-            if p[i+1] not in simp_node_dict:
-                return False
-            if (p[i], p[i+1]) not in simp_edge_dict:
-                return False
-        return True
     def get_paths(fd, path):
         subpaths = []
         total_nodes = 0
         while path.endswith(";\n"):
-            subpath = str(path[:-2]).replace("+", "")
-            subpath = subpath.replace("-", "")
-            subpath = subpath.split(",")
+            subpath = str(path[:-2]).split(",")
+            subpath = list(map(lambda v: 
+                str(v[:-1]) if v[-1] == '+'
+                else '-' + str(v[:-1]), subpath))
+            subpathred = list(dict.fromkeys(subpath))
             # validity check
-            if is_valid(subpath):
+            if is_valid(subpathred, idx_mapping, simp_node_dict, simp_edge_dict):
+                subpath = list(map(lambda v: idx_mapping[v], subpath))
                 subpaths.append(subpath)
                 total_nodes += len(subpath)
             path = fd.readline()
 
-        subpath = path.rstrip().replace("+", "")
-        subpath = subpath.replace("-", "")
-        subpath = subpath.split(",")
-        if is_valid(subpath):
+        subpath = path.rstrip().split(",")
+        subpath = list(map(lambda v: 
+            str(v[:-1]) if v[-1] == '+'
+            else '-' + str(v[:-1]), subpath))
+        subpathred = list(dict.fromkeys(subpath))
+        # validity check
+        if is_valid(subpathred, idx_mapping, simp_node_dict, simp_edge_dict):
+            subpath = list(map(lambda v: idx_mapping[v], subpath))
             subpaths.append(subpath)
             total_nodes += len(subpath)
 
@@ -347,6 +358,7 @@ def spades_paths_parser(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict
 
     print("parsing SPAdes .paths file..")
     contig_dict = {}
+    contig_info = {}
     try:
         with open(path_file, "r") as contigs_file:
             name = contigs_file.readline()
@@ -378,6 +390,14 @@ def spades_paths_parser(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict
                 if int(clen) < min_len and total_n < 2:
                     continue
                 for i, subpath in enumerate(segments):
+                    repeat_dict = {}
+                    for k in subpath:
+                        if k not in repeat_dict:
+                            repeat_dict[k] = 1
+                        else:
+                            repeat_dict[k] += 1
+                    subpath = list(dict.fromkeys(subpath))
+
                     if at_least_one_edge and len(subpath) == 1:
                         if (simp_node_dict[subpath[0]].in_degree() == 0 
                             and simp_node_dict[subpath[-1]].out_degree() == 0):
@@ -385,8 +405,10 @@ def spades_paths_parser(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict
                             continue
                     if len(segments) != 1:
                         contig_dict[cno + "$" + str(i)] = [subpath, path_len(graph, [simp_node_dict[id] for id in subpath]), ccov]
+                        contig_info[cno + "$" + str(i)] = (None, repeat_dict)
                     else:
                         contig_dict[cno] = [subpath, clen, ccov]
+                        contig_info[cno] = (None, repeat_dict)
             
             contigs_file.close()
     except BaseException as err:
@@ -394,24 +416,13 @@ def spades_paths_parser(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict
         print("\nExiting...\n")
         sys.exit(1)
     print("done")
-    return contig_dict
+    print(contig_dict, "\n", contig_info)
+    return contig_dict, contig_info
 
-def flye_info_parser(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, info_file, min_len=250, at_least_one_edge=False):
+def flye_info_parser(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, idx_mapping, info_file, min_len=250, at_least_one_edge=False):
     """
      Map Flye's contig to the graph, return all the suitable contigs.
     """
-    def is_valid(p):
-        if len(p) == 0:
-            return False
-        for i in range(len(p) - 1):
-            if p[i] not in simp_node_dict:
-                return False
-            if p[i+1] not in simp_node_dict:
-                return False
-            if (p[i], p[i+1]) not in simp_edge_dict:
-                return False
-        return True
-
     print("parsing Flye .txt file..")
     contig_dict = {}
     contig_info = {}
@@ -423,8 +434,6 @@ def flye_info_parser(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, i
                     continue
                 cno, clen, ccov, circ, repeat, mult, alt_group, graph_path = line.strip().split('\t')
                 #FIXME take care of repeat nodes in path
-                graph_path = graph_path.replace('-', '')
-                graph_path = graph_path.replace('+', '')
                 graph_path = graph_path.replace('*', '')
                 subpaths = []
                 total_nodes = 0
@@ -432,14 +441,19 @@ def flye_info_parser(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, i
                 total_nodes_r = 0
                 for sp in graph_path.split("??"):
                     sp = list(filter(lambda x: x != '', sp.split(',')))
-                    sp = list(map(lambda v: "edge_"+str(v), sp))
-                    sp_r = list(reversed(sp))
+                    sp = list(map(lambda v: 
+                        "edge_"+str(v) if v[0] not in ['-', '+']
+                        else str(v[0]) + "edge_" + str(v[1:]), sp))
+                    sp = list(map(lambda v: v if v[0] != '+' else v[1:], sp))
+                    sp_r = list(map(lambda v: str(v[1:]) if v[0] == '-' else '-' + str(v), reversed(sp)))
                     spred = list(dict.fromkeys(sp))
-                    spred_r = list(reversed(spred))
-                    if is_valid(spred):
+                    spred_r = list(dict.fromkeys(sp_r))
+                    if is_valid(spred, idx_mapping, simp_node_dict, simp_edge_dict):
+                        sp = list(map(lambda v: idx_mapping[v], sp))
                         subpaths.append(sp)
                         total_nodes += len(sp)
-                    if is_valid(spred_r):
+                    if is_valid(spred_r, idx_mapping, simp_node_dict, simp_edge_dict):
+                        sp_r = list(map(lambda v: idx_mapping[v], sp_r))
                         subpaths_r.insert(0, sp_r)
                         total_nodes_r += len(sp_r)
                 (segments, total_n) = max([(subpaths, total_nodes), (subpaths_r, total_nodes_r)], key=lambda t: t[1])
@@ -463,10 +477,10 @@ def flye_info_parser(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, i
                             continue
                     if len(segments) != 1:
                         contig_dict[cno + "$" + str(i)] = [subpath, path_len(graph, [simp_node_dict[id] for id in subpath]), ccov]
-                        contig_info[cno + "$" + str(i)] = (circ, repeat, mult, alt_group, repeat_dict)
+                        contig_info[cno + "$" + str(i)] = ((circ, repeat, mult, alt_group), repeat_dict)
                     else:
                         contig_dict[cno] = [subpath, clen, ccov]
-                        contig_info[cno] = (circ, repeat, mult, alt_group, repeat_dict)
+                        contig_info[cno] = ((circ, repeat, mult, alt_group), repeat_dict)
             cfile.close()
     except BaseException as err:
         print(err, "\nPlease make sure the correct Flye contigs .txt file is provided.")

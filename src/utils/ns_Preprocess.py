@@ -14,7 +14,7 @@ from sklearn.cluster import KMeans
 from sklearn.linear_model import LinearRegression
 from sklearn.metrics import silhouette_score
 
-def reindexing(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, contig_dict: dict):
+def reindexing(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict):
     idx_mapping = {}
     idx_node_dict = {}
     idx_edge_dict = {}
@@ -25,17 +25,16 @@ def reindexing(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, contig_
             idx_mapping[no] = str(idx)
             graph.vp.id[node] = str(idx)
             idx_node_dict[str(idx)] = node
-            print("Node: {0} maps to {1}, seqlen: {2}".format(list_to_string(str(no).split('_')), idx, len(graph.vp.seq[node])))
             idx += 1
     for (u, v), e in simp_edge_dict.items():
         if graph.ep.color[e] == 'black' and graph.vp.color[e.source()] == 'black' and graph.vp.color[e.target()] == 'black':
             idx_edge_dict[(idx_mapping[u], idx_mapping[v])] = e
 
-    for cno, [contig, clen, ccov] in contig_dict.items():
-        idx_contig_dict[cno] = [[idx_mapping[no] for no in contig], clen, ccov]
-        print("indexed contig: ", cno, list_to_string(idx_contig_dict[cno][0]))
+    # for cno, [contig, clen, ccov] in contig_dict.items():
+    #     idx_contig_dict[cno] = [[idx_mapping[no] for no in contig], clen, ccov]
+    #     print("indexed contig: ", cno, list_to_string(idx_contig_dict[cno][0]))
 
-    return graph, idx_node_dict, idx_edge_dict, idx_contig_dict
+    return graph, idx_node_dict, idx_edge_dict, idx_mapping
 
 def paths_from_src(graph: Graph, simp_node_dict: dict, self_node, src, maxlen):
     """

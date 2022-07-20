@@ -51,11 +51,11 @@ def main():
         help='contig information file from Flye (.txt format), only required for Flye. e.g., assembly_info.txt')
 
     parser.add_argument(
-        '-mc' '--minimum_coverage', dest='min_cov', type=int, default=0,
+        '-mc', '--minimum_coverage', dest='min_cov', type=int, default=0,
         help=("minimum node coverage cutoff, [default: auto]"))
 
     parser.add_argument(
-        '-ml' '--minimum_contig_length', dest='min_len', default=250, type=int, 
+        '-ml', '--minimum_contig_length', dest='min_len', default=250, type=int, 
         help=("minimum initial contig length for strains [default: 250]"))
 
     parser.add_argument(

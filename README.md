@@ -1,10 +1,38 @@
-## The project is aiming to construct full-length haplotype from metagenomic environment, using pair-end reads
+# Graph Algorithms for De Novo Construction of Viral Strains
 
-### Installation ###
-tool requires a 64-bit Linux system or Mac OS and python (supported versions are python3: 3.2 and higher), 
+Manual
+===========
 
-#### Option 1 (**recommended**) ####
+Table of Contents
+-----------------
+
+1. [About Tool](#sec1) </br>
+2. [Installation](#sec2) </br>
+   2.1. [Quick Install](#sec2.1) </br>
+   2.1. [Manual Install](#sec2.2) </br>
+3. [Running Tools](#sec3) </br>
+   3.1. [Quick Usage](#sec3.1) </br>
+   3.2. [Support SPAdes](#sec3.2) </br>
+   3.3. [Support Flye](#sec3.3) </br>
+   3.4. [Parameters](#sec3.4) </br>
+4. [Citation](#sec4) </br>
+5. [Feedback and bug reports](#sec5)</br>
+
+<a name="sec1"></a>
+# About Tool
+
+TODO
+
+<a name="sec2"></a>
+# Installation
+
+Tool requires a 64-bit Linux system or Mac OS and python (supported versions are python3: 3.2 and higher), 
+
+<a name="sec2.1"></a>
+## Quick Install (**recommended**)
+
 Install [(mini)conda](https://conda.io/miniconda.html) as a light-weighted package management tool. Run following commands to initialize&setup the conda environment for tool
+
 ```bash
 # add channels
 conda config --add channels defaults
@@ -19,7 +47,10 @@ conda activate env_name
 
 conda install -c bioconda -c conda-forge python=3 graph-tool minimap2 numpy pandas scikit-learn
 ```
-#### Option 2 ####
+
+<a name="sec2.2"></a>
+## Manual Install
+
 Manually install dependencies: 
 - [minimap2](https://github.com/lh3/minimap2)  
 
@@ -29,137 +60,83 @@ And python modules:
 - [scikit-learn](https://scikit-learn.org/stable/install.html)
 - [pandas](https://pandas.pydata.org/docs/getting_started/install.html)
 
-### Running tools ###
-Tools natively support output from SPAdes, 
-# avoid to use '+', '-', '&', '*' for node/contig name
-what contig can help us?
-contig can help us to find correct direction when meeting a non-trivial branch
+<a name="sec3"></a>
+# Running tools
 
-two type of contig:
-1. splitter contig: contig with node len > 1, guide the branch split
-2. candidate contig, guide the contig concat/strain extraction
+Tools natively support assembly result from SPAdes (includes metaSPAdes, metaviralSPAdes) and extended to support Flye (includes metaFlye).
 
-when do graph split, we split two type of branches
-1. trivial branch (node with in degree 0 or 1 to out degree > 1) (also reverse)
-   1. when we split the trivial branch, the splitted contig may also lead to *multiple mappings*, how to select the correct contig? 
-2. non-trivial branch (node with in degree > 1 and out degree > 1)
-   1. we can use splitter contig to help us split the branch.
-   2. provide more P1 contig, guide the path finding
+<a name="sec3.1"></a>
+## Quick Usage
 
-    """
-    --------------------------------------------OVERALL FLOW----------------------------------------
-    Input: Graph, contig
-    operation:
-    -> START
-    -> flip graph [DONE]
-    Output --> graph_L0.gfa
+```bash
+usage: ns [-h] -a {spades,flye} -g GFA_FILE [-p PATH_FILE] [-i INFO_FILE] [-mc--minimum_coverage MIN_COV] [-ml--minimum_contig_length MIN_LEN] [-r REF_FILE] [-o OUTPUT_DIR]
 
-    -> tip removal based on minimap2 [DONE] only apply if graph is not dag
-    Output --> t_graph_L1.gfa
+Construct full-length viral strains under deno vo approach from contigs and assembly graph, currently supports SPAdes and Flye
 
-    -> cycle detection and node partition
-    Output --> nc_graph_L2p.gfa
+optional arguments:
+  -h, --help            show this help message and exit
+  -a {spades,flye}, --assembler {spades,flye}
+                        name of the assembler used. [spades, flye]
+  -g GFA_FILE, --graph GFA_FILE
+                        path to the assembly graph, (.gfa format)
+  -p PATH_FILE, --path PATH_FILE
+                        contig file from SPAdes (.paths format), only required for SPAdes. e.g., contigs.paths
+  -i INFO_FILE, --info INFO_FILE
+                        contig information file from Flye (.txt format), only required for Flye. e.g., assembly_info.txt
+  -mc MIN_COV, --minimum_coverage MIN_COV
+                        minimum node coverage cutoff, [default: auto]
+  -ml MIN_LEN, --minimum_contig_length MIN_LEN
+                        minimum initial contig length for strains [default: 250]
+  -r REF_FILE, --reference_fa REF_FILE
+                        path to the reference strain, .fasta format, DEBUG_MODE only
+  -o OUTPUT_DIR, --output_dir OUTPUT_DIR
+                        path to the output directory [default: acc/]
+```
 
-    -> node depth rebalance + assign edge flow [DONE] 
-    Output --> dt_graph_L2.gfa
+Tools takes as input assembly graph in Graphical Fragment Assembly (GFA) Format and reported contig information. Both input can be found in the output directory after running SPAdes/Flye assembler. Do not modify any contig/node name from the assembly result for consistency. Please refer to [SPAdes](https://github.com/ablab/spades) and [Flye](https://github.com/fenderglass/Flye) for further guideline. Example usage as below:
 
-    -> removed all the node that less than threshold.
-    Output --> sdt_graph_L3.gfa
+```bash
+# Flye assembler example, PacBio regular CLR reads
+flye --pacbio-raw example.fa --out-dir out_pacbio --threads 16
+# SPAdes assembler example, pair-end reads
+python spades.py -1 forward.fa -2 reverse.fa --careful -t 16 -o output_careful
+```
 
-    -> contig coverage rebalance to minimum edge flow along the contig
+<a name="sec3.2"></a>
+## Support SPAdes
 
-    -> split graph branch if supported by contig and cov difference < threshold
-    Output --> bsdt_graph_L4.gfa
+For SPAdes, we recommend to use `--careful` option for more accurate assembly graph and contigs result. Please use `assembly_graph_after_simplification.gfa` and `contigs.paths` as input, and set `-a` flag to `spades`. Example usage as below:
 
-    -> graph compactification (without the contig involved path)
-    Output --> cbsdt_graph_L5.gfa
+```bash
+python tool -a spades -g assembly_graph_after_simplification.gfa -p contigs.paths -o output_dir
+```
 
-    -> construct contig clique graph
-    Output --> cliq_graph.png
+<a name="sec3.3"></a>
+## Support Flye
 
-    -> based on the contig clique grah topology, concat the contig via the following priority
-    PRIORITY
-    HIGH
-        --> self-cycle contig if no out-in edges exist
-        --> self-cycle contig, with in-out from same alter contig
-        --> 
-    LOW
-    -> END
-    ------------------------------------------------------------------------------------------------
-    """
+For Flye, we recommend to use `--meta` option for uneven coverage depth. Please use `assembly_graph.gfa` and `assembly_info.txt` as input, and set `-a` flag to `flye`. Example usage as below:
 
+```bash
+python tool -a flye -g assembly_graph.gfa -i assembly_info.txt -o output_dir
+```
 
-# Necessary Assumption:
-1. all the strains are embedded as an s-t path within the graph.
-# current question: 
-1. for cand path, which cov assign to it.
-2. re-write the shortest path part, use ps path variation and find the best match.
-3. each contig may map to more than one strain, in which lead to inconsistent 
+<a name="sec3.4"></a>
+## Parameters
 
-a contig is shared by multiple strains only depends on the degree along the contig path.
-how to figure out whether a contig is contained within #n strains, check the in-out degree on the src/tgt
-since, the min edge flow within interior node of the contig can ensure the contig flow.
-1. axiom 1: the min flow among the edge flows of a contig is from/to the head/tail contig node.
+### Minimum Node Coverage
 
+This sets the minimum node coverage for filtering the inaccurate nodes from initial assembly graph. By default, the node coverage is automatically set to 5% of median node coverage among the graph by tool, which demonstrates good result. Please use `-mc` flag to input the customized minimum node coverage if needed.
 
+### Minimum Contig Length
 
-Step to concat the contig clique graph
-1. remove any self-cycle edge with curr contig len < min_len (due to high concat risk)
-2. for all remaining self-cycle, concat them first.
-3. for any pair of contig (u,v) in E, if abs(cov(u) - cov(v)) < threshold, consider the
-   contig pair as confident pair, and do the concatenation and merge to a single node as u||v, and remove all the out edges(u) and in edges(v), transfer the in edges(u) to in edges(u||v) and out edges (v) to out edges(u||v)
-4. if the cliq graph is cyclic, for any left up cycles, break the cycle by removing the min dist edge among the cycle, only minimum edges be removed until the clique graph is acyclic
-5. gradually concat the contigs until no more concatentation exist:
-   1. pick any source contig and store into L1 contigs
-   2. pick any reachable contigs from L1 contigs and store into L2 contigs, also
-      store the relationship between the L1 vs L2 contigs
-   3. concat the contig pair (L1-L2) in order of coverage similarity with ascending order, path in between is found by modified Dijkstra search algorithm.
-6. for all contigs, if original contig be used within concatenation step but not used up, remove the original contig to reduce the potential duplication ratio.
+Since SPAdes usually output all the nodes from assembly graph as contigs, short output contig may lead to less accuracy and confidence. By default, contig with length less than 250bp (as 250bp is single read length from pair-end read) is filtered out. Please use `-ml` flag to input the customized minimum node coverage if needed.
 
-Step to extend the contig in both end
-1. for all src node from graph, concat with a global src node (similarily for sink node)
-2. for each contig, find path between gloabl src to the contig head and contig tail to global sink, with distinct direction, path is found via modified Dijkstra search algorithm. Do the end concatentation if path exist.
+<a name="sec4"></a>
+# Citation
 
-Step to perform local search on the cand contigs.
-1. TODO
+TODO
 
-Assumption:
+<a name="sec5"></a>
+# Feedback and bug reports
 
-No duplicate edges between two nodes
-
- question: dp estimation is not accurate (with error up to 1000dp)
-graph level:
-filename format: graph_L{x}.gfa, with x={0,1,2,3}
-level -1 graph: assembly graph directly from SPAdes
-pre graph: graph after spin the edges
-level 0 graph: full-length spades contig reduced graph
-level 1 graph: with concatenated candidate strain be reduced
-...
-
-
-Methods & Procedure
-
-1. First, we assemble the input sequence reads by state-of-art assembly tool SPAdes [2] and result into a low error rate sequence De Bruijn graph, which is a directed variation graph with each node represent a short sequence segment and edge represent the overlap between two adjacent nodes. We choose De Bruijn graph as our assembled graph instead of contig variation graph presented in state-of-art approach is to keep the low information loss from the assembly step, use sequence reads to build graph instead of contigs can minimise the dependence for the assembled contig from assembly tools, which can also help us to tackle the cases when contigs cannot cover the full-length haplotype structure.
-
-2. Then, we simplify the graph by spinning the node orientation from the graph, known the sequence read always come with two orientations, “+” and “-”, actual orientation would only be revealed until the full-length sequence be re-constructed. However, based on the assembly graph, we can always find a specific combination of the nodes’ orientation by performing a `spin` operation, such that only one orientation can be used per node. The spin operation is defined as reverse the edge between two nodes and reverse the node orientation to ensure the overlap correctness. We pick the highest depth node as our source node and perform a breadth-first search, in each search iteration, we use the `spin` operation to correct all the neighbouring nodes for the current node, finally we would achieve the single-orientation graph state.
-
-3. Since the assembly graph provides the estimated node coverage (depth) information based on k-mer coverage. For all node N in the graph, since all the neighbouring nodes are connected to N due to end-to-end overlaps, the sum of node coverage for all in-coming/out-going nodes should equal to the node coverage N for consistency. In this case, we can use the node coverage to estimate the edge flow, which is defined as the spread node coverage along all in/out edges. We design an algorithm to assign the edge flow. We initiate the flow to 0 for all edges. For all node N in the graph, we first assign the edge flow if either the in degree (or out degree) of N equals to 1, since the node coverage can only be spread into a single in-coming (or out-going) edge, the edge flow is assigned with no doubt, we iterative the above step until no more edges can be assigned. Then, for rest of unassigned edges with an edge as a tuple: (u, v), we estimate their flow by finding the average between the remaining flow divided by unassigned number of edges for u and the remaining flow divided by unassigned number of edges for v. The algorithm would best fit into viral-based graph, in which edge cross case is minimised.
-
-4. After that, we can align the assembled contigs to the graph for further simplification. Given estimated contig coverage by SPAdes and based on the estimated edge flow from prior step, we can select and extract the high coverage contig from the graph and reduce the edge flow and node depth by the amount of contig coverage, the resulting graph would indicate the nodes that cannot be covered by contigs but may overlap with the contigs and result into a full-length haplotype.
-
-5. Furthermore, we plan to divide the simplified graph into several sub-graphs, then we find all the candidate sub-haplotype and its corresponding abundance each sub-graphs, for each pair of adjacent sub-graphs, we use another sub-graph to overlap them and enhance the correctness for each pair of sub-haplotypes as a merge step [3]. The divide-conquer approach can result into high quality candidate haplotype compared to novel method’s heuristic approach. The sub-haplotype construction method hasn’t been developed. [FIXME]
-
-alternate plan: 
-5. For the reduce graph, we only consider the nodes with coverage over 500 dp, which would eliminate nodes that are errorness. From now, we can assemble the secondary contigs from the reduced graph.
-   
-6. For all contigs both from SPAdes assembly and secondary elimination step, we can merge the contigs to achieve the threshold length sequence. For the merge step, we can align all the reads to the contig ends, and the insert size, distance between the contigs, pair-end information to merge them.
-
-
-1. find min edge, locate interval [min_edge,min_edge*2 - 1)
-2. partite interval by delta into several portion
-3. locate the max number portion, use topological sort the sort the nodes in the portion, find path between all adjacent portions 
-4. between portion, edge weight as follow:
-   1. if diff < delta, mark 0
-   2. if delta < diff < min edge flow, mark 2
-   3. if min edge < diff, mark 1
-   4. less mark better
+TODO

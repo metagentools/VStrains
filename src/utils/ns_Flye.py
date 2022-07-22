@@ -31,7 +31,7 @@ def run(args):
     graph0, simp_node_dict0, simp_edge_dict0 = flipped_gfa_to_graph("{0}/gfa/graph_L0.gfa".format(TEMP_DIR))
     graph0, simp_node_dict0, simp_edge_dict0, idx_mapping = reindexing(graph0, simp_node_dict0, simp_edge_dict0)
 
-    contig_dict, contig_info = flye_info_parser(graph0, simp_node_dict0, simp_edge_dict0, idx_mapping, args.info_file, args.min_len, True)
+    contig_dict, contig_info = flye_info_parser(graph0, simp_node_dict0, simp_edge_dict0, idx_mapping, args.info_file, args.min_len)
     copy_contig_dict = {}
     for cno, [contig, clen, ccov] in contig_dict.items():
         copy_contig_dict[cno] = [list(contig), clen, ccov]

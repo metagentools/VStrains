@@ -1,4 +1,4 @@
-# Graph Algorithms for De Novo Construction of Viral Strains
+# vsAware: Graph Algorithms for De Novo Construction of Viral Strains
 
 Manual
 ===========
@@ -6,11 +6,11 @@ Manual
 Table of Contents
 -----------------
 
-1. [About Tool](#sec1) </br>
+1. [About vsAware](#sec1) </br>
 2. [Installation](#sec2) </br>
    2.1. [Quick Install](#sec2.1) </br>
    2.1. [Manual Install](#sec2.2) </br>
-3. [Running Tools](#sec3) </br>
+3. [Running vsAware](#sec3) </br>
    3.1. [Quick Usage](#sec3.1) </br>
    3.2. [Support SPAdes](#sec3.2) </br>
    3.3. [Support Flye](#sec3.3) </br>
@@ -19,19 +19,19 @@ Table of Contents
 5. [Feedback and bug reports](#sec5)</br>
 
 <a name="sec1"></a>
-# About Tool
+# About vsAware
 
 TODO
 
 <a name="sec2"></a>
 # Installation
 
-Tool requires a 64-bit Linux system or Mac OS and python (supported versions are python3: 3.2 and higher), 
+vsAware requires a 64-bit Linux system or Mac OS and python (supported versions are python3: 3.2 and higher), 
 
 <a name="sec2.1"></a>
 ## Quick Install (**recommended**)
 
-Install [(mini)conda](https://conda.io/miniconda.html) as a light-weighted package management tool. Run following commands to initialize&setup the conda environment for tool
+Install [(mini)conda](https://conda.io/miniconda.html) as a light-weighted package management tool. Run following commands to initialize&setup the conda environment for vsAware
 
 ```bash
 # add channels
@@ -40,10 +40,10 @@ conda config --add channels bioconda
 conda config --add channels conda-forge
 
 # create conda environment
-conda create --name env_name
+conda create --name vsAware-env
 
 # activate conda environment
-conda activate env_name
+conda activate vsAware-env
 
 conda install -c bioconda -c conda-forge python=3 graph-tool minimap2 numpy pandas scikit-learn
 ```
@@ -61,15 +61,15 @@ And python modules:
 - [pandas](https://pandas.pydata.org/docs/getting_started/install.html)
 
 <a name="sec3"></a>
-# Running tools
+# Running vsAware
 
-Tools natively support assembly result from SPAdes (includes metaSPAdes, metaviralSPAdes) and extended to support Flye (includes metaFlye).
+vsAware natively support assembly result from SPAdes (includes metaSPAdes, metaviralSPAdes) and extended to support Flye (includes metaFlye).
 
 <a name="sec3.1"></a>
 ## Quick Usage
 
 ```bash
-usage: ns [-h] -a {spades,flye} -g GFA_FILE [-p PATH_FILE] [-i INFO_FILE] [-mc--minimum_coverage MIN_COV] [-ml--minimum_contig_length MIN_LEN] [-r REF_FILE] [-o OUTPUT_DIR]
+usage: vsAware [-h] -a {spades,flye} -g GFA_FILE [-p PATH_FILE] [-i INFO_FILE] [-mc--minimum_coverage MIN_COV] [-ml--minimum_contig_length MIN_LEN] [-r REF_FILE] [-o OUTPUT_DIR]
 
 Construct full-length viral strains under deno vo approach from contigs and assembly graph, currently supports SPAdes and Flye
 
@@ -93,13 +93,13 @@ optional arguments:
                         path to the output directory [default: acc/]
 ```
 
-Tools takes as input assembly graph in Graphical Fragment Assembly (GFA) Format and reported contig information. Both input can be found in the output directory after running SPAdes/Flye assembler. Do not modify any contig/node name from the assembly result for consistency. Please refer to [SPAdes](https://github.com/ablab/spades) and [Flye](https://github.com/fenderglass/Flye) for further guideline. Example usage as below:
+vsAware takes as input assembly graph in Graphical Fragment Assembly (GFA) Format and reported contig information. Both input can be found in the output directory after running SPAdes/Flye assembler. Do not modify any contig/node name from the assembly result for consistency. Please refer to [SPAdes](https://github.com/ablab/spades) and [Flye](https://github.com/fenderglass/Flye) for further guideline. Example usage as below:
 
 ```bash
 # Flye assembler example, PacBio regular CLR reads
 flye --pacbio-raw example.fa --out-dir out_pacbio --threads 16
 # SPAdes assembler example, pair-end reads
-python spades.py -1 forward.fa -2 reverse.fa --careful -t 16 -o output_careful
+python spades.py -1 forward.fa -2 reverse.fa --careful -t 16 -o output_dir
 ```
 
 <a name="sec3.2"></a>
@@ -108,7 +108,7 @@ python spades.py -1 forward.fa -2 reverse.fa --careful -t 16 -o output_careful
 For SPAdes, we recommend to use `--careful` option for more accurate assembly graph and contigs result. Please use `assembly_graph_after_simplification.gfa` and `contigs.paths` as input, and set `-a` flag to `spades`. Example usage as below:
 
 ```bash
-python tool -a spades -g assembly_graph_after_simplification.gfa -p contigs.paths -o output_dir
+python vsAware.py -a spades -g assembly_graph_after_simplification.gfa -p contigs.paths -o output_dir
 ```
 
 <a name="sec3.3"></a>
@@ -117,7 +117,7 @@ python tool -a spades -g assembly_graph_after_simplification.gfa -p contigs.path
 For Flye, we recommend to use `--meta` option for uneven coverage depth. Please use `assembly_graph.gfa` and `assembly_info.txt` as input, and set `-a` flag to `flye`. Example usage as below:
 
 ```bash
-python tool -a flye -g assembly_graph.gfa -i assembly_info.txt -o output_dir
+python vsAware.py -a flye -g assembly_graph.gfa -i assembly_info.txt -o output_dir
 ```
 
 <a name="sec3.4"></a>

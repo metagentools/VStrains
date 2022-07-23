@@ -10,8 +10,8 @@ import time
 from datetime import date
 
 from utils import (
-    ns_SPAdes,
-    ns_Flye,
+    vsAware_Flye,
+    vsAware_SPAdes,
 )
 __author__ = "Runpeng Luo"
 __copyright__ = ""
@@ -25,14 +25,14 @@ __status__ = ""
 def run(args, logger):
     numpy.seterr(all='raise')
     RUNNER = {
-        "spades": ns_SPAdes.run,
-        "flye": ns_Flye.run,
+        "spades": vsAware_SPAdes.run,
+        "flye": vsAware_Flye.run,
     }
     RUNNER[args.assembler](args, logger)
 
 
 def main():
-    parser = argparse.ArgumentParser(prog="ns", 
+    parser = argparse.ArgumentParser(prog="vsAware", 
         description="""Construct full-length viral strains under deno vo approach 
         from contigs and assembly graph, currently supports SPAdes and Flye""")
 

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+from logging import Logger
 from graph_tool.all import Graph
 from graph_tool.draw import graph_draw
 from graph_tool.topology import all_circuits
@@ -91,12 +92,12 @@ def minimap_api(ref_file, fasta_file, output_file):
         ref_file, fasta_file, output_file), shell=True)
     return  
 
-def trim_contig_dict(graph: Graph, simp_node_dict: dict, contig_dict: dict):
-    print("trim contig..")
+def trim_contig_dict(graph: Graph, simp_node_dict: dict, contig_dict: dict, logger: Logger):
+    logger.info("trim contig..")
     for cno, [contig, _, ccov] in list(contig_dict.items()):
         new_contig = list(dict.fromkeys(contig))
         contig_dict[cno] = [new_contig, path_len(graph, [simp_node_dict[no] for no in new_contig]), ccov]
-    print("done")
+    logger.info("done")
     return contig_dict
 
 def contig_map_node(contig_dict: dict):
@@ -118,21 +119,19 @@ def contig_map_node(contig_dict: dict):
                     edge_to_contig_dict[(c_i, c_i_1)].add(cno)
     return node_to_contig_dict, edge_to_contig_dict
 
-def contig_cov_fix(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, contig_dict: dict, printout=False):
+def contig_cov_fix(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, contig_dict: dict, logger: Logger):
     """
     if found a single node contig that also not appearing in the simp_node_dict, check if is mapped to split contig
     """
     for cno, [contig, clen, _] in list(contig_dict.items()):
-        if printout:
-            print("---------------------------------------------------------------")
         newccov = path_cov(graph, simp_node_dict, simp_edge_dict, contig)
         contig_dict[cno][2] = newccov
         if cno in contig_dict:
-            if printout:
-                print_contig(cno, clen, contig_dict[cno][2], contig)
+            if logger != None:
+                print_contig(cno, clen, contig_dict[cno][2], contig, logger)
                 eflow = contig_flow(graph, simp_edge_dict, contig)
                 if len(contig) > 1:
-                    print(eflow)
+                    logger.debug(eflow)
     return
 
 def graph_reduction_c(graph: Graph, cand_path, usage_dict: dict, cand_cov):
@@ -149,7 +148,7 @@ def graph_reduction_c(graph: Graph, cand_path, usage_dict: dict, cand_cov):
         # print(e, graph.vp.id[cand_path[i]], graph.vp.id[cand_path[i+1]])
         graph.ep.flow[e] -= cand_cov
 
-def contig_dict_remapping(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, contig_dict: dict, id_mapping: dict, prev_ids: list):
+def contig_dict_remapping(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, contig_dict: dict, id_mapping: dict, prev_ids: list, logger: Logger):
     """
     Update the contig nodes to mapped nodes.
     """
@@ -185,42 +184,41 @@ def contig_dict_remapping(graph: Graph, simp_node_dict: dict, simp_edge_dict: di
             for id in curr_set:
                 rtn_set = rtn_set.union(merge_id(id_mapping_r, id_mapping_r[id], id))
             return rtn_set
-    print("contig resolution..")
+    logger.info("contig resolution..")
     # id_mapping merging, recursive merge down.
     red_id_mapping = {}
 
     for id in prev_ids:
         all_set = merge_id(id_mapping, id_mapping[id], id)
         red_id_mapping[id] = all_set
-        # print("Node {0} maps to {1}".format(id, all_set))
+        logger.debug("Node {0} maps to {1}".format(id, all_set))
 
     for cno, (contig, _, _) in list(contig_dict.items()):
-        # print("---------------------------------------------")
-        # print("Current mapping contig: ", cno, list_to_string(contig))
+        logger.debug("---------------------------------------------")
+        logger.debug("Current mapping contig: " + str(cno) + ", " + list_to_string(contig))
         paths = map_contig_tree(cno, contig, red_id_mapping)
         # split the contig tree to avoid the ambiguity variation
         if len(paths) < 1:
             print("error, contig missed: ", cno, contig)
         elif len(paths) == 1:
             if paths[0] == contig:
-                None
-                # print("single mapping, keep original")
+                logger.debug("single mapping, keep original")
             else:
-                # print("single mapping, replace", list_to_string(paths[0]))
+                logger.debug("single mapping, replace" + list_to_string(paths[0]))
                 contig_dict.pop(cno)
                 subcov = path_cov(graph, simp_node_dict, simp_edge_dict, paths[0])
                 contig_dict[cno] = [paths[0], path_len(graph, [simp_node_dict[no] for no in paths[0]]), subcov]
         else:
             contig_dict.pop(cno)
-            # print("multi mapping for the current contig: whole contig is ambiguous mapping, keep the intersection reduced one only", cno)
+            logger.debug("multi mapping for the current contig: whole contig is ambiguous mapping, keep the intersection reduced one only" + cno)
             final_path = reduce(lambda a, b: [i for i in a if i in b], paths)
             if len(final_path) > 0:
                 # at least one node
-                # print("mapped contig: ", final_path)
+                logger.debug("selected mapped contig: " + final_path)
                 sublen = path_len(graph, [simp_node_dict[no] for no in final_path])
                 subcov = path_cov(graph, simp_node_dict, simp_edge_dict, final_path)
                 contig_dict[cno] = [final_path, sublen, subcov]
-    print("done")
+    logger.info("done")
     return
 
 def simp_path(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict):
@@ -268,14 +266,14 @@ def simple_paths_to_dict(graph: Graph, simp_node_dict: dict, simp_edge_dict: dic
         # print("Simple PATH: ", list_to_string(pids))
     return simp_path_dict
 
-def simp_path_compactification(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, contig_dict: dict):
+def simp_path_compactification(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, contig_dict: dict, logger: Logger):
     """
     reduce all the contig to a single node, and keep all the potential src/tgt edge.
 
     1. reduce the coverage for each involving node by the amount of contig cov
     2. reconnect end-to-end nodes to the contig node
     """
-
+    logger.info("simple path compactification..")
     simp_path_dict = simple_paths_to_dict(graph, simp_node_dict, simp_edge_dict)
 
     graph_backup = graph.copy()
@@ -336,13 +334,13 @@ def simp_path_compactification(graph: Graph, simp_node_dict: dict, simp_edge_dic
                 else:
                     if node_to_simp_node[no] != new_contig[-1]:
                         new_contig.append(node_to_simp_node[no])
-        # print("cno: {0} from {1} to {2}".format(cno, list_to_string(contig), list_to_string(new_contig)))
+        logger.debug("cno: {0} from {1} to {2}".format(cno, list_to_string(contig), list_to_string(new_contig)))
         contig_dict[cno] = [new_contig, path_len(graph, [simp_node_dict[no] for no in new_contig]), ccov]
-    
+    logger.info("done")
     return
 
-def contig_dup_removed_s(contig_dict: dict):
-    print("drop duplicated contigs..")
+def contig_dup_removed_s(contig_dict: dict, logger: Logger):
+    logger.info("drop duplicated contigs..")
     dup_contig_ids = set()
     for cno1 in contig_dict.keys():
         contig1, _, _ = contig_dict[cno1]       
@@ -362,13 +360,14 @@ def contig_dup_removed_s(contig_dict: dict):
                     dup_contig_ids.add(cno2)
     for cno in dup_contig_ids:
         contig_dict.pop(cno)
-    print("done")
+    logger.debug("duplicated contigs: " + str(dup_contig_ids))
+    logger.info("done")
     return contig_dict
 
-def concat_overlap_contig(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, contig_dict: dict):
+def concat_overlap_contig(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, contig_dict: dict, logger: Logger):
     def self_loop(contig):
         return (contig[-1], contig[0]) in simp_edge_dict
-    print("concat overlapped contig..")
+    logger.info("concat overlapped contig..")
     contig_overlap_dict = {}
     for key in contig_dict.keys():
         contig_overlap_dict[key] = []
@@ -389,7 +388,7 @@ def concat_overlap_contig(graph: Graph, simp_node_dict: dict, simp_edge_dict: di
                         and simp_node_dict[contig[0]] in simp_node_dict[contig2[-1]].out_neighbors()):
                         # contig <-> contig2, circular touch
                         contig_overlap_dict[cno].append((cno2, []))
-    print("contig overlap info: ", contig_overlap_dict)
+    logger.debug("--contig overlap info: " + str(contig_overlap_dict))
     overlap_graph = Graph(directed=True)
     overlap_graph.vp.id = overlap_graph.new_vertex_property("string")
     node_dict = dict()
@@ -410,7 +409,7 @@ def concat_overlap_contig(graph: Graph, simp_node_dict: dict, simp_edge_dict: di
         circuits = list(all_circuits(overlap_graph, unique=True))
         for k in range(len(circuits)):
             cyc = circuits[k]
-            print("current cyc: ", [overlap_graph.vp.id[overlap_graph.vertex(v)] for v in cyc])
+            logger.debug("current cyc: " + str([overlap_graph.vp.id[overlap_graph.vertex(v)] for v in cyc]))
             unique_cyc = True
             for j in range(len(circuits)):
                 cyc2 = circuits[j]
@@ -448,7 +447,7 @@ def concat_overlap_contig(graph: Graph, simp_node_dict: dict, simp_edge_dict: di
             curr = list(curr.out_neighbors())[0] if curr.out_degree() == 1 else None
         concat_contig = []
         cnos = ""
-        print("contig path: ", [overlap_graph.vp.id[k] for k in contig_path])
+        logger.debug("contig path: " + str([overlap_graph.vp.id[k] for k in contig_path]))
         for ind, contig_node in enumerate(contig_path):
             ccno = overlap_graph.vp.id[contig_node]
             contig, _, _ = contig_dict.pop(ccno)
@@ -461,15 +460,17 @@ def concat_overlap_contig(graph: Graph, simp_node_dict: dict, simp_edge_dict: di
                         cut = list(reversed(intersect)).index(None)
                         contig = contig[:-cut]
                     else:
-                        print("error: ", contig, intersect)
+                        logger.debug("error: " + str(contig) + str(intersect))
+                        sys.exit(1)
             else:
                 cnos += ccno
             concat_contig.extend(contig)
-        print("concat end-to-end overlap contig: ", cnos, "\nafter concat: ", concat_contig)
+        logger.debug("concat end-to-end overlap contig: " + str(cnos))
+        logger.debug("after concat: " + str(concat_contig))
         concat_len = path_len(graph, [simp_node_dict[id] for id in concat_contig])
         concat_cov = path_cov(graph, simp_node_dict, simp_edge_dict, concat_contig)
         contig_dict[cnos] = [concat_contig, concat_len, concat_cov]
-    print("done")
+    logger.info("done")
     return
 
 def check_contig_intersection(contig, contig2):
@@ -525,8 +526,8 @@ def check_contig_intersection(contig, contig2):
         direction = 'f' if direction == None else 'd'
     return False, intersect_path, direction
 
-def strain_repeat_resol(graph: Graph, simp_node_dict: dict, strain_dict: dict, contig_info: dict, copy_contig_dict: dict):
-    print("resolving repeat nodes in strain..")
+def strain_repeat_resol(graph: Graph, simp_node_dict: dict, strain_dict: dict, contig_info: dict, copy_contig_dict: dict, logger):
+    logger.info("resolving repeat nodes in strain..")
     # if contig is fully aligned to the strain, then map the repeat to the strain
     for sno, [strain, _, scov] in list(strain_dict.items()):
         cnos = set()
@@ -549,7 +550,7 @@ def strain_repeat_resol(graph: Graph, simp_node_dict: dict, strain_dict: dict, c
         strain_r = []
         [strain_r.extend([id]*repeat_dec[id]) for id in subids]
         strain_dict[sno] = [strain_r, path_len(graph, [simp_node_dict[no] for no in strain_r]), scov]
-    print("done")
+    logger.info("done")
     return
 
 def path_len(graph: Graph, path):
@@ -685,14 +686,14 @@ def draw_graph_api(graph: Graph, output_file):
 def reverse_seq(seq: str):
     return ''.join({'A': 'T', 'T': 'A', 'C': 'G', 'G': 'C'}[x] for x in reversed(seq))
 
-def print_edge(graph, e, s=""):
-    print(s, " edge: ", graph.vp.id[e.source()], "->", graph.vp.id[e.target()], graph.ep.flow[e], graph.ep.color[e])
+def print_edge(graph, e, logger: Logger, s=""):
+    logger.debug(s, " edge: ", graph.vp.id[e.source()], "->", graph.vp.id[e.target()], graph.ep.flow[e], graph.ep.color[e])
 
-def print_vertex(graph, v, s=""):
-    print(s, " vertex: ", graph.vp.id[v], ", dp: ", graph.vp.dp[v], ", in_degree: ", v.in_degree(), ", out_degree: ", v.out_degree(), graph.vp.color[v])
+def print_vertex(graph, v, logger: Logger, s=""):
+    logger.debug(s + " vertex: " + graph.vp.id[v] + ", dp: " + str(graph.vp.dp[v]) + ", in_degree: " +  str(v.in_degree()) + ", out_degree: " + str(v.out_degree()) + graph.vp.color[v])
 
-def print_contig(cno, clen, ccov, contig, s=""):
-    print(s, " Contig: ", cno, ", length: ", clen, ", cov: ", ccov, "Path: ", list_to_string(contig))
+def print_contig(cno, clen, ccov, contig, logger: Logger, s=""):
+    logger.debug(s + " Contig: " + cno + ", length: " + str(clen) + ", cov: " + str(ccov) + "Path: " + list_to_string(contig))
 
 def list_to_string(ids: list, s=""):
     string = s + " - "
@@ -868,20 +869,20 @@ def retrieve_cycle(graph: Graph, n=1):
     
     return cycles if len(cycles) > 0 else None
 
-def cyclic_to_dag(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict):
+def cyclic_to_dag(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, logger: Logger):
     """
     convert graph to dag by delete minimum coverage not-in-contig edge in cycle until reduced to dag, legacy
     """
     def remove_edge(fst, snd):
-        # print("removing edge: {0} -> {1} to reduce a cycle".format(graph.vp.id[fst], graph.vp.id[snd]))
+        logger.debug("removing edge: {0} -> {1} to reduce a cycle".format(graph.vp.id[fst], graph.vp.id[snd]))
         e = graph.edge(fst, snd)
         graph.ep.color[e] = 'gray'
         removed_edges.append((graph.vp.id[fst], graph.vp.id[snd], graph.ep.overlap[e]))
         return fst, snd
     removed_edges = []
-    print("Turn cyclic graph to dag..")
+    logger.debug("Turn cyclic graph to dag..")
     if graph_is_DAG(graph, simp_node_dict):
-        print("graph is dag already, skip")
+        logger.debug("graph is dag already, skip")
     else:
         while not graph_is_DAG(graph, simp_node_dict):
             cycle = retrieve_cycle(graph)[0]
@@ -895,7 +896,7 @@ def cyclic_to_dag(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict):
     for (uid, vid, _) in removed_edges:
         e = simp_edge_dict.pop((uid, vid))
         graph.remove_edge(e)
-    print("done")
+    logger.debug("done")
     return removed_edges
 
 def reachable(graph: Graph, simp_node_dict: dict, src, tgt):

@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 
+from logging import Logger
 from graph_tool.all import Graph
 import numpy
 
-from utils.ns_Utilities import *
+from utils.vsAware_Utilities import *
+
 
 def assign_edge_flow(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict):
     """
@@ -25,13 +27,13 @@ def assign_edge_flow(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict):
             (graph.vp.dp[u_node] / v_in_sum) * graph.vp.dp[v_node]])
     return
 
-def coverage_rebalance_s(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict):
-    
+def coverage_rebalance_s(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, logger: Logger):
+    logger.info("coverage rebalance..")
     # break the cycle first
-    removed_edges = cyclic_to_dag(graph, simp_node_dict, simp_edge_dict)
+    removed_edges = cyclic_to_dag(graph, simp_node_dict, simp_edge_dict, logger)
     # incident node insertion
     assign_edge_flow(graph, simp_node_dict, simp_edge_dict)
-    print("add incident nodes")
+    logger.debug("add incident nodes")
     incident_vs = []
     for edge in set(graph.edges()):
         u = edge.source()
@@ -45,12 +47,11 @@ def coverage_rebalance_s(graph: Graph, simp_node_dict: dict, simp_edge_dict: dic
         graph_add_edge(graph, simp_edge_dict, u, uid, node, graph.vp.id[node], 0, 0)
         graph_add_edge(graph, simp_edge_dict, node, graph.vp.id[node], v, vid, 0, 0)
 
-    print("-------------------------------COVERAGE REBALANCE-----------------------------------")
     # all the previous depth has been stored in the dict
     # ratio: normalised balanced node depth / previous node depth
-    coverage_rebalance_ave(graph, simp_node_dict, simp_edge_dict)
+    coverage_rebalance_ave(graph, simp_node_dict, simp_edge_dict, logger)
 
-    print("remove incident nodes")
+    logger.debug("remove incident nodes")
     for (src, node, tgt, overlap) in sorted(incident_vs, key=lambda t: t[1], reverse=True):
         for edge in set(node.all_edges()):
             u = edge.source()
@@ -65,14 +66,13 @@ def coverage_rebalance_s(graph: Graph, simp_node_dict: dict, simp_edge_dict: dic
 
     for (uid,vid,o) in removed_edges:
         graph_add_edge(graph, simp_edge_dict, simp_node_dict[uid], uid, simp_node_dict[vid], vid, o)
-    print("done")
+    logger.info("done")
     return
 
-def coverage_rebalance_ave(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict):
-    print("coverage rebalance..")
+def coverage_rebalance_ave(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, logger: Logger):
     # set cutoff delta
     cutoff = 0.00001 * len(simp_node_dict)
-    print("cutoff coverage-unbalance rate: ", cutoff)
+    logger.debug("cutoff coverage-unbalance rate: " + str(cutoff))
     # store previous node depth
     prev_dp_dict = {}
     for no, v in simp_node_dict.items():
@@ -116,14 +116,13 @@ def coverage_rebalance_ave(graph: Graph, simp_node_dict: dict, simp_edge_dict: d
                 deltas.append((no, (graph.vp.dp[node] * abs(inflow - outflow))/dominator))
 
         sum_delta = sum([k[1] for k in deltas]) / sum([graph.vp.dp[node] for node in graph.vertices()])
-        # print("sum delta: ", sum_delta, "worst delta: ", sorted(deltas, key=lambda p: p[1], reverse=True)[:10])
         if sum_delta < cutoff:
-            print("final delta: ", sum_delta)
+            logger.debug("final delta: " + str(sum_delta))
             break
         # rescal 
         sum_ratio = (numpy.sum([graph.vp.dp[u] for u in simp_node_dict.values()]) / sum_depth_before)
         if sum_ratio > 2 or sum_ratio < 0.5:
-            print("ratio doubled: ", sum_ratio, "rescalling..")
+            logger.debug("ratio doubled/halved: ", sum_ratio, "rescalling..")
             for node in graph.vertices():
                 if node.in_degree() > 0 or node.out_degree() > 0:
                     graph.vp.dp[node] = graph.vp.dp[node]/sum_ratio
@@ -143,13 +142,13 @@ def coverage_rebalance_ave(graph: Graph, simp_node_dict: dict, simp_edge_dict: d
                 graph.vp.dp[node] = numpy.mean([inflow, outflow])
     # final evaluation
     sum_ratio = (sum([graph.vp.dp[u] for u in simp_node_dict.values()]) / sum_depth_before)
+    assert sum_ratio > 0
 
-    print("scaled ratio, normalizing: ", sum_ratio)
+    logger.debug("scaled ratio, normalizing: " + str(sum_ratio))
     for node in simp_node_dict.values():
         # only scale the connected nodes
         if node.in_degree() > 0 or node.out_degree() > 0:
             graph.vp.dp[node] = graph.vp.dp[node] / sum_ratio
     for edge in graph.edges():
         graph.ep.flow[edge] = graph.ep.flow[edge] / sum_ratio
-    print("done")
     return

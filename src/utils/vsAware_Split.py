@@ -3,12 +3,12 @@
 from graph_tool.all import Graph
 import numpy
 
-from utils.ns_Utilities import *
-from utils.ns_CovBalance import assign_edge_flow, coverage_rebalance_s
-from utils.ns_IO import graph_to_gfa, flipped_gfa_to_graph
+from utils.vsAware_Utilities import *
+from utils.vsAware_CovBalance import assign_edge_flow, coverage_rebalance_s
+from utils.vsAware_IO import graph_to_gfa, flipped_gfa_to_graph
 
 
-def iterated_graph_split(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, contig_dict: dict, tempdir, b0, b1, threshold):
+def iterated_graph_split(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, contig_dict: dict, logger: Logger, tempdir, b0, b1, threshold):
     grapha = graph
     simp_node_dicta = simp_node_dict
     simp_edge_dicta = simp_edge_dict
@@ -20,52 +20,52 @@ def iterated_graph_split(graph: Graph, simp_node_dict: dict, simp_edge_dict: dic
     while True:
         # trivial branch split
         prev_ids = list(simp_node_dicta.keys())
-        trivial_split_count, id_mapping = graph_split_trivial(grapha, simp_node_dicta, simp_edge_dicta)
+        trivial_split_count, id_mapping = graph_split_trivial(grapha, simp_node_dicta, simp_edge_dicta, logger)
 
-        graph_to_gfa(grapha, simp_node_dicta, simp_edge_dicta, "{0}/gfa/split_graph_L{1}1.gfa".format(tempdir, iterCount))
-        graphb, simp_node_dictb, simp_edge_dictb = flipped_gfa_to_graph("{0}/gfa/split_graph_L{1}1.gfa".format(tempdir, iterCount))
+        graph_to_gfa(grapha, simp_node_dicta, simp_edge_dicta, logger, "{0}/gfa/split_graph_L{1}1.gfa".format(tempdir, iterCount))
+        graphb, simp_node_dictb, simp_edge_dictb = flipped_gfa_to_graph("{0}/gfa/split_graph_L{1}1.gfa".format(tempdir, iterCount), logger)
         assign_edge_flow(graphb, simp_node_dictb, simp_edge_dictb)
 
         # fix trivial splitted contig
-        contig_dict_remapping(graphb, simp_node_dictb, simp_edge_dictb, contig_dict, id_mapping, prev_ids)
+        contig_dict_remapping(graphb, simp_node_dictb, simp_edge_dictb, contig_dict, id_mapping, prev_ids, logger)
         # non-trivial branch split
-        num_split = graph_splitting(graphb, simp_node_dictb, simp_edge_dictb, contig_dict, b0, b1, threshold)
-        graph_to_gfa(graphb, simp_node_dictb, simp_edge_dictb, "{0}/gfa/split_graph_L{1}2.gfa".format(tempdir, iterCount))
-        graphc, simp_node_dictc, simp_edge_dictc = flipped_gfa_to_graph("{0}/gfa/split_graph_L{1}2.gfa".format(tempdir, iterCount))
+        num_split = graph_splitting(graphb, simp_node_dictb, simp_edge_dictb, contig_dict, logger, b0, b1, threshold)
+        graph_to_gfa(graphb, simp_node_dictb, simp_edge_dictb, logger, "{0}/gfa/split_graph_L{1}2.gfa".format(tempdir, iterCount))
+        graphc, simp_node_dictc, simp_edge_dictc = flipped_gfa_to_graph("{0}/gfa/split_graph_L{1}2.gfa".format(tempdir, iterCount), logger)
 
-        simp_path_compactification(graphc, simp_node_dictc, simp_edge_dictc, contig_dict)
+        simp_path_compactification(graphc, simp_node_dictc, simp_edge_dictc, contig_dict, logger)
 
-        graph_to_gfa(graphc, simp_node_dictc, simp_edge_dictc, "{0}/gfa/split_graph_L{1}3.gfa".format(tempdir, iterCount))
-        grapha, simp_node_dicta, simp_edge_dicta = flipped_gfa_to_graph("{0}/gfa/split_graph_L{1}3.gfa".format(tempdir, iterCount))
+        graph_to_gfa(graphc, simp_node_dictc, simp_edge_dictc, logger, "{0}/gfa/split_graph_L{1}3.gfa".format(tempdir, iterCount))
+        grapha, simp_node_dicta, simp_edge_dicta = flipped_gfa_to_graph("{0}/gfa/split_graph_L{1}3.gfa".format(tempdir, iterCount), logger)
         assign_edge_flow(grapha, simp_node_dicta, simp_edge_dicta)
 
         if num_split != 0 or trivial_split_count != 0:
             total_removed_branch_nt += num_split
             total_removed_branch_t += trivial_split_count
             iterCount = chr(ord(iterCount) + 1)
-            contig_cov_fix(grapha, simp_node_dicta, simp_edge_dicta, contig_dict)
+            contig_cov_fix(grapha, simp_node_dicta, simp_edge_dicta, contig_dict, None)
         else:
             break
-    print("Total non-trivial branches removed: ", total_removed_branch_nt, " total trivial branches removed: ", total_removed_branch_t)
-    coverage_rebalance_s(grapha, simp_node_dicta, simp_edge_dicta)
-    graph_to_gfa(grapha, simp_node_dicta, simp_edge_dicta, "{0}/gfa/rbsdt_graph_L5.gfa".format(tempdir))
-    grapho, simp_node_dicto, simp_edge_dicto = flipped_gfa_to_graph("{0}/gfa/rbsdt_graph_L5.gfa".format(tempdir))
+    logger.debug("Total non-trivial branches removed: " + str(total_removed_branch_nt) + " total trivial branches removed: " + str(total_removed_branch_t))
+    coverage_rebalance_s(grapha, simp_node_dicta, simp_edge_dicta, logger)
+    graph_to_gfa(grapha, simp_node_dicta, simp_edge_dicta, logger, "{0}/gfa/rbsdt_graph_L5.gfa".format(tempdir))
+    grapho, simp_node_dicto, simp_edge_dicto = flipped_gfa_to_graph("{0}/gfa/rbsdt_graph_L5.gfa".format(tempdir), logger)
     assign_edge_flow(grapho, simp_node_dicto, simp_edge_dicto)
 
     # remove duplicated contigs
-    contig_dup_removed_s(contig_dict)
+    contig_dup_removed_s(contig_dict, logger)
     # concat overlapped contigs
-    concat_overlap_contig(grapho, simp_node_dicto, simp_edge_dicto, contig_dict)
-    trim_contig_dict(grapho, simp_node_dicto, contig_dict)
-    contig_cov_fix(grapho, simp_node_dicto, simp_edge_dicto, contig_dict)
+    concat_overlap_contig(grapho, simp_node_dicto, simp_edge_dicto, contig_dict, logger)
+    trim_contig_dict(grapho, simp_node_dicto, contig_dict, logger)
+    contig_cov_fix(grapho, simp_node_dicto, simp_edge_dicto, contig_dict, logger)
 
     return grapho, simp_node_dicto, simp_edge_dicto
 
-def graph_split_trivial(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict):
+def graph_split_trivial(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, logger: Logger):
     """
     Split the graph, for any (0|1)->N, N->(0|1) branch, split by forking the 1 edge to N edge.
     """
-    print("-------------------------graph trivial split----------------------")
+    logger.info("graph trivial split..")
     has_split = True
     trivial_split_count = 0
     id_mapping = {}
@@ -164,15 +164,16 @@ def graph_split_trivial(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict
             else:
                 None
                 # print(id, len(ines), len(outes), ", unable to split, skip")
-    print("No of trivial branch be removed: ", trivial_split_count)
+    logger.debug("No of trivial branch be removed: " + str(trivial_split_count))
+    logger.info("done")
     return trivial_split_count, id_mapping
 
 
-def graph_splitting(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, contig_dict: dict, b0, b1, threshold):
+def graph_splitting(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, contig_dict: dict, logger: Logger, b0, b1, threshold):
     """
     n-n branch splitting, # FIXME add more restrict rule to avoid false positive split
     """
-    print("-------------------------graph split----------------------")
+    logger.info("graph non-trivial split..")
     split_branches = []
     node_to_contig_dict, _ = contig_map_node(contig_dict)
     no_mapping = {}
@@ -184,8 +185,8 @@ def graph_splitting(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, co
         if len(ine) > 1 and len(oute) > 1:
             threshold2 = 2*abs(b0 + b1*graph.vp.dp[node])
             support_contigs = [cno for cno in node_to_contig_dict[no]] if no in node_to_contig_dict else []
-            # print_vertex(graph, node, "---------- branch node, support by contig {0}".format(support_contigs))
-            # print("threshold2: ", threshold2)
+            print_vertex(graph, node, logger, "---------- branch node, support by contig {0}".format(support_contigs))
+            logger.debug("local threshold: " + str(threshold2))
             ine_usage = {}
             for ie in ine:
                 ine_usage[ie] = 0
@@ -210,7 +211,7 @@ def graph_splitting(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, co
                     if ((prev_no, no) not in simp_edge_dict or (no, next_no) not in simp_edge_dict):
                         # print("edge has been removed already")
                         continue
-                    # print("Delta: ", delta)
+                    logger.debug("Delta: " + str(delta))
                     involved_contigs = []
                     is_conf = False
                     cross_talk = False
@@ -241,7 +242,7 @@ def graph_splitting(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, co
                         None
                         # print("- current branch split forbidden, no supporting contig path, ambigous split", prev_no, no, next_no)
                     else:
-                        # print("- branch split performed")
+                        logger.debug("- branch split performed")
                         split_branches.append(no)
 
                         subid = no + "*" + str(i)
@@ -265,7 +266,7 @@ def graph_splitting(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, co
                                 contig_dict[icno][0][contig_dict[icno][0].index(no)] = subid
                                 support_contigs.remove(icno)
                             else:
-                                print("contig error, previous node {0} is not in contig or multiple occurance in contig {1}, potential bug".format(no, icno))
+                                logger.warning("contig error, previous node {0} is not in contig or multiple occurance in contig {1}, potential bug".format(no, icno))
     
     # fix single node contig
     for cno, [contig, _, _] in list(contig_dict.items()):
@@ -290,6 +291,7 @@ def graph_splitting(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, co
             for e in alle:
                 graph_remove_edge(graph, simp_edge_dict, graph.vp.id[e.source()], graph.vp.id[e.target()])
 
-    print("No of branch be removed: ", len(set(split_branches)))
-    print("Split branches: ", list_to_string(set(split_branches)))
+    logger.debug("No of branch be removed: " + str(len(set(split_branches))))
+    logger.debug("Split branches: " + list_to_string(set(split_branches)))
+    logger.info("done")
     return len(set(split_branches))

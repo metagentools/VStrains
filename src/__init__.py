@@ -3,8 +3,10 @@
 import argparse
 import sys
 import os
-import time
+import platform
 import numpy
+import logging
+import time
 from datetime import date
 
 from utils import (
@@ -15,18 +17,18 @@ __author__ = "Runpeng Luo"
 __copyright__ = ""
 __credits__ = ["Runpeng Luo", "Yu Lin"]
 __license__ = ""
-__version__ = "1.0.0"
+__version__ = "0.0.1"
 __maintainer__ = "Runpeng Luo"
 __email__ = ""
 __status__ = ""
 
-def run(args):
+def run(args, logger):
     numpy.seterr(all='raise')
     RUNNER = {
         "spades": ns_SPAdes.run,
         "flye": ns_Flye.run,
     }
-    RUNNER[args.assembler](args)
+    RUNNER[args.assembler](args, logger)
 
 
 def main():
@@ -65,6 +67,9 @@ def main():
     parser.add_argument(
         '-o', '--output_dir', dest='output_dir', default='acc/', type=str, 
         help='path to the output directory [default: acc/]')
+    
+    parser.add_argument('-d', '--dev_mode', dest="dev", action="store_true", 
+        default=False, help=argparse.SUPPRESS)
     
     args = parser.parse_args()
 
@@ -111,14 +116,69 @@ def main():
         print("\nExiting...\n")
         sys.exit(1)
 
+    if os.path.exists(args.output_dir + "/vsaware.log"):
+        os.remove(args.output + "/vsaware.log")
+
+    # Setup logger
+    # -----------------------
+    logger = logging.getLogger("VSAware %s" % __version__)
+    logger.setLevel(logging.DEBUG if args.dev else logging.INFO)
+
+    consoleHeader = logging.StreamHandler()
+    consoleHeader.setLevel(logging.INFO)
+    consoleHeader.setFormatter(logging.Formatter("%(message)s"))
+    logger.addHandler(consoleHeader)
+
+    fileHandler = logging.FileHandler(args.output_dir + "/vsaware.log")
+    fileHandler.setLevel(logging.DEBUG if args.dev else logging.INFO)
+    fileHandler.setFormatter(logging.Formatter("%(message)s"))
+    logger.addHandler(fileHandler)
+
+    logger.info("Welcome to vsAware!")
+    logger.info("vsAware is a strain-aware assembly tools, which constructs full-length ")
+    logger.info("virus strain with aid from de Bruijn assembly graph and contigs.")
+    logger.info("")
+    logger.info("System information:")
+    try:
+        logger.info("  VSAware version: " + str(__version__).strip())
+        logger.info("  Python version: " + ".".join(map(str, sys.version_info[0:3])))
+        logger.info("  OS: " + platform.platform())
+    except Exception:
+        logger.info("  Problem occurred when getting system information")
+    
+    logger.info("")
+    start_time = time.time()
+
+    logger.info("Input arguments:")
+    logger.info("Assembly type: " + args.assembler)
+    logger.info("Assembly graph file: " + args.gfa_file)
+    logger.info("Contig paths file: " + args.path_file)
+    logger.info("Output directory: " + os.path.abspath(args.output_dir))
+    if args.dev:
+        logger.info("*DEBUG MODE is turned ON")
+    logger.info("\n\n")
+    logger.info("======= vsAware pipeline started. Log can be found here: " + os.path.abspath(args.output_dir) + "/vsaware.log\n")
+
+    formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
+    consoleHeader.setFormatter(formatter)
+    fileHandler.setFormatter(formatter)
+
     # all good
-    start = time.time()
-    run(args)
-    elapsed = time.time() - start
-    print("\nresult is stored in {0}/strain.fasta".format(args.output_dir))
-    print("Finished: ", date.today().strftime("%B %d, %Y"))
-    print("Elapsed time: ", elapsed)
-    print("\nExiting...\n")
+    run(args, logger)
+
+    elapsed = time.time() - start_time
+
+    consoleHeader.setFormatter(logging.Formatter("%(message)s"))
+    fileHandler.setFormatter(logging.Formatter("%(message)s"))
+
+    logger.info("")
+    logger.info("Result is stored in {0}/strain.fasta".format(args.output_dir))
+    logger.info("Finished: {0}".format(date.today().strftime("%B %d, %Y")))
+    logger.info("Elapsed time: {0}".format(elapsed))
+    logger.info("Exiting...")
+    logger.removeHandler(fileHandler)
+    logger.removeHandler(consoleHeader)
+
     return 0
 
 if __name__ == "__main__":

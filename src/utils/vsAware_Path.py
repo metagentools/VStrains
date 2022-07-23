@@ -5,10 +5,9 @@ from graph_tool.all import Graph
 
 import numpy
 
-from utils.ns_Utilities import *
+from utils.vsAware_Utilities import *
 
-def dict_to_hist(graph: Graph, contig_dict: dict, b0, b1):
-    print("contig histogram generating..")
+def dict_to_hist(graph: Graph, contig_dict: dict, logger: Logger, b0, b1):
     contig_hist = {}
     for (cno, [_, clen, ccov]) in contig_dict.items():
         delta = 3*abs(b0 + b1*ccov)
@@ -24,7 +23,7 @@ def dict_to_hist(graph: Graph, contig_dict: dict, b0, b1):
         x = [graph.ep.flow[e] for e in min_eset.values()]
         regions, bins = numpy.histogram(x)
         contig_hist[cno] = [clen, ccov, regions, bins]
-    print("done")
+    logger.debug("contig histogram generated")
     return contig_hist
 
 def set_edge_weight(graph: Graph, ccov, b0, b1, relax=False):
@@ -58,12 +57,12 @@ def set_edge_weight(graph: Graph, ccov, b0, b1, relax=False):
             graph.ep.eval[e] = 1 if relax else 0
     return
 
-def st_path(graph: Graph, ccov, s, t, b0, b1, is_dag=False, ):
+def st_path(graph: Graph, ccov, s, t, b0, b1, logger: Logger, is_dag=False, ):
     sp_vlist = []
     try:
         sp_vlist, _ = shortest_path(graph, s, t, graph.ep.eval, negative_weights=True, dag=is_dag)
     except ValueError as ve:
-        print(ve)
+        logger.warning(ve)
         # remove negative cycle
         set_edge_weight(graph, ccov, b0, b1, relax=True)
         sp_vlist, _ = shortest_path(graph, s, t, graph.ep.eval, negative_weights=False, dag=is_dag)
@@ -81,10 +80,11 @@ def eval_score(flow, ccov, threshold):
         return "P2"
     return None
 
-def extract_cand_path(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, contig_dict: dict, b0, b1, threshold, min_clen=600):
+def extract_cand_path(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, contig_dict: dict, logger: Logger, b0, b1, threshold, min_clen=600):
+    logger.info("contig path extending..")
     global_src, global_sink = add_global_source_sink(graph, simp_node_dict, simp_edge_dict)
     strain_dict = {}
-    contig_hist = dict_to_hist(graph, contig_dict, b0, b1)
+    contig_hist = dict_to_hist(graph, contig_dict, logger, b0, b1)
     is_dag = graph_is_DAG(graph, simp_node_dict)
     graph.vp.keep = graph.new_vertex_property("boolean")
     graph.ep.eval = graph.new_edge_property("double")
@@ -99,30 +99,30 @@ def extract_cand_path(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, 
             or (contig[-1], contig[0]) in simp_edge_dict):
             # s-t path contig
             contig_dict.pop(cno)
-            print("st path/self cycle contig, retrieve first: ", cno)
+            logger.debug("st path/self cycle contig, retrieve first: " + cno)
             pcov = path_cov(graph, simp_node_dict, simp_edge_dict, contig)
             graph_reduction_c(graph, [simp_node_dict[n] for n in contig], usage_dict, pcov)
             #filter low coverage strain
             if pcov >= threshold:
-                print("cand strain found")
+                logger.debug("cand strain found")
                 strain_dict['A' + cno] = [contig, clen, pcov]
             else:
-                print("low cov strain, removed")
+                logger.debug("low cov strain, removed")
 
     while len(contig_dict.keys()) > 0:
-        print("----------------------------------------------------------------------------")
+        logger.debug("----------------------------------------------------------------------------")
         cno = max(contig_dict.keys(), key=lambda k: sum(contig_hist[k][2]))
         contig, clen, ccov = contig_dict.pop(cno)
         delta = 3*abs(b0 + b1 * ccov)
-        print("REGION: ", contig_hist[cno][2])
-        print("BIN: ", contig_hist[cno][3])
-        print("Contig: ", cno, "len: ", clen, "->bound: [", ccov - delta, ccov, ccov + delta, "], delta: ", delta, "***" ,list_to_string(contig))
+        logger.debug("REGION: " + str(contig_hist[cno][2]))
+        logger.debug("Contig: " + str(cno) + "len: " + str(clen) + "->bound: [" + str(ccov - delta) + "," + str(ccov) + "," + str(ccov + delta) +  "], delta: " + str(delta))
+        logger.debug("***contig path: " + list_to_string(contig))
 
         if ccov < threshold or (all([usage_dict[k] != 0 for k in contig])):
-            print("current contig {0} is used previously {1}".format(ccov, threshold))
+            logger.debug("current contig {0} is used previously {1}".format(ccov, threshold))
             continue
         if clen < min_clen:
-            print("current contig {0} is too short: {1}bp (unreliable) for s-t extension".format(cno, clen))
+            logger.debug("current contig {0} is too short: {1}bp (unreliable) for s-t extension".format(cno, clen))
             strain_dict['A' + cno] = [contig, clen, ccov]
             continue
 
@@ -130,7 +130,7 @@ def extract_cand_path(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, 
         strain = []
         # find self cycle first if exist
         if reachable(graph, simp_node_dict, simp_node_dict[contig[-1]], simp_node_dict[contig[0]]):
-            print("concat self cycle")
+            logger.debug("concat self cycle")
             s = simp_node_dict[contig[-1]]
             t = simp_node_dict[contig[0]]
             ns = None
@@ -157,9 +157,9 @@ def extract_cand_path(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, 
                 graph.vp.keep[v] = False
             
             graph.set_filters(graph.ep.keep, graph.vp.keep)
-            sp_vlist = st_path(graph, ccov, s, t, b0, b1, is_dag)
+            sp_vlist = st_path(graph, ccov, s, t, b0, b1, logger, is_dag)
             strain.extend([simp_node_dict[n] for n in contig])
-            print("found path: ", list_to_string([graph.vp.id[n] for n in sp_vlist]))
+            logger.debug("found path: " + list_to_string([graph.vp.id[n] for n in sp_vlist]))
             strain.extend(sp_vlist[1:-1])
 
             if ns != None:
@@ -176,9 +176,9 @@ def extract_cand_path(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, 
                     simp_edge_dict[(graph.vp.id[src], graph.vp.id[s])] = ie
             graph.clear_filters()
         else:
-            print("concat st path")
-            sphead_vlist = st_path(graph, ccov, global_src, simp_node_dict[contig[0]], b0, b1, is_dag)
-            sptail_vlist = st_path(graph, ccov, simp_node_dict[contig[-1]], global_sink, b0, b1, is_dag)
+            logger.debug("concat st path")
+            sphead_vlist = st_path(graph, ccov, global_src, simp_node_dict[contig[0]], b0, b1, logger, is_dag)
+            sptail_vlist = st_path(graph, ccov, simp_node_dict[contig[-1]], global_sink, b0, b1, logger, is_dag)
             strain.extend(sphead_vlist[1:-1])
             strain.extend([simp_node_dict[n] for n in contig])
             strain.extend(sptail_vlist[1:-1])
@@ -187,21 +187,22 @@ def extract_cand_path(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, 
             delta = 3*abs(b0 + b1 * flow)
             s = eval_score(flow, ccov, delta)
             score.append(s)
-        print("related edges score: ", score)
+        logger.debug("related edges score: " + str(score))
         ccov = path_cov(graph, simp_node_dict, simp_edge_dict, [graph.vp.id[n] for n in strain])
         plen = path_len(graph, strain)
-        print(path_to_id_string(graph, strain, "strain, len: {0}, ccov: {1}".format(plen, ccov)))
+        logger.debug(path_to_id_string(graph, strain, "strain, len: {0}, ccov: {1}".format(plen, ccov)))
+        
         #filter low coverage strain
         if ccov >= threshold:
-            print("cand strain found")
+            logger.debug("cand strain found")
             strain_dict['A' + cno] = [[graph.vp.id[n] for n in strain], plen, ccov]
         else:
-            print("low cov strain, removed")
+            logger.debug("low cov strain, removed")
         graph_reduction_c(graph, strain, usage_dict, ccov)
-        contig_cov_fix(graph, simp_node_dict, simp_edge_dict, contig_dict)
-        contig_hist = dict_to_hist(graph, contig_dict, b0, b1)
+        contig_cov_fix(graph, simp_node_dict, simp_edge_dict, contig_dict, None)
+        contig_hist = dict_to_hist(graph, contig_dict, logger, b0, b1)
     
     for v in [global_sink, global_src]:
         graph.remove_vertex(v)
-
+    logger.info("done")
     return strain_dict

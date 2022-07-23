@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 
+from logging import Logger
 from graph_tool.all import Graph
 import gfapy
 import subprocess
 import sys
 import re
 
-from utils.ns_Utilities import path_len, reverse_seq, print_vertex, path_ids_to_seq, print_edge
+from utils.vsAware_Utilities import path_len, reverse_seq, print_vertex, path_ids_to_seq
 
 def init_graph():
     graph = Graph(directed=True)
@@ -21,15 +22,15 @@ def init_graph():
 
     return graph
 
-def gfa_to_graph(gfa_file, init_ori=1):
+def gfa_to_graph(gfa_file, logger: Logger, init_ori=1):
     """
     Convert assembly graph gfa file to graph
     Nodes: segment with corresponding 
     """
 
-    print("Parsing GFA format graph")
+    logger.info("Parsing GFA format graph")
     gfa = gfapy.Gfa().from_file(filename=gfa_file)
-    print("Parsed gfa file length: {0}, version: {1}".format(len(gfa.lines), gfa.version))
+    logger.info("Parsed gfa file length: {0}, version: {1}".format(len(gfa.lines), gfa.version))
 
     graph = init_graph()
     graph.vp.visited = graph.new_vertex_property("int16_t", val=0)
@@ -82,12 +83,11 @@ def gfa_to_graph(gfa_file, init_ori=1):
         v = v_pos if ori_r == '+' else v_neg
 
         if (seg_no_l, graph.vp.ori[u], seg_no_r, graph.vp.ori[v]) in edge_dict:
-            print("parallel edge found, invalid case in assembly graph, please double-check the assembly graph format")
-            print("\nExiting...\n")
+            logger.error("parallel edge found, invalid case in assembly graph, please double-check the assembly graph format")
+            logger.error("Pipeline aborted")
             sys.exit(1)
 
         if seg_no_l == seg_no_r:
-            # print("self-loop edge, mark sequence as lower case: ", seg_no_l, ori_l, "->", seg_no_r, ori_r)
             graph.vp.seq[u] = str.lower(graph.vp.seq[u])
             graph.vp.seq[v] = str.lower(graph.vp.seq[v])
             continue
@@ -98,11 +98,11 @@ def gfa_to_graph(gfa_file, init_ori=1):
 
         edge_dict[(seg_no_l, graph.vp.ori[u], seg_no_r, graph.vp.ori[v])] = e
         
-    graph, simp_node_dict, simp_edge_dict = flip_graph_bfs(graph, node_dict, edge_dict, dp_dict, init_ori)
+    graph, simp_node_dict, simp_edge_dict = flip_graph_bfs(graph, node_dict, edge_dict, dp_dict, logger, init_ori)
     red_graph, red_node_dict, red_edge_dict = reduce_graph(graph, simp_node_dict, simp_edge_dict)
     return red_graph, red_node_dict, red_edge_dict
 
-def flip_graph_bfs(graph: Graph, node_dict: dict, edge_dict: dict, dp_dict: dict, init_ori=1):
+def flip_graph_bfs(graph: Graph, node_dict: dict, edge_dict: dict, dp_dict: dict, logger: Logger, init_ori=1):
     """
     Flip all the node orientation.
 
@@ -136,7 +136,7 @@ def flip_graph_bfs(graph: Graph, node_dict: dict, edge_dict: dict, dp_dict: dict
         edge_dict[(graph.vp.id[s], graph.vp.ori[s], graph.vp.id[t], graph.vp.ori[t])] = e
 
         return graph, e, edge_dict
-    print("flip graph orientation..")
+    logger.info("flip graph orientation..")
     pick_dict = {}
     while set(dp_dict):
         seg_no = source_node_via_dp(dp_dict)
@@ -177,21 +177,21 @@ def flip_graph_bfs(graph: Graph, node_dict: dict, edge_dict: dict, dp_dict: dict
                     fifo_queue.append([node_dict[graph.vp.id[adj_node]], graph.vp.ori[adj_node]])
 
     # verify sorted graph
-    print("final verifying graph..")
+    logger.info("final verifying graph..")
     assert len(pick_dict) == len(node_dict)
     for key, item in list(pick_dict.items()):
         v_pos, v_neg = node_dict[key]
         if item == '+':
             #FIXME split v_neg to a new node
             if v_neg.in_degree() + v_neg.out_degree() > 0:
-                print_vertex(graph, v_neg, "pick ambiguous found, pick both, split node")
+                print_vertex(graph, v_neg, logger, "pick ambiguous found, pick both, split node")
                 pick_dict[key] = 't'
         else:
             #FIXME split v_neg to a new node
             if v_pos.in_degree() + v_pos.out_degree() > 0:
-                print_vertex(graph, v_pos, "pick ambiguous found, pick both, split node")
+                print_vertex(graph, v_pos, logger, "pick ambiguous found, pick both, split node")
                 pick_dict[key] = 't'
-    print("Graph is verified")
+    logger.info("Graph is verified")
 
     simp_node_dict = {}
     for seg_no, pick in pick_dict.items():
@@ -209,7 +209,7 @@ def flip_graph_bfs(graph: Graph, node_dict: dict, edge_dict: dict, dp_dict: dict
     simp_edge_dict = {}
     for e in edge_dict.values():
         simp_edge_dict[(graph.vp.id[e.source()],graph.vp.id[e.target()])] = e
-    print("done")
+    logger.info("done")
     return graph, simp_node_dict, simp_edge_dict
 
 def reduce_graph(unsimp_graph: Graph, simp_node_dict: dict, simp_edge_dict: dict):
@@ -237,13 +237,13 @@ def reduce_graph(unsimp_graph: Graph, simp_node_dict: dict, simp_edge_dict: dict
     
     return graph, red_node_dict, red_edge_dict
 
-def flipped_gfa_to_graph(gfa_file):
+def flipped_gfa_to_graph(gfa_file, logger: Logger):
     """
     read flipped gfa format graph in.
     """
-    print("Parsing GFA format graph")
+    logger.debug("Parsing GFA format graph")
     gfa = gfapy.Gfa().from_file(filename=gfa_file)
-    print("Parsed gfa file length: {0}, version: {1}".format(len(gfa.lines), gfa.version))
+    logger.debug("Parsed gfa file length: {0}, version: {1}".format(len(gfa.lines), gfa.version))
 
     graph = init_graph()
     red_node_dict = {}
@@ -273,12 +273,11 @@ def flipped_gfa_to_graph(gfa_file):
     
     return graph, red_node_dict, red_edge_dict
 
-def graph_to_gfa(graph: Graph, simp_node_dict: dict, edge_dict: dict, filename):
+def graph_to_gfa(graph: Graph, simp_node_dict: dict, edge_dict: dict, logger: Logger, filename):
     """
     store the swapped graph in simplifed_graph.
     """
-    subprocess.check_call("touch {0}".format(
-    filename), shell=True)
+    subprocess.check_call("touch {0}; echo > {0}".format(filename), shell=True)
 
     with open(filename, 'w') as gfa:
         for v in simp_node_dict.values():
@@ -298,7 +297,7 @@ def graph_to_gfa(graph: Graph, simp_node_dict: dict, edge_dict: dict, filename):
                 continue
             gfa.write("L\t{0}\t{1}\t{2}\t{3}\t{4}M\n".format(u, "+", v, "+", graph.ep.overlap[e]))
         gfa.close()
-    print(filename, " is stored..")
+    logger.info(filename + " is stored..")
     return 0
 
 def is_valid(p: list, idx_mapping: dict, simp_node_dict: dict, simp_edge_dict: dict):
@@ -323,7 +322,7 @@ def is_valid(p: list, idx_mapping: dict, simp_node_dict: dict, simp_edge_dict: d
             return False
     return True
 
-def spades_paths_parser(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, idx_mapping: dict, path_file, min_len=250, at_least_one_edge=False):
+def spades_paths_parser(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, idx_mapping: dict, logger: Logger, path_file, min_len=250, at_least_one_edge=False):
     """
     Map SPAdes's contig to the graph, return all the suitable contigs.
     """
@@ -356,7 +355,7 @@ def spades_paths_parser(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict
 
         return subpaths, total_nodes
 
-    print("parsing SPAdes .paths file..")
+    logger.info("parsing SPAdes .paths file..")
     contig_dict = {}
     contig_info = {}
     try:
@@ -412,18 +411,19 @@ def spades_paths_parser(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict
             
             contigs_file.close()
     except BaseException as err:
-        print(err, "\nPlease make sure the correct SPAdes contigs .paths file is provided.")
-        print("\nExiting...\n")
+        logger.error(err, "\nPlease make sure the correct SPAdes contigs .paths file is provided.")
+        logger.error("Pipeline aborted")
         sys.exit(1)
-    print("done")
-    print(contig_dict, "\n", contig_info)
+    logger.debug(str(contig_dict)) 
+    logger.debug(str(contig_info))
+    logger.info("done")
     return contig_dict, contig_info
 
-def flye_info_parser(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, idx_mapping, info_file, min_len=250, at_least_one_edge=False):
+def flye_info_parser(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, idx_mapping, logger: Logger, info_file, min_len=250, at_least_one_edge=False):
     """
      Map Flye's contig to the graph, return all the suitable contigs.
     """
-    print("parsing Flye .txt file..")
+    logger.info("parsing Flye .txt file..")
     contig_dict = {}
     contig_info = {}
     try:
@@ -433,7 +433,6 @@ def flye_info_parser(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, i
                     # comment line
                     continue
                 cno, clen, ccov, circ, repeat, mult, alt_group, graph_path = line.strip().split('\t')
-                #FIXME take care of repeat nodes in path
                 graph_path = graph_path.replace('*', '')
                 subpaths = []
                 total_nodes = 0
@@ -441,13 +440,14 @@ def flye_info_parser(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, i
                 total_nodes_r = 0
                 for sp in graph_path.split("??"):
                     sp = list(filter(lambda x: x != '', sp.split(',')))
-                    sp = list(map(lambda v: 
-                        "edge_"+str(v) if v[0] not in ['-', '+']
-                        else str(v[0]) + "edge_" + str(v[1:]), sp))
+                    sp = list(map(lambda v: "edge_"+str(v) if v[0] not in ['-', '+']
+                            else str(v[0]) + "edge_" + str(v[1:]), sp))
                     sp = list(map(lambda v: v if v[0] != '+' else v[1:], sp))
+
                     sp_r = list(map(lambda v: str(v[1:]) if v[0] == '-' else '-' + str(v), reversed(sp)))
                     spred = list(dict.fromkeys(sp))
                     spred_r = list(dict.fromkeys(sp_r))
+
                     if is_valid(spred, idx_mapping, simp_node_dict, simp_edge_dict):
                         sp = list(map(lambda v: idx_mapping[v], sp))
                         subpaths.append(sp)
@@ -483,18 +483,19 @@ def flye_info_parser(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, i
                         contig_info[cno] = ((circ, repeat, mult, alt_group), repeat_dict)
             cfile.close()
     except BaseException as err:
-        print(err, "\nPlease make sure the correct Flye contigs .txt file is provided.")
-        print("\nExiting...\n")
+        logger.error(err, "\nPlease make sure the correct Flye contigs .txt file is provided.")
+        logger.error("Pipeline aborted")
         sys.exit(1)
-    print("done")
-    print(contig_dict, "\n", contig_info)
+    logger.debug(str(contig_dict)) 
+    logger.debug(str(contig_info))
+    logger.info("done")
     return contig_dict, contig_info
 
 def contig_dict_to_fasta(graph: Graph, simp_node_dict: dict, contig_dict: dict, output_file):
     """
     Store contig dict into fastq file
     """
-    subprocess.check_call("touch {0}".format(
+    subprocess.check_call("touch {0}; echo > {0}".format(
     output_file), shell=True)
 
     with open(output_file, 'w') as fasta:
@@ -509,7 +510,7 @@ def contig_dict_to_path(contig_dict: dict, output_file, keep_original=False):
     """
     Store contig dict into paths file
     """
-    subprocess.check_call("touch {0}".format(output_file), shell=True)
+    subprocess.check_call("touch {0}; echo > {0}".format(output_file), shell=True)
     with open(output_file, 'w') as paths:
         for cno, (contig, clen, ccov) in sorted(contig_dict.items(), key=lambda x: x[1][2]):
             contig_name = "NODE_" + str(cno) + "_" + str(clen) + "_" + str(ccov) + "\n"

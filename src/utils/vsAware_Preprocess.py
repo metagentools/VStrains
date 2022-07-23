@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+from logging import Logger
 import sys, os
 import subprocess
 from graph_tool.all import Graph
@@ -8,7 +9,7 @@ import numpy
 import matplotlib.pyplot as plt
 import pandas as pd
 
-from utils.ns_Utilities import *
+from utils.vsAware_Utilities import *
 
 from sklearn.cluster import KMeans
 from sklearn.linear_model import LinearRegression
@@ -18,7 +19,6 @@ def reindexing(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict):
     idx_mapping = {}
     idx_node_dict = {}
     idx_edge_dict = {}
-    idx_contig_dict = {}
     idx = 0
     for no, node in simp_node_dict.items():
         if graph.vp.color[node] == 'black':
@@ -29,11 +29,6 @@ def reindexing(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict):
     for (u, v), e in simp_edge_dict.items():
         if graph.ep.color[e] == 'black' and graph.vp.color[e.source()] == 'black' and graph.vp.color[e.target()] == 'black':
             idx_edge_dict[(idx_mapping[u], idx_mapping[v])] = e
-
-    # for cno, [contig, clen, ccov] in contig_dict.items():
-    #     idx_contig_dict[cno] = [[idx_mapping[no] for no in contig], clen, ccov]
-    #     print("indexed contig: ", cno, list_to_string(idx_contig_dict[cno][0]))
-
     return graph, idx_node_dict, idx_edge_dict, idx_mapping
 
 def paths_from_src(graph: Graph, simp_node_dict: dict, self_node, src, maxlen):
@@ -94,13 +89,12 @@ def paths_to_tgt(graph: Graph, simp_node_dict: dict, self_node, tgt, maxlen):
     dfs_rev(graph, tgt, [], maxlen, visited, all_path)   
     return all_path
 
-def tip_removal_s(graph: Graph, simp_node_dict: dict, contig_dict: dict, tempdir, accept_rate = 0.99):
+def tip_removal_s(graph: Graph, simp_node_dict: dict, contig_dict: dict, logger: Logger, tempdir, accept_rate = 0.99):
     if not graph_is_DAG(graph, simp_node_dict):
-        print("Graph is Cyclic, tip removal start..")
+        logger.info("Graph is Cyclic, tip removal start..")
         tip_removed = False
         while not tip_removed:
-            tip_removed = tip_removal(graph, simp_node_dict, tempdir, accept_rate)
-        print("done")
+            tip_removed = tip_removal(graph, simp_node_dict, logger, tempdir, accept_rate)
         for cno, [contig, _, ccov] in list(contig_dict.items()):
             if not all([no in simp_node_dict for no in contig]):
                 subcontigs = []
@@ -123,9 +117,11 @@ def tip_removal_s(graph: Graph, simp_node_dict: dict, contig_dict: dict, tempdir
                     sublen = path_len(graph, [simp_node_dict[c] for c in subc])
                     contig_dict[cno + "^" + str(i)] = [subc, sublen, ccov]
     else:
-        print("Graph is DAG, tip removal skipped.")
+        logger.info("Graph is DAG, tip removal skipped.")
+    logger.info("done")
+    return
 
-def tip_removal(graph: Graph, simp_node_dict: dict, tempdir, accept_rate):
+def tip_removal(graph: Graph, simp_node_dict: dict, logger: Logger, tempdir, accept_rate):
     """
     retrieve all the source/tail simple path, and merge them into adjacent neighbor path if possible
     
@@ -146,7 +142,7 @@ def tip_removal(graph: Graph, simp_node_dict: dict, tempdir, accept_rate):
         simp_node_dict.pop(graph.vp.id[from_node])
         for e in from_node.all_edges():
             graph.ep.color[e] = 'gray'
-        print(path_to_id_string(graph, to_path, "Tip Node {0} collapsed to path".format(graph.vp.id[from_node])))
+        logger.debug(path_to_id_string(graph, to_path, "Tip Node {0} collapsed to path".format(graph.vp.id[from_node])))
         return
 
     def cand_collapse_path(graph: Graph, from_node, to_paths, temp_dir):
@@ -158,7 +154,7 @@ def tip_removal(graph: Graph, simp_node_dict: dict, tempdir, accept_rate):
         ref_loc = "{0}/ref.fa".format(temp_dir)
         query_loc = "{0}/query.fa".format(temp_dir)
         overlap_loc = "{0}/overlap.paf".format(temp_dir)
-        subprocess.check_call('touch {0}; touch {1}'.format(ref_loc, query_loc), shell=True)
+        subprocess.check_call('touch {0}; echo > {0}; touch {1}; echo > {1}'.format(ref_loc, query_loc), shell=True)
         
         id_path_dict = {}
         for id, path in list(enumerate(to_paths)):
@@ -205,7 +201,7 @@ def tip_removal(graph: Graph, simp_node_dict: dict, tempdir, accept_rate):
             id_evalscore_sum.append((id, mean_score))
         
         best_match = sorted(id_evalscore_sum, key=lambda t: t[1], reverse=True)
-        # print("Tip Node: ", graph.vp.id[from_node], best_match)
+        logger.debug("Tip Node: ", graph.vp.id[from_node], best_match)
         if len(best_match) == 0:
             return None
         elif best_match[0][1] >= accept_rate:
@@ -219,7 +215,6 @@ def tip_removal(graph: Graph, simp_node_dict: dict, tempdir, accept_rate):
     isolated_node = []
     for node in simp_node_dict.values():
         if node.in_degree() + node.out_degree() == 0:
-            # print_vertex(graph, node, "isolated node")
             isolated_node.append(node)
         elif node.in_degree() == 0:
             src_nodes.append(node)
@@ -277,8 +272,8 @@ def tip_removal(graph: Graph, simp_node_dict: dict, tempdir, accept_rate):
             is_removed = False
     return is_removed
 
-def delta_estimation(graph: Graph, tempdir, cutoff_size=200):
-    print("Start delta estimation")
+def delta_estimation(graph: Graph, logger: Logger, tempdir, cutoff_size=200):
+    logger.info("Start delta estimation")
     xs = []
     ys = []
     sample_size = 0
@@ -292,11 +287,12 @@ def delta_estimation(graph: Graph, tempdir, cutoff_size=200):
             m = graph.vp.dp[node]
             xs.extend([lv, rv])
             ys.extend([m, m])
-    print("sample size: ", sample_size)
+    logger.debug("sample size: " + str(sample_size))
     if sample_size < cutoff_size:
         b0 = 32.23620072586657
         b1 = 0.009936800927088535
-        print("use default delta estimation function: Delta = |", b0, "+", b1, "* Coverage |")
+        logger.debug("use default delta estimation function: Delta = |" + str(b0) + "+" + str(b1) + "* Coverage |")
+        logger.info("done")
         return b0, b1
 
     plt.figure(figsize=(12,8))
@@ -319,11 +315,10 @@ def delta_estimation(graph: Graph, tempdir, cutoff_size=200):
     plt.title("K-Means Silhouette Score",size=20)
     plt.xlabel("number of cluster", size=16)
     plt.ylabel("score", size=16)
-    # plt.show()
     plt.savefig("{0}{1}".format(tempdir, "tmp/silhouette_score_delta.png"))
 
     optim_nc = max(ncs, key=lambda x: scores[ncs.index(x)])
-    print("Optim n_cluster: ", optim_nc)
+    logger.debug("Optim n_cluster: ", optim_nc)
     # clustering
     kmc = KMeans(n_clusters=optim_nc)
     kmc_model = kmc.fit(df)
@@ -336,7 +331,7 @@ def delta_estimation(graph: Graph, tempdir, cutoff_size=200):
         cxs = df[kmc_model.labels_==i].iloc[:,0]
         cys = df[kmc_model.labels_==i].iloc[:,1]
         if len(cxs) < 10:
-            print("skip cluster: ", kmc_model.cluster_centers_[i])
+            logger.debug("skip cluster: ", kmc_model.cluster_centers_[i])
             continue
         plt.scatter(cxs, cys, label=i, c=colors[i%len(colors)], alpha=0.5)
         vals = []
@@ -361,10 +356,9 @@ def delta_estimation(graph: Graph, tempdir, cutoff_size=200):
     model = lr.fit(numpy.array(clust_x).reshape(-1,1),clust_medians)
     b0 = model.intercept_
     b1 = model.coef_[0]
-    print("The intercept of this model is:", model.intercept_)
-    print("The slope coefficient of this model is:", model.coef_[0])
-    print("")
-    print("Thus the equation is: Delta = |", b0, "+", b1, "* Coverage |")
+    logger.debug("The intercept of this model is:", model.intercept_)
+    logger.debug("The slope coefficient of this model is:", model.coef_[0])
+    logger.debug("Thus the equation is: Delta = |", b0, "+", b1, "* Coverage |")
 
     x_range = [0, max(clust_x)]                      # get the bounds for x
     y_range = [b0, b0+b1*x_range[1]]    # get the bounds for y
@@ -372,12 +366,11 @@ def delta_estimation(graph: Graph, tempdir, cutoff_size=200):
     plt.title("Regression",size=20)
     plt.xlabel("coverage", size=16)
     plt.ylabel("delta", size=16)
-    # plt.show()
     plt.savefig("{0}{1}".format(tempdir, "tmp/cluster_delta.png"))
-
+    logger.info("done")
     return b0, b1
 
-def graph_simplification(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, contig_dict: dict, min_cov):
+def graph_simplification(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, contig_dict: dict, logger: Logger, min_cov):
     """
     Directly remove all the vertex with coverage less than minimum coverage and related edge
 
@@ -386,8 +379,8 @@ def graph_simplification(graph: Graph, simp_node_dict: dict, simp_edge_dict: dic
         removed_node_dict
         removed_edge_dict
     """
-    print("-------------------------graph simplification----------------------")
-    print("Total nodes: ", len(simp_node_dict), " Total edges: ", len(simp_edge_dict))
+    logger.info("graph simplification")
+    logger.debug("Total nodes: " + str(len(simp_node_dict)) + " Total edges: " + str(len(simp_edge_dict)))
     node_to_contig_dict, edge_to_contig_dict = contig_map_node(contig_dict)
     removed_node_dict = {}
     removed_edge_dict = {}
@@ -409,6 +402,6 @@ def graph_simplification(graph: Graph, simp_node_dict: dict, simp_edge_dict: dic
                     graph_remove_edge(graph, simp_edge_dict, uid, vid, printout=False)
                     removed_edge_dict[(uid, vid)] = e
 
-    print("Remain: Total nodes: ", len(simp_node_dict), " Total edges: ", len(simp_edge_dict))
-    print("-------------------------graph simplification end----------------------")
+    logger.debug("Remain nodes: " + str(len(simp_node_dict)) + " Total edges: " + str(len(simp_edge_dict)))
+    logger.info("done")
     return removed_node_dict, removed_edge_dict

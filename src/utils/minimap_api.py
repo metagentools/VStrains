@@ -1,5 +1,15 @@
-from utilities import graph_to_gfa, map_ref_to_graph, gfa_to_graph
+from ns_Preprocess import graph_to_gfa, gfa_to_graph
+from ns_Utilities import map_ref_to_graph
 import argparse
+
+__author__ = "Runpeng Luo"
+__copyright__ = ""
+__credits__ = ["Runpeng Luo", "Yu Lin"]
+__license__ = ""
+__version__ = "0.0.1"
+__maintainer__ = "Runpeng Luo"
+__email__ = ""
+__status__ = ""
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(prog='minimap_api.py', description="")

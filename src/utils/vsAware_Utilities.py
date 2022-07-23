@@ -278,7 +278,7 @@ def contig_dict_remapping(
             final_path = reduce(lambda a, b: [i for i in a if i in b], paths)
             if len(final_path) > 0:
                 # at least one node
-                logger.debug("selected mapped contig: " + final_path)
+                logger.debug("selected mapped contig: " + str(final_path))
                 sublen = path_len(graph, [simp_node_dict[no] for no in final_path])
                 subcov = path_cov(graph, simp_node_dict, simp_edge_dict, final_path)
                 contig_dict[cno] = [final_path, sublen, subcov]

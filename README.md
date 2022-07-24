@@ -13,8 +13,7 @@ Table of Contents
 3. [Running vsAware](#sec3) </br>
    3.1. [Quick Usage](#sec3.1) </br>
    3.2. [Support SPAdes](#sec3.2) </br>
-   3.3. [Support Flye](#sec3.3) </br>
-   3.4. [Parameters](#sec3.4) </br>
+   3.3. [Parameters](#sec3.4) </br>
 4. [Citation](#sec4) </br>
 5. [Feedback and bug reports](#sec5)</br>
 
@@ -63,26 +62,24 @@ And python modules:
 <a name="sec3"></a>
 # Running vsAware
 
-vsAware natively support assembly result from SPAdes (includes metaSPAdes, metaviralSPAdes) and extended to support Flye (includes metaFlye).
+vsAware natively support assembly result from SPAdes (includes metaSPAdes, metaviralSPAdes).
 
 <a name="sec3.1"></a>
 ## Quick Usage
 
 ```bash
-usage: vsAware [-h] -a {spades,flye} -g GFA_FILE [-p PATH_FILE] [-i INFO_FILE] [-mc--minimum_coverage MIN_COV] [-ml--minimum_contig_length MIN_LEN] [-r REF_FILE] [-o OUTPUT_DIR]
+usage: vsAware [-h] -a {spades} -g GFA_FILE [-p PATH_FILE] [-mc MIN_COV] [-ml MIN_LEN] [-r REF_FILE] [-o OUTPUT_DIR]
 
-Construct full-length viral strains under deno vo approach from contigs and assembly graph, currently supports SPAdes and Flye
+Construct full-length viral strains under deno vo approach from contigs and assembly graph, currently supports SPAdes
 
 optional arguments:
   -h, --help            show this help message and exit
-  -a {spades,flye}, --assembler {spades,flye}
-                        name of the assembler used. [spades, flye]
+  -a {spades}, --assembler {spades}
+                        name of the assembler used. [spades]
   -g GFA_FILE, --graph GFA_FILE
                         path to the assembly graph, (.gfa format)
   -p PATH_FILE, --path PATH_FILE
                         contig file from SPAdes (.paths format), only required for SPAdes. e.g., contigs.paths
-  -i INFO_FILE, --info INFO_FILE
-                        contig information file from Flye (.txt format), only required for Flye. e.g., assembly_info.txt
   -mc MIN_COV, --minimum_coverage MIN_COV
                         minimum node coverage cutoff, [default: auto]
   -ml MIN_LEN, --minimum_contig_length MIN_LEN
@@ -93,11 +90,9 @@ optional arguments:
                         path to the output directory [default: acc/]
 ```
 
-vsAware takes as input assembly graph in Graphical Fragment Assembly (GFA) Format and reported contig information. Both input can be found in the output directory after running SPAdes/Flye assembler. Do not modify any contig/node name from the assembly result for consistency. Please refer to [SPAdes](https://github.com/ablab/spades) and [Flye](https://github.com/fenderglass/Flye) for further guideline. Example usage as below:
+vsAware takes as input assembly graph in Graphical Fragment Assembly (GFA) Format and reported contig information. Both input can be found in the output directory after running SPAdes assembler. Do not modify any contig/node name from the assembly result for consistency. Please refer to [SPAdes](https://github.com/ablab/spades) for further guideline. Example usage as below:
 
 ```bash
-# Flye assembler example, PacBio regular CLR reads
-flye --pacbio-raw example.fa --out-dir out_pacbio --threads 16
 # SPAdes assembler example, pair-end reads
 python spades.py -1 forward.fa -2 reverse.fa --careful -t 16 -o output_dir
 ```
@@ -112,15 +107,6 @@ python vsAware.py -a spades -g assembly_graph_after_simplification.gfa -p contig
 ```
 
 <a name="sec3.3"></a>
-## Support Flye
-
-For Flye, we recommend to use `--meta` option for uneven coverage depth. Please use `assembly_graph.gfa` and `assembly_info.txt` as input, and set `-a` flag to `flye`. Example usage as below:
-
-```bash
-python vsAware.py -a flye -g assembly_graph.gfa -i assembly_info.txt -o output_dir
-```
-
-<a name="sec3.4"></a>
 ## Parameters
 
 ### Minimum Node Coverage
@@ -139,4 +125,4 @@ TODO
 <a name="sec5"></a>
 # Feedback and bug reports
 
-TODO
+Thanks for using vsAware, please feel free to raise any concern via `Issues`.

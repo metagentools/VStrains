@@ -237,7 +237,7 @@ def tip_removal(
             id_evalscore_sum.append((id, mean_score))
 
         best_match = sorted(id_evalscore_sum, key=lambda t: t[1], reverse=True)
-        logger.debug("Tip Node: ", graph.vp.id[from_node], best_match)
+        logger.debug("Tip Node: " + str(graph.vp.id[from_node]) + str(best_match))
         if len(best_match) == 0:
             return None
         elif best_match[0][1] >= accept_rate:

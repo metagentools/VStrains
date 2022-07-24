@@ -10,7 +10,6 @@ import time
 from datetime import date
 
 from utils import (
-    vsAware_Flye,
     vsAware_SPAdes,
 )
 
@@ -28,7 +27,6 @@ def run(args, logger):
     numpy.seterr(all="raise")
     RUNNER = {
         "spades": vsAware_SPAdes.run,
-        "flye": vsAware_Flye.run,
     }
     RUNNER[args.assembler](args, logger)
 
@@ -37,7 +35,7 @@ def main():
     parser = argparse.ArgumentParser(
         prog="vsAware",
         description="""Construct full-length viral strains under deno vo approach 
-        from contigs and assembly graph, currently supports SPAdes and Flye""",
+        from contigs and assembly graph, currently supports SPAdes""",
     )
 
     parser.add_argument(
@@ -46,8 +44,8 @@ def main():
         dest="assembler",
         type=str,
         required=True,
-        choices=["spades", "flye"],
-        help="name of the assembler used. [spades, flye]",
+        choices=["spades"],
+        help="name of the assembler used. [spades]",
     )
 
     parser.add_argument(
@@ -66,15 +64,6 @@ def main():
         type=str,
         required=False,
         help="contig file from SPAdes (.paths format), only required for SPAdes. e.g., contigs.paths",
-    )
-
-    parser.add_argument(
-        "-i",
-        "--info",
-        dest="info_file",
-        type=str,
-        required=False,
-        help="contig information file from Flye (.txt format), only required for Flye. e.g., assembly_info.txt",
     )
 
     parser.add_argument(
@@ -137,18 +126,8 @@ def main():
             )
             print("\nExiting...\n")
             sys.exit(1)
-
-    elif args.assembler.lower() == "flye":
-        if (not args.info_file) or (not os.path.exists(args.info_file)):
-            print(
-                "\nPath to Contig information file from Flye (.txt format) is required for Flye. e.g., assembly_info.txt"
-            )
-            print("\nExiting...\n")
-            sys.exit(1)
     else:
-        print(
-            "\nPlease make sure to provide the correct assembler type (SPAdes or Flye)."
-        )
+        print("\nPlease make sure to provide the correct assembler type (SPAdes).")
         print("\nExiting...\n")
         sys.exit(1)
 

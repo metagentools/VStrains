@@ -51,6 +51,8 @@ def run(args, logger):
         graph0, simp_node_dict0, simp_edge_dict0
     )
 
+    logger.debug("id mapping: " + str(idx_mapping))
+
     contig_dict, contig_info = spades_paths_parser(
         graph0,
         simp_node_dict0,
@@ -65,42 +67,43 @@ def run(args, logger):
         copy_contig_dict[cno] = [list(contig), clen, ccov]
 
     logger.info(">>>STAGE: preprocess")
-    tip_removal_s(graph0, simp_node_dict0, contig_dict, logger, TEMP_DIR)
+
+    if args.min_cov > 0:
+        THRESHOLD = args.min_cov
+        logger.info("user-defined node minimum coverage: {0}".format(THRESHOLD))
+    else:
+        THRESHOLD = 0.05 * numpy.median(
+            [graph0.vp.dp[node] for node in graph0.vertices()]
+        )
+        logger.info("computed node minimum coverage: {0}".format(THRESHOLD))
+
+    graph_simplification(
+        graph0, simp_node_dict0, simp_edge_dict0, contig_dict, logger, THRESHOLD
+    )
     graph_to_gfa(
         graph0,
         simp_node_dict0,
         simp_edge_dict0,
         logger,
-        "{0}/gfa/t_graph_L1.gfa".format(TEMP_DIR),
+        "{0}/gfa/s_graph_L1.gfa".format(TEMP_DIR),
     )
     graph1, simp_node_dict1, simp_edge_dict1 = flipped_gfa_to_graph(
-        "{0}/gfa/t_graph_L1.gfa".format(TEMP_DIR), logger
+        "{0}/gfa/s_graph_L1.gfa".format(TEMP_DIR), logger
     )
 
-    b0, b1 = delta_estimation(graph1, logger, TEMP_DIR)
-
-    if args.min_cov > 0:
-        THRESHOLD = args.min_cov
-        logger.info("user-defined node minimum coverage: {0}", format(THRESHOLD))
-    else:
-        THRESHOLD = 0.05 * numpy.median(
-            [graph1.vp.dp[node] for node in graph1.vertices()]
-        )
-        logger.info("computed node minimum coverage: {0}".format(THRESHOLD))
-
-    graph_simplification(
-        graph1, simp_node_dict1, simp_edge_dict1, contig_dict, logger, THRESHOLD
-    )
+    tip_removal_s(graph1, simp_node_dict1, contig_dict, logger, TEMP_DIR)
     graph_to_gfa(
         graph1,
         simp_node_dict1,
         simp_edge_dict1,
         logger,
-        "{0}/gfa/st_graph_L2.gfa".format(TEMP_DIR),
+        "{0}/gfa/ts_graph_L2.gfa".format(TEMP_DIR),
     )
     graph2, simp_node_dict2, simp_edge_dict2 = flipped_gfa_to_graph(
-        "{0}/gfa/st_graph_L2.gfa".format(TEMP_DIR), logger
+        "{0}/gfa/ts_graph_L2.gfa".format(TEMP_DIR), logger
     )
+
+    b0, b1 = delta_estimation(graph2, logger, TEMP_DIR)
 
     coverage_rebalance_s(graph2, simp_node_dict2, simp_edge_dict2, logger)
     graph_to_gfa(
@@ -108,10 +111,10 @@ def run(args, logger):
         simp_node_dict2,
         simp_edge_dict2,
         logger,
-        "{0}/gfa/cst_graph_L3.gfa".format(TEMP_DIR),
+        "{0}/gfa/cts_graph_L3.gfa".format(TEMP_DIR),
     )
     graph3, simp_node_dict3, simp_edge_dict3 = flipped_gfa_to_graph(
-        "{0}/gfa/cst_graph_L3.gfa".format(TEMP_DIR), logger
+        "{0}/gfa/cts_graph_L3.gfa".format(TEMP_DIR), logger
     )
     assign_edge_flow(graph3, simp_node_dict3, simp_edge_dict3)
 
@@ -129,7 +132,7 @@ def run(args, logger):
         map_ref_to_graph(
             args.ref_file,
             simp_node_dict3,
-            "{0}/gfa/cst_graph_L3.gfa".format(TEMP_DIR),
+            "{0}/gfa/cts_graph_L3.gfa".format(TEMP_DIR),
             False,
             "{0}/paf/node_to_ref.paf".format(TEMP_DIR),
             "{0}/tmp/temp_gfa_to_fasta_pre.fasta".format(TEMP_DIR),
@@ -169,7 +172,7 @@ def run(args, logger):
         map_ref_to_graph(
             args.ref_file,
             simp_node_dictf,
-            "{0}/gfa/rbsdt_graph_L5.gfa".format(TEMP_DIR),
+            "{0}/gfa/final_graph.gfa".format(TEMP_DIR),
             False,
             "{0}/paf/node_to_ref_red.paf".format(TEMP_DIR),
             "{0}/tmp/temp_gfa_to_fasta.fasta".format(TEMP_DIR),

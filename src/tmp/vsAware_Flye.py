@@ -159,7 +159,7 @@ def run(args, logger):
         map_ref_to_graph(
             args.ref_file,
             simp_node_dictf,
-            "{0}/gfa/rbsdt_graph_L5.gfa".format(TEMP_DIR),
+            "{0}/gfa/final_graph.gfa".format(TEMP_DIR),
             False,
             "{0}/paf/node_to_ref_red.paf".format(TEMP_DIR),
             "{0}/tmp/temp_gfa_to_fasta.fasta".format(TEMP_DIR),
@@ -200,3 +200,139 @@ def run(args, logger):
         )
     logger.info("vsAware-Flye finished")
     return 0
+
+    # parser.add_argument(
+    #     "-i",
+    #     "--info",
+    #     dest="info_file",
+    #     type=str,
+    #     required=False,
+    #     help="contig information file from Flye (.txt format), only required for Flye. e.g., assembly_info.txt",
+    # )
+
+    # elif args.assembler.lower() == "flye":
+    #     if (not args.info_file) or (not os.path.exists(args.info_file)):
+    #         print(
+    #             "\nPath to Contig information file from Flye (.txt format) is required for Flye. e.g., assembly_info.txt"
+    #         )
+    #         print("\nExiting...\n")
+    #         sys.exit(1)
+
+
+def flye_info_parser(
+    graph: Graph,
+    simp_node_dict: dict,
+    simp_edge_dict: dict,
+    idx_mapping,
+    logger: Logger,
+    info_file,
+    min_len=250,
+    at_least_one_edge=False,
+):
+    """
+    Map Flye's contig to the graph, return all the suitable contigs.
+    """
+    logger.info("parsing Flye .txt file..")
+    contig_dict = {}
+    contig_info = {}
+    try:
+        with open(info_file, "r") as cfile:
+            for line in cfile.readlines():
+                if line.startswith("#"):
+                    # comment line
+                    continue
+                (
+                    cno,
+                    clen,
+                    ccov,
+                    circ,
+                    repeat,
+                    mult,
+                    alt_group,
+                    graph_path,
+                ) = line.strip().split("\t")
+                graph_path = graph_path.replace("*", "")
+                subpaths = []
+                total_nodes = 0
+                subpaths_r = []
+                total_nodes_r = 0
+                for sp in graph_path.split("??"):
+                    sp = list(filter(lambda x: x != "", sp.split(",")))
+                    sp = list(
+                        map(
+                            lambda v: "edge_" + str(v)
+                            if v[0] not in ["-", "+"]
+                            else str(v[0]) + "edge_" + str(v[1:]),
+                            sp,
+                        )
+                    )
+                    sp = list(map(lambda v: v if v[0] != "+" else v[1:], sp))
+
+                    sp_r = list(
+                        map(
+                            lambda v: str(v[1:]) if v[0] == "-" else "-" + str(v),
+                            reversed(sp),
+                        )
+                    )
+                    spred = list(dict.fromkeys(sp))
+                    spred_r = list(dict.fromkeys(sp_r))
+
+                    if is_valid(spred, idx_mapping, simp_node_dict, simp_edge_dict):
+                        sp = list(map(lambda v: idx_mapping[v], sp))
+                        subpaths.append(sp)
+                        total_nodes += len(sp)
+                    if is_valid(spred_r, idx_mapping, simp_node_dict, simp_edge_dict):
+                        sp_r = list(map(lambda v: idx_mapping[v], sp_r))
+                        subpaths_r.insert(0, sp_r)
+                        total_nodes_r += len(sp_r)
+                (segments, total_n) = max(
+                    [(subpaths, total_nodes), (subpaths_r, total_nodes_r)],
+                    key=lambda t: t[1],
+                )
+                if segments == []:
+                    continue
+                if int(clen) < min_len and total_n < 2:
+                    continue
+                for i, subpath in enumerate(segments):
+                    repeat_dict = {}
+                    for k in subpath:
+                        if k not in repeat_dict:
+                            repeat_dict[k] = 1
+                        else:
+                            repeat_dict[k] += 1
+                    subpath = list(dict.fromkeys(subpath))
+
+                    if at_least_one_edge and len(subpath) == 1:
+                        if (
+                            simp_node_dict[subpath[0]].in_degree() == 0
+                            and simp_node_dict[subpath[-1]].out_degree() == 0
+                        ):
+                            # isolated contig
+                            continue
+                    if len(segments) != 1:
+                        contig_dict[cno + "$" + str(i)] = [
+                            subpath,
+                            path_len(graph, [simp_node_dict[id] for id in subpath]),
+                            ccov,
+                        ]
+                        contig_info[cno + "$" + str(i)] = (
+                            (circ, repeat, mult, alt_group),
+                            repeat_dict,
+                        )
+                    else:
+                        contig_dict[cno] = [subpath, clen, ccov]
+                        contig_info[cno] = (
+                            (circ, repeat, mult, alt_group),
+                            repeat_dict,
+                        )
+            cfile.close()
+    except BaseException as err:
+        logger.error(
+            err, "\nPlease make sure the correct Flye contigs .txt file is provided."
+        )
+        logger.error("Pipeline aborted")
+        sys.exit(1)
+    logger.debug(str(contig_dict))
+    logger.debug(str(contig_info))
+    logger.info("done")
+    return contig_dict, contig_info

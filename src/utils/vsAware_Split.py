@@ -19,6 +19,9 @@ def iterated_graph_split(
     b1,
     threshold,
 ):
+    BOUND_ITER = len(simp_node_dict) ** 2
+    it = 0
+
     grapha = graph
     simp_node_dicta = simp_node_dict
     simp_edge_dicta = simp_edge_dict
@@ -27,7 +30,8 @@ def iterated_graph_split(
     iterCount = "A"
     num_split = 0
     trivial_split_count = 0
-    while True:
+    while it < BOUND_ITER:
+        it += 1
         # trivial branch split
         prev_ids = list(simp_node_dicta.keys())
         trivial_split_count, id_mapping = graph_split_trivial(
@@ -94,6 +98,10 @@ def iterated_graph_split(
         )
         assign_edge_flow(grapha, simp_node_dicta, simp_edge_dicta)
 
+        if trivial_split_count == None:
+            logger.warning("trigger iteration split process edge case, skip")
+            break
+
         if num_split != 0 or trivial_split_count != 0:
             total_removed_branch_nt += num_split
             total_removed_branch_t += trivial_split_count
@@ -113,10 +121,10 @@ def iterated_graph_split(
         simp_node_dicta,
         simp_edge_dicta,
         logger,
-        "{0}/gfa/rbsdt_graph_L5.gfa".format(tempdir),
+        "{0}/gfa/final_graph.gfa".format(tempdir),
     )
     grapho, simp_node_dicto, simp_edge_dicto = flipped_gfa_to_graph(
-        "{0}/gfa/rbsdt_graph_L5.gfa".format(tempdir), logger
+        "{0}/gfa/final_graph.gfa".format(tempdir), logger
     )
     assign_edge_flow(grapho, simp_node_dicto, simp_edge_dicto)
 
@@ -137,12 +145,14 @@ def graph_split_trivial(
     Split the graph, for any (0|1)->N, N->(0|1) branch, split by forking the 1 edge to N edge.
     """
     logger.info("graph trivial split..")
+
+    BOUND_ITER = len(simp_node_dict) ** 2
     has_split = True
     trivial_split_count = 0
     id_mapping = {}
     for id in simp_node_dict.keys():
         id_mapping[id] = set()
-    while has_split:
+    while has_split and trivial_split_count < BOUND_ITER:
         has_split = False
         for id in list(simp_node_dict.keys()):
             node = simp_node_dict[id]
@@ -153,7 +163,7 @@ def graph_split_trivial(
             ines = [ue for ue in node.in_edges() if graph.ep.color[ue] == "black"]
             outes = [ve for ve in node.out_edges() if graph.ep.color[ve] == "black"]
             if len(ines) == 0 and len(outes) > 1:
-                # print(id, len(ines), len(outes), "current node is source node, split left")
+                logger.debug(id + " current node is source node, split left")
                 graph.vp.color[node] = "gray"
                 # create len(outes) subnodes
                 s = "A"
@@ -186,7 +196,7 @@ def graph_split_trivial(
                 has_split = True
                 trivial_split_count += 1
             elif len(ines) > 1 and len(outes) == 0:
-                # print(id, len(ines), len(outes), "current node is sink node, split right")
+                logger.debug(id + " current node is sink node, split right")
                 graph.vp.color[node] = "gray"
                 # create len(ines) subnodes
                 s = "A"
@@ -219,7 +229,7 @@ def graph_split_trivial(
                 has_split = True
                 trivial_split_count += 1
             elif len(ines) == 1 and len(outes) > 1:
-                # print(id, len(ines), len(outes), "split left")
+                logger.debug(id + " split left")
                 graph.vp.color[node] = "gray"
                 ine = ines[0]
                 src = ine.source()
@@ -271,7 +281,7 @@ def graph_split_trivial(
                 has_split = True
                 trivial_split_count += 1
             elif len(ines) > 1 and len(outes) == 1:
-                # print(id, len(ines), len(outes), "split right")
+                logger.debug(id + " split right")
                 graph.vp.color[node] = "gray"
                 oute = outes[0]
                 tgt = oute.target()
@@ -324,10 +334,13 @@ def graph_split_trivial(
                 trivial_split_count += 1
             else:
                 None
-                # print(id, len(ines), len(outes), ", unable to split, skip")
-    logger.debug("No of trivial branch be removed: " + str(trivial_split_count))
-    logger.info("done")
-    return trivial_split_count, id_mapping
+    if trivial_split_count >= BOUND_ITER:
+        logger.warning("Strange topology detected, exit trivial split immediately")
+        return None, id_mapping
+    else:
+        logger.debug("No of trivial branch be removed: " + str(trivial_split_count))
+        logger.info("done")
+        return trivial_split_count, id_mapping
 
 
 def graph_splitting(

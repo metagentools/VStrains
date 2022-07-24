@@ -499,125 +499,6 @@ def spades_paths_parser(
     return contig_dict, contig_info
 
 
-def flye_info_parser(
-    graph: Graph,
-    simp_node_dict: dict,
-    simp_edge_dict: dict,
-    idx_mapping,
-    logger: Logger,
-    info_file,
-    min_len=250,
-    at_least_one_edge=False,
-):
-    """
-    Map Flye's contig to the graph, return all the suitable contigs.
-    """
-    logger.info("parsing Flye .txt file..")
-    contig_dict = {}
-    contig_info = {}
-    try:
-        with open(info_file, "r") as cfile:
-            for line in cfile.readlines():
-                if line.startswith("#"):
-                    # comment line
-                    continue
-                (
-                    cno,
-                    clen,
-                    ccov,
-                    circ,
-                    repeat,
-                    mult,
-                    alt_group,
-                    graph_path,
-                ) = line.strip().split("\t")
-                graph_path = graph_path.replace("*", "")
-                subpaths = []
-                total_nodes = 0
-                subpaths_r = []
-                total_nodes_r = 0
-                for sp in graph_path.split("??"):
-                    sp = list(filter(lambda x: x != "", sp.split(",")))
-                    sp = list(
-                        map(
-                            lambda v: "edge_" + str(v)
-                            if v[0] not in ["-", "+"]
-                            else str(v[0]) + "edge_" + str(v[1:]),
-                            sp,
-                        )
-                    )
-                    sp = list(map(lambda v: v if v[0] != "+" else v[1:], sp))
-
-                    sp_r = list(
-                        map(
-                            lambda v: str(v[1:]) if v[0] == "-" else "-" + str(v),
-                            reversed(sp),
-                        )
-                    )
-                    spred = list(dict.fromkeys(sp))
-                    spred_r = list(dict.fromkeys(sp_r))
-
-                    if is_valid(spred, idx_mapping, simp_node_dict, simp_edge_dict):
-                        sp = list(map(lambda v: idx_mapping[v], sp))
-                        subpaths.append(sp)
-                        total_nodes += len(sp)
-                    if is_valid(spred_r, idx_mapping, simp_node_dict, simp_edge_dict):
-                        sp_r = list(map(lambda v: idx_mapping[v], sp_r))
-                        subpaths_r.insert(0, sp_r)
-                        total_nodes_r += len(sp_r)
-                (segments, total_n) = max(
-                    [(subpaths, total_nodes), (subpaths_r, total_nodes_r)],
-                    key=lambda t: t[1],
-                )
-                if segments == []:
-                    continue
-                if int(clen) < min_len and total_n < 2:
-                    continue
-                for i, subpath in enumerate(segments):
-                    repeat_dict = {}
-                    for k in subpath:
-                        if k not in repeat_dict:
-                            repeat_dict[k] = 1
-                        else:
-                            repeat_dict[k] += 1
-                    subpath = list(dict.fromkeys(subpath))
-
-                    if at_least_one_edge and len(subpath) == 1:
-                        if (
-                            simp_node_dict[subpath[0]].in_degree() == 0
-                            and simp_node_dict[subpath[-1]].out_degree() == 0
-                        ):
-                            # isolated contig
-                            continue
-                    if len(segments) != 1:
-                        contig_dict[cno + "$" + str(i)] = [
-                            subpath,
-                            path_len(graph, [simp_node_dict[id] for id in subpath]),
-                            ccov,
-                        ]
-                        contig_info[cno + "$" + str(i)] = (
-                            (circ, repeat, mult, alt_group),
-                            repeat_dict,
-                        )
-                    else:
-                        contig_dict[cno] = [subpath, clen, ccov]
-                        contig_info[cno] = (
-                            (circ, repeat, mult, alt_group),
-                            repeat_dict,
-                        )
-            cfile.close()
-    except BaseException as err:
-        logger.error(
-            err, "\nPlease make sure the correct Flye contigs .txt file is provided."
-        )
-        logger.error("Pipeline aborted")
-        sys.exit(1)
-    logger.debug(str(contig_dict))
-    logger.debug(str(contig_info))
-    logger.info("done")
-    return contig_dict, contig_info
-
-
 def contig_dict_to_fasta(
     graph: Graph, simp_node_dict: dict, contig_dict: dict, output_file
 ):
@@ -627,7 +508,9 @@ def contig_dict_to_fasta(
     subprocess.check_call("touch {0}; echo > {0}".format(output_file), shell=True)
 
     with open(output_file, "w") as fasta:
-        for cno, (contig, clen, ccov) in contig_dict.items():
+        for cno, (contig, clen, ccov) in sorted(
+            contig_dict.items(), key=lambda x: x[1][1], reverse=True
+        ):
             contig_name = (
                 ">" + str(cno) + "_" + str(clen) + "_" + str(round(ccov, 2)) + "\n"
             )
@@ -644,7 +527,7 @@ def contig_dict_to_path(contig_dict: dict, output_file, keep_original=False):
     subprocess.check_call("touch {0}; echo > {0}".format(output_file), shell=True)
     with open(output_file, "w") as paths:
         for cno, (contig, clen, ccov) in sorted(
-            contig_dict.items(), key=lambda x: x[1][2]
+            contig_dict.items(), key=lambda x: x[1][1], reverse=True
         ):
             contig_name = "NODE_" + str(cno) + "_" + str(clen) + "_" + str(ccov) + "\n"
             path_ids = ""

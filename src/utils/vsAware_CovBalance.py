@@ -95,6 +95,9 @@ def coverage_rebalance_s(
 def coverage_rebalance_ave(
     graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, logger: Logger
 ):
+    BOUND_ITER = len(simp_node_dict) ** 2
+    it = 0
+
     # set cutoff delta
     cutoff = 0.00001 * len(simp_node_dict)
     logger.debug("cutoff coverage-unbalance rate: " + str(cutoff))
@@ -106,7 +109,8 @@ def coverage_rebalance_ave(
     # EM optimization
     sum_delta = 0
     sum_depth_before = numpy.sum([dp for dp in prev_dp_dict.values()])
-    while True:
+    while it < BOUND_ITER:
+        it += 1
         # ****************************-E Step
         for (u, v), e in simp_edge_dict.items():
             if graph.ep.color[e] != "black":

@@ -1,9 +1,0 @@
-python src/__init__.py -a flye -g ../Bf\ phage\ genomes/Bf01-metaflye/Bf01-assembly_graph.gfa -i ../Bf\ phage\ genomes/Bf01-metaflye/Bf01-assembly_info.txt -o acc_bf01 > bf01.log
-python src/__init__.py -a flye -g ../Bf\ phage\ genomes/Bf04-metaflye/Bf04-assembly_graph.gfa -i ../Bf\ phage\ genomes/Bf04-metaflye/Bf04-assembly_info.txt -o acc_bf04 > bf04.log
-python src/__init__.py -a flye -g ../Bf\ phage\ genomes/Bf06-metaflye-full/Bf06-assembly_graph.gfa -i ../Bf\ phage\ genomes/Bf06-metaflye-full/Bf06-assembly_info.txt -o acc_bf06 > bf06.log
-python src/__init__.py -a flye -g ../Bf\ phage\ genomes/Bf07-metaflye/Bf07-assembly_graph.gfa -i ../Bf\ phage\ genomes/Bf07-metaflye/Bf07-assembly_info.txt -o acc_bf07 > bf07.log
-python src/__init__.py -a flye -g ../Bf\ phage\ genomes/Bf09-metaflye/Bf09-assembly_graph.gfa -i ../Bf\ phage\ genomes/Bf09-metaflye/Bf09-assembly_info.txt -o acc_bf09 > bf09.log
-python src/__init__.py -a flye -g ../Bf\ phage\ genomes/Bf10-metaflye/Bf10-assembly_graph.gfa -i ../Bf\ phage\ genomes/Bf10-metaflye/Bf10-assembly_info.txt -o acc_bf10 > bf10.log
-python src/__init__.py -a flye -g ../Bf\ phage\ genomes/Bf12-metaflye/Bf12-assembly_graph.gfa -i ../Bf\ phage\ genomes/Bf12-metaflye/Bf12-assembly_info.txt -o acc_bf12 > bf12.log
-python src/__init__.py -a flye -g ../Bf\ phage\ genomes/Bf14-metaflye/Bf14-assembly_graph.gfa -i ../Bf\ phage\ genomes/Bf14-metaflye/Bf14-assembly_info.txt -o acc_bf14 > bf14.log
-python src/__init__.py -a flye -g ../Bf\ phage\ genomes/Bf15-metaflye/Bf15-assembly_graph.gfa -i ../Bf\ phage\ genomes/Bf15-metaflye/Bf15-assembly_info.txt -o acc_bf15 > bf15.log

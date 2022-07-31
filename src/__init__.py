@@ -215,7 +215,7 @@ def main():
     fileHandler.setFormatter(logging.Formatter("%(message)s"))
 
     logger.info("")
-    logger.info("Result is stored in {0}/strain.fasta".format(args.output_dir))
+    logger.info("Result is stored in {0}/strain.fasta".format(os.path.abspath(args.output_dir)))
     logger.info("Finished: {0}".format(date.today().strftime("%B %d, %Y")))
     logger.info("Elapsed time: {0}".format(elapsed))
     logger.info("Exiting...")

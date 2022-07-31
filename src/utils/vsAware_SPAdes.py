@@ -120,7 +120,7 @@ def run(args, logger):
 
     contig_cov_fix(graph3, simp_node_dict3, simp_edge_dict3, contig_dict, None)
 
-    contig_dict_to_path(contig_dict, "{0}/tmp/pre_contigs.paths".format(TEMP_DIR))
+    contig_dict_to_path(contig_dict, "{0}/tmp/pre_contigs.paths".format(TEMP_DIR), idx_mapping, True)
     contig_dict_to_fasta(
         graph3,
         simp_node_dict3,
@@ -160,7 +160,7 @@ def run(args, logger):
         THRESHOLD,
     )
 
-    contig_dict_to_path(contig_dict, "{0}/tmp/post_contigs.paths".format(TEMP_DIR))
+    contig_dict_to_path(contig_dict, "{0}/tmp/post_contigs.paths".format(TEMP_DIR), idx_mapping, True)
     contig_dict_to_fasta(
         graphf,
         simp_node_dictf,
@@ -204,7 +204,7 @@ def run(args, logger):
     contig_dict_to_fasta(
         graph0, simp_node_dict0, strain_dict, "{0}/strain.fasta".format(TEMP_DIR)
     )
-    contig_dict_to_path(strain_dict, "{0}/strain.paths".format(TEMP_DIR), True)
+    contig_dict_to_path(strain_dict, "{0}/strain.paths".format(TEMP_DIR), idx_mapping, True)
     if args.ref_file:
         minimap_api(
             args.ref_file,

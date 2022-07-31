@@ -482,7 +482,7 @@ def spades_paths_parser(
                         ]
                         contig_info[cno + "$" + str(i)] = (None, repeat_dict)
                     else:
-                        contig_dict[cno] = [subpath, clen, ccov]
+                        contig_dict[cno] = [subpath, int(clen), ccov]
                         contig_info[cno] = (None, repeat_dict)
 
             contigs_file.close()
@@ -520,11 +520,15 @@ def contig_dict_to_fasta(
         fasta.close()
 
 
-def contig_dict_to_path(contig_dict: dict, output_file, keep_original=False):
+def contig_dict_to_path(contig_dict: dict, output_file, id_mapping: dict=None, keep_original=False):
     """
     Store contig dict into paths file
     """
     subprocess.check_call("touch {0}; echo > {0}".format(output_file), shell=True)
+    rev_id_mapping = {}
+    if id_mapping != None:
+        for id, map in id_mapping.items():
+            rev_id_mapping[map] = id
     with open(output_file, "w") as paths:
         for cno, (contig, clen, ccov) in sorted(
             contig_dict.items(), key=lambda x: x[1][1], reverse=True
@@ -535,9 +539,9 @@ def contig_dict_to_path(contig_dict: dict, output_file, keep_original=False):
                 if keep_original:
                     for iid in str(id).split("&"):
                         if iid.find("*") != -1:
-                            path_ids += iid[: iid.find("*")] + ","
+                            path_ids += rev_id_mapping[iid[: iid.find("*")]] + ","
                         else:
-                            path_ids += iid + ","
+                            path_ids += rev_id_mapping[iid] + ","
                 else:
                     path_ids += str(id) + ","
             path_ids = path_ids[:-1] + "\n"

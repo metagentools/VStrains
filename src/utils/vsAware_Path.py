@@ -139,7 +139,7 @@ def extract_cand_path(
                 graph, [simp_node_dict[n] for n in contig], usage_dict, pcov
             )
             # filter low coverage strain
-            if pcov >= threshold:
+            if pcov > threshold:
                 logger.debug("cand strain found")
                 strain_dict["A" + cno] = [contig, clen, pcov]
             else:
@@ -169,7 +169,7 @@ def extract_cand_path(
         )
         logger.debug("***contig path: " + list_to_string(contig))
 
-        if ccov < threshold or (all([usage_dict[k] != 0 for k in contig])):
+        if ccov <= threshold or (all([usage_dict[k] != 0 for k in contig])):
             logger.debug(
                 "current contig {0} is used previously {1}".format(ccov, threshold)
             )
@@ -288,14 +288,14 @@ def extract_cand_path(
         )
 
         # filter low coverage strain
-        if ccov >= threshold:
+        if ccov > threshold:
             logger.debug("cand strain found")
             strain_dict["A" + cno] = [[graph.vp.id[n] for n in strain], plen, ccov]
+            graph_reduction_c(graph, strain, usage_dict, ccov)
+            contig_cov_fix(graph, simp_node_dict, simp_edge_dict, contig_dict, None)
+            contig_hist = dict_to_hist(graph, contig_dict, logger, b0, b1)
         else:
             logger.debug("low cov strain, removed")
-        graph_reduction_c(graph, strain, usage_dict, ccov)
-        contig_cov_fix(graph, simp_node_dict, simp_edge_dict, contig_dict, None)
-        contig_hist = dict_to_hist(graph, contig_dict, logger, b0, b1)
 
     for v in [global_sink, global_src]:
         graph.remove_vertex(v)

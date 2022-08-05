@@ -70,16 +70,18 @@ def main():
         "-mc",
         "--minimum_coverage",
         dest="min_cov",
+        default=None,
         type=int,
-        default=0,
-        help=("minimum node coverage cutoff, [default: auto]"),
+        help=(
+            "minimum node coverage cutoff, also apply to filter the low-coverage contig [default: auto]"
+        ),
     )
 
     parser.add_argument(
         "-ml",
         "--minimum_contig_length",
         dest="min_len",
-        default=250,
+        default=None,
         type=int,
         help=("minimum initial contig length for strains [default: 250]"),
     )
@@ -131,12 +133,23 @@ def main():
         print("\nExiting...\n")
         sys.exit(1)
 
-    if args.min_len < 0 or args.min_cov < 0:
-        print(
-            "\nPlease make sure to provide the correct option (invalid value for min_len or min_cov)."
-        )
-        print("\nExiting...\n")
-        sys.exit(1)
+    if args.min_len != None:
+        if args.min_len < 0:
+            print(
+                "\nPlease make sure to provide the correct option (invalid value for min_len or min_cov)."
+            )
+            print("\nExiting...\n")
+            sys.exit(1)
+    else:
+        args.min_len = 250
+
+    if args.min_cov != None:
+        if args.min_cov < 0:
+            print(
+                "\nPlease make sure to provide the correct option (invalid value for min_len or min_cov)."
+            )
+            print("\nExiting...\n")
+            sys.exit(1)
 
     if args.output_dir[-1] == "/":
         args.output_dir = args.output_dir[:-1]
@@ -215,7 +228,9 @@ def main():
     fileHandler.setFormatter(logging.Formatter("%(message)s"))
 
     logger.info("")
-    logger.info("Result is stored in {0}/strain.fasta".format(os.path.abspath(args.output_dir)))
+    logger.info(
+        "Result is stored in {0}/strain.fasta".format(os.path.abspath(args.output_dir))
+    )
     logger.info("Finished: {0}".format(date.today().strftime("%B %d, %Y")))
     logger.info("Elapsed time: {0}".format(elapsed))
     logger.info("Exiting...")

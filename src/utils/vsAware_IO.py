@@ -381,6 +381,7 @@ def spades_paths_parser(
     logger: Logger,
     path_file,
     min_len=250,
+    min_cov=0,
     at_least_one_edge=False,
 ):
     """
@@ -454,7 +455,10 @@ def spades_paths_parser(
                     key=lambda t: t[1],
                 )
 
+                # filter contig
                 if segments == []:
+                    continue
+                if float(ccov) <= min_cov:
                     continue
                 if int(clen) < min_len and total_n < 2:
                     continue
@@ -520,7 +524,9 @@ def contig_dict_to_fasta(
         fasta.close()
 
 
-def contig_dict_to_path(contig_dict: dict, output_file, id_mapping: dict=None, keep_original=False):
+def contig_dict_to_path(
+    contig_dict: dict, output_file, id_mapping: dict = None, keep_original=False
+):
     """
     Store contig dict into paths file
     """
@@ -539,9 +545,12 @@ def contig_dict_to_path(contig_dict: dict, output_file, id_mapping: dict=None, k
                 if keep_original:
                     for iid in str(id).split("&"):
                         if iid.find("*") != -1:
-                            path_ids += rev_id_mapping[iid[: iid.find("*")]] + ","
+                            rid = rev_id_mapping[iid[: iid.find("*")]]
                         else:
-                            path_ids += rev_id_mapping[iid] + ","
+                            rid = rev_id_mapping[iid]
+                        if rid[0] == "-":
+                            rid = rid[1:] + "-"
+                        path_ids += rid + ","
                 else:
                     path_ids += str(id) + ","
             path_ids = path_ids[:-1] + "\n"

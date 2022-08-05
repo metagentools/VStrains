@@ -517,7 +517,7 @@ def graph_splitting(
     for node in list(graph.vertices()):
         if (
             graph.vp.id[node] not in node_to_contig_dict
-            and graph.vp.dp[node] < threshold
+            and graph.vp.dp[node] <= threshold
         ):
             alle = [e for e in set(node.all_edges()) if graph.ep.color[e] == "black"]
             graph_remove_vertex(

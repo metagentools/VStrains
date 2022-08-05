@@ -348,7 +348,7 @@ def delta_estimation(graph: Graph, logger: Logger, tempdir, cutoff_size=200):
     plt.figure(figsize=(12, 8))
     plt.hist([b - a for b, a in zip(ys, xs)], bins=len(ys))
     plt.title("delta_hist_plot")
-    plt.savefig("{0}{1}".format(tempdir, "tmp/delta_hist_plot.png"))
+    plt.savefig("{0}{1}".format(tempdir, "/tmp/delta_hist_plot.png"))
 
     df = pd.DataFrame({"x": xs, "y": ys})
     # find n_clusters
@@ -365,10 +365,10 @@ def delta_estimation(graph: Graph, logger: Logger, tempdir, cutoff_size=200):
     plt.title("K-Means Silhouette Score", size=20)
     plt.xlabel("number of cluster", size=16)
     plt.ylabel("score", size=16)
-    plt.savefig("{0}{1}".format(tempdir, "tmp/silhouette_score_delta.png"))
+    plt.savefig("{0}{1}".format(tempdir, "/tmp/silhouette_score_delta.png"))
 
     optim_nc = max(ncs, key=lambda x: scores[ncs.index(x)])
-    logger.debug("Optim n_cluster: ", optim_nc)
+    logger.debug("Optim n_cluster: " + str(optim_nc))
     # clustering
     kmc = KMeans(n_clusters=optim_nc)
     kmc_model = kmc.fit(df)
@@ -381,7 +381,7 @@ def delta_estimation(graph: Graph, logger: Logger, tempdir, cutoff_size=200):
         cxs = df[kmc_model.labels_ == i].iloc[:, 0]
         cys = df[kmc_model.labels_ == i].iloc[:, 1]
         if len(cxs) < 10:
-            logger.debug("skip cluster: ", kmc_model.cluster_centers_[i])
+            logger.debug("skip cluster: " + str(kmc_model.cluster_centers_[i]))
             continue
         plt.scatter(cxs, cys, label=i, c=colors[i % len(colors)], alpha=0.5)
         vals = []
@@ -412,9 +412,9 @@ def delta_estimation(graph: Graph, logger: Logger, tempdir, cutoff_size=200):
     model = lr.fit(numpy.array(clust_x).reshape(-1, 1), clust_medians)
     b0 = model.intercept_
     b1 = model.coef_[0]
-    logger.debug("The intercept of this model is:", model.intercept_)
-    logger.debug("The slope coefficient of this model is:", model.coef_[0])
-    logger.debug("Thus the equation is: Delta = |", b0, "+", b1, "* Coverage |")
+    logger.debug("The intercept of this model is:" + str(model.intercept_))
+    logger.debug("The slope coefficient of this model is:" + str(model.coef_[0]))
+    logger.debug("Thus the equation is: Delta = |" + str(b0) + "+" + str(b1) + "* Coverage |")
 
     x_range = [0, max(clust_x)]  # get the bounds for x
     y_range = [b0, b0 + b1 * x_range[1]]  # get the bounds for y
@@ -422,7 +422,7 @@ def delta_estimation(graph: Graph, logger: Logger, tempdir, cutoff_size=200):
     plt.title("Regression", size=20)
     plt.xlabel("coverage", size=16)
     plt.ylabel("delta", size=16)
-    plt.savefig("{0}{1}".format(tempdir, "tmp/cluster_delta.png"))
+    plt.savefig("{0}{1}".format(tempdir, "/tmp/cluster_delta.png"))
     logger.info("done")
     return b0, b1
 
@@ -455,7 +455,7 @@ def graph_simplification(
     removed_edge_dict = {}
     # iterate until no more node be removed from the graph
     for id, node in list(simp_node_dict.items()):
-        if graph.vp.dp[node] < min_cov:
+        if graph.vp.dp[node] <= min_cov:
             if id in node_to_contig_dict:
                 continue
 

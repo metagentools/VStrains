@@ -61,6 +61,7 @@ def run(args, logger):
         logger,
         args.path_file,
         args.min_len,
+        args.min_cov if args.min_cov != None else 0,
     )
     copy_contig_dict = {}
     for cno, [contig, clen, ccov] in contig_dict.items():
@@ -68,7 +69,7 @@ def run(args, logger):
 
     logger.info(">>>STAGE: preprocess")
 
-    if args.min_cov > 0:
+    if args.min_cov != None:
         THRESHOLD = args.min_cov
         logger.info("user-defined node minimum coverage: {0}".format(THRESHOLD))
     else:
@@ -120,7 +121,7 @@ def run(args, logger):
 
     contig_cov_fix(graph3, simp_node_dict3, simp_edge_dict3, contig_dict, None)
 
-    contig_dict_to_path(contig_dict, "{0}/tmp/pre_contigs.paths".format(TEMP_DIR), idx_mapping, True)
+    contig_dict_to_path(contig_dict, "{0}/tmp/pre_contigs.paths".format(TEMP_DIR))
     contig_dict_to_fasta(
         graph3,
         simp_node_dict3,
@@ -160,7 +161,7 @@ def run(args, logger):
         THRESHOLD,
     )
 
-    contig_dict_to_path(contig_dict, "{0}/tmp/post_contigs.paths".format(TEMP_DIR), idx_mapping, True)
+    contig_dict_to_path(contig_dict, "{0}/tmp/post_contigs.paths".format(TEMP_DIR))
     contig_dict_to_fasta(
         graphf,
         simp_node_dictf,
@@ -204,7 +205,9 @@ def run(args, logger):
     contig_dict_to_fasta(
         graph0, simp_node_dict0, strain_dict, "{0}/strain.fasta".format(TEMP_DIR)
     )
-    contig_dict_to_path(strain_dict, "{0}/strain.paths".format(TEMP_DIR), idx_mapping, True)
+    contig_dict_to_path(
+        strain_dict, "{0}/strain.paths".format(TEMP_DIR), idx_mapping, True
+    )
     if args.ref_file:
         minimap_api(
             args.ref_file,

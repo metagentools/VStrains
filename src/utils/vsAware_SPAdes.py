@@ -53,22 +53,7 @@ def run(args, logger):
 
     logger.debug("id mapping: " + str(idx_mapping))
 
-    contig_dict, contig_info = spades_paths_parser(
-        graph0,
-        simp_node_dict0,
-        simp_edge_dict0,
-        idx_mapping,
-        logger,
-        args.path_file,
-        args.min_len,
-        args.min_cov if args.min_cov != None else 0,
-    )
-    copy_contig_dict = {}
-    for cno, [contig, clen, ccov] in contig_dict.items():
-        copy_contig_dict[cno] = [list(contig), clen, ccov]
-
-    logger.info(">>>STAGE: preprocess")
-
+    # cut-off coverage, graph preprocess parameter
     if args.min_cov != None:
         THRESHOLD = args.min_cov
         logger.info("user-defined node minimum coverage: {0}".format(THRESHOLD))
@@ -78,6 +63,21 @@ def run(args, logger):
         )
         logger.info("computed node minimum coverage: {0}".format(THRESHOLD))
 
+    contig_dict, contig_info = spades_paths_parser(
+        graph0,
+        simp_node_dict0,
+        simp_edge_dict0,
+        idx_mapping,
+        logger,
+        args.path_file,
+        args.min_len,
+        THRESHOLD,
+    )
+    copy_contig_dict = {}
+    for cno, [contig, clen, ccov] in contig_dict.items():
+        copy_contig_dict[cno] = [list(contig), clen, ccov]
+
+    logger.info(">>>STAGE: preprocess")
     graph_simplification(
         graph0, simp_node_dict0, simp_edge_dict0, contig_dict, logger, THRESHOLD
     )

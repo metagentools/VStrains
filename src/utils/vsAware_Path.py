@@ -135,13 +135,13 @@ def extract_cand_path(
             contig_dict.pop(cno)
             logger.debug("st path/self cycle contig, retrieve first: " + cno)
             pcov = path_cov(graph, simp_node_dict, simp_edge_dict, contig)
-            graph_reduction_c(
-                graph, [simp_node_dict[n] for n in contig], usage_dict, pcov
-            )
             # filter low coverage strain
             if pcov > threshold:
                 logger.debug("cand strain found")
                 strain_dict["A" + cno] = [contig, clen, pcov]
+                graph_reduction_c(
+                graph, [simp_node_dict[n] for n in contig], usage_dict, pcov
+            )
             else:
                 logger.debug("low cov strain, removed")
 

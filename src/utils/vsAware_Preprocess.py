@@ -314,6 +314,38 @@ def tip_removal(
     return is_removed
 
 
+def threshold_estimation(graph: Graph, logger: Logger, temp_dir):
+    dps = [graph.vp.dp[node] for node in graph.vertices()]
+    regions, bins = numpy.histogram(
+        dps, bins=int((max(dps) - min(dps)) // (0.05 * numpy.median(dps)))
+    )
+    pidx, _ = max(list(enumerate(regions)), key=lambda p: p[1])
+    ratio = 0.05
+    if pidx == 0:
+        # global peak belongs to first filter region, find maximum peak range, bound by 25% Median
+        for i in range(0, 4):
+            if i >= len(regions):
+                logger.warning(
+                    "histogram is not properly set, reset cutoff to default (0.05*M)"
+                )
+                ratio = 0.05
+                break
+            if regions[i] > regions[i + 1]:
+                ratio += 0.05
+            else:
+                break
+    threshold = ratio * numpy.median(dps)
+    plt.figure(figsize=(128, 64))
+    for b in bins:
+        plt.axvline(b, color="blue")
+    plt.hist(x=dps, bins=len(dps))
+    plt.axvline(threshold, color="r")
+    plt.title("node coverage bar plot")
+    plt.xticks(numpy.arange(min(dps), max(dps) + 1, 50.0))
+    plt.savefig("{0}{1}".format(temp_dir, "/tmp/bar_plot.png"))
+    return threshold
+
+
 def delta_estimation(graph: Graph, logger: Logger, tempdir, cutoff_size=200):
     logger.info("Start delta estimation")
     xs = []
@@ -415,7 +447,9 @@ def delta_estimation(graph: Graph, logger: Logger, tempdir, cutoff_size=200):
     b1 = model.coef_[0]
     logger.debug("The intercept of this model is:" + str(model.intercept_))
     logger.debug("The slope coefficient of this model is:" + str(model.coef_[0]))
-    logger.debug("Thus the equation is: Delta = |" + str(b0) + "+" + str(b1) + "* Coverage |")
+    logger.debug(
+        "Thus the equation is: Delta = |" + str(b0) + "+" + str(b1) + "* Coverage |"
+    )
 
     x_range = [0, max(clust_x)]  # get the bounds for x
     y_range = [b0, b0 + b1 * x_range[1]]  # get the bounds for y

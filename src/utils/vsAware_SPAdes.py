@@ -8,6 +8,7 @@ from utils.vsAware_Preprocess import (
     graph_simplification,
     tip_removal_s,
     reindexing,
+    threshold_estimation,
 )
 from utils.vsAware_CovBalance import assign_edge_flow, coverage_rebalance_s
 from utils.vsAware_IO import (
@@ -59,9 +60,7 @@ def run(args, logger):
         THRESHOLD = args.min_cov
         logger.info("user-defined node minimum coverage: {0}".format(THRESHOLD))
     else:
-        THRESHOLD = 0.05 * numpy.median(
-            [graph0.vp.dp[node] for node in graph0.vertices()]
-        )
+        THRESHOLD = threshold_estimation(graph0, logger, TEMP_DIR)
         logger.info("computed node minimum coverage: {0}".format(THRESHOLD))
 
     contig_dict, contig_info = spades_paths_parser(
@@ -192,8 +191,16 @@ def run(args, logger):
     # end stat
 
     logger.info(">>>STAGE: contig path extension")
+    logger.info("Strain coverage threshold: " + str(THRESHOLD / 2))
     strain_dict = extract_cand_path(
-        graphf, simp_node_dictf, simp_edge_dictf, contig_dict, logger, b0, b1, THRESHOLD
+        graphf,
+        simp_node_dictf,
+        simp_edge_dictf,
+        contig_dict,
+        logger,
+        b0,
+        b1,
+        THRESHOLD / 2,
     )
 
     logger.info(">>>STAGE: final process")

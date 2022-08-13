@@ -162,7 +162,7 @@ def main():
         os.makedirs(args.output_dir + "/paf/")
     except OSError as _:
         print("\nCurrent output directory is not empty")
-        print("Please empty/re-create the output directory")
+        print("Please empty/re-create the output directory: " + str(args.output_dir))
         print("\nExiting...\n")
         sys.exit(1)
 

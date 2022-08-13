@@ -15,6 +15,7 @@ def map_ref_to_graph(
     ref_file,
     simp_node_dict: dict,
     graph_file,
+    logger: Logger,
     store_mapping=False,
     output_file="overlap.paf",
     fasta_file="temp_gfa_to_fasta.fasta",
@@ -23,7 +24,7 @@ def map_ref_to_graph(
     map reference strain to the graph, debug only
     """
     if not ref_file:
-        print("No ref file imported")
+        logger.debug("No ref file imported")
         return -1
     with open(graph_file, "r") as gfa:
         with open(fasta_file, "w") as fasta:
@@ -64,15 +65,15 @@ def map_ref_to_graph(
             "rm {0}; rm {1}".format(output_file, fasta_file), shell=True
         )
 
-    print("strain dict mapping")
+    logger.debug("strain dict mapping")
     for seg_no, strains in strain_dict.items():
-        print("strains: ", seg_no, " Path: ", list_to_string(strains))
-        print("-------------------")
+        logger.debug("strains: " + str(seg_no) + " Path: " + list_to_string(strains))
+        logger.debug("-------------------")
     return strain_dict
 
 
-def map_ref_to_contig(contig_dict: dict, paf_file):
-    print("map ref to contig")
+def map_ref_to_contig(contig_dict: dict, logger: Logger, paf_file):
+    logger.debug("map ref to contig")
     strain_dict = {}
     with open(paf_file, "r") as paf:
         for Line in paf:
@@ -87,30 +88,32 @@ def map_ref_to_contig(contig_dict: dict, paf_file):
             mark = int(splited[11])
             if seg_no not in contig_dict:
                 continue
-            if (nmatch / nblock) >= 0.999:
+            if (nmatch / nblock) >= 0.99:
                 if ref_no not in strain_dict:
                     strain_dict[ref_no] = set()
                 strain_dict[ref_no].add(seg_no)
         paf.close()
 
     for sno, cnos in strain_dict.items():
-        print("--------------------------------->")
-        print(
-            "contig-strains: ",
-            sno,
-            "Count: ",
-            len(cnos),
-            "-Contigs: ",
-            [
-                (cno1, clen, ccov)
-                for cno1, [_, clen, ccov] in contig_dict.items()
-                if cno1 in cnos
-            ],
+        logger.debug("--------------------------------->")
+        logger.debug(
+            "contig-strains: "
+            + str(sno)
+            + "Count: "
+            + str(len(cnos))
+            + " - Contigs: "
+            + str(
+                [
+                    (cno1, clen, ccov)
+                    for cno1, [_, clen, ccov] in contig_dict.items()
+                    if cno1 in cnos
+                ]
+            )
         )
         rel_nodes = []
         for cno in cnos:
             rel_nodes.extend(contig_dict[cno][0])
-        print("related nodes in contig: ", list_to_string(rel_nodes))
+        logger.debug("related nodes in contig: " + list_to_string(rel_nodes))
 
 
 def minimap_api(ref_file, fasta_file, output_file):
@@ -172,9 +175,6 @@ def contig_cov_fix(
         if cno in contig_dict:
             if logger != None:
                 print_contig(cno, clen, contig_dict[cno][2], contig, logger)
-                eflow = contig_flow(graph, simp_edge_dict, contig)
-                if len(contig) > 1:
-                    logger.debug(eflow)
     return
 
 
@@ -256,7 +256,7 @@ def contig_dict_remapping(
         paths = map_contig_tree(cno, contig, red_id_mapping)
         # split the contig tree to avoid the ambiguity variation
         if len(paths) < 1:
-            print("error, contig missed: ", cno, contig)
+            logger.debug("error, contig missed: " + str(cno) + str(contig))
         elif len(paths) == 1:
             if paths[0] == contig:
                 logger.debug("single mapping, keep original")
@@ -474,6 +474,18 @@ def simp_path_compactification(
         ]
     logger.info("done")
     return
+
+
+def contig_low_cov_removal(contig_dict: dict, logger: Logger, threshold):
+    for cno in list(contig_dict.keys()):
+        if contig_dict[cno][2] <= threshold:
+            logger.debug(
+                "remove low coverage contig: "
+                + str(cno)
+                + " with cov: "
+                + str(contig_dict[cno][2])
+            )
+            contig_dict.pop(cno)
 
 
 def contig_dup_removed_s(contig_dict: dict, logger: Logger):
@@ -910,13 +922,15 @@ def reverse_seq(seq: str):
 
 def print_edge(graph, e, logger: Logger, s=""):
     logger.debug(
-        s,
-        " edge: ",
-        graph.vp.id[e.source()],
-        "->",
-        graph.vp.id[e.target()],
-        graph.ep.flow[e],
-        graph.ep.color[e],
+        s
+        + " edge: "
+        + str(graph.vp.id[e.source()])
+        + " -> "
+        + str(graph.vp.id[e.target()])
+        + " "
+        + str(graph.ep.flow[e])
+        + " "
+        + str(graph.ep.color[e])
     )
 
 
@@ -1120,7 +1134,7 @@ def retrieve_cycle(graph: Graph, n=1):
     def store_cycle(stack: list, next):
         stack = stack[stack.index(next) :]
         # print("Cycle: ", list_to_string([graph.vp.id[node] for node in stack]))
-        cycles.append(stack)
+        cycles.append(stack[:])
 
     visited = dict.fromkeys(list(graph.vertices()), "unvisited")
 
@@ -1129,6 +1143,8 @@ def retrieve_cycle(graph: Graph, n=1):
             stack = [v]
             visited[v] = "instack"
             n = processDFSTree(graph, stack, visited, n)
+            if n == 0:
+                break
 
     return cycles if len(cycles) > 0 else None
 

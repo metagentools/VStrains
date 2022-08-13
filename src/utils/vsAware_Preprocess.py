@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 
 from logging import Logger
-import sys, os
 import subprocess
 from graph_tool.all import Graph
 
@@ -320,8 +319,9 @@ def threshold_estimation(graph: Graph, logger: Logger, temp_dir):
         dps, bins=int((max(dps) - min(dps)) // (0.05 * numpy.median(dps)))
     )
     pidx, _ = max(list(enumerate(regions)), key=lambda p: p[1])
-    ratio = 0.05
+    ratio = 0.00
     if pidx == 0:
+        ratio = 0.05
         # global peak belongs to first filter region, find maximum peak range, bound by 25% Median
         for i in range(0, 4):
             if i >= len(regions):

@@ -1,9 +1,6 @@
 #!/usr/bin/env python3
 
 from graph_tool.all import Graph
-
-import numpy
-
 from utils.vsAware_Utilities import *
 
 
@@ -509,6 +506,14 @@ def extract_cand_path(
         strain = []
         sphead_vlist, sphead_score = bellman_ford(graph, global_src, cs, logger)
         sptail_vlist, sptail_score = bellman_ford(graph, ct, global_sink, logger)
+
+        logger.debug(
+            path_to_id_string(graph, sphead_vlist, "found gs-s path score: {0}".format(sphead_score))
+        )
+
+        logger.debug(
+            path_to_id_string(graph, sptail_vlist, "found t-gt path score: {0}".format(sptail_score))
+        )
 
         if sphead_score + sptail_score > 0:
             if not forced[cno]:

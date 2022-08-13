@@ -1,8 +1,10 @@
 #!/usr/bin/python
 import subprocess
 import argparse
+import sys
+import os
 
-usage = "Use meta-Quast to evaluate assembly result"
+usage = "Use MetaQUAST to evaluate assembly result"
 Author = "Runpeng Luo"
 
 
@@ -33,12 +35,12 @@ def sep_ref(ref_file, id=0):
     return ref_file_list
 
 
-def quast_eval(files, ref=None, o=None, id=0):
+def quast_eval(files, ref, o, quast, id=0):
     subprocess.check_call("rm -rf sub_{0}_*_ref.fasta".format(id), shell=True)
 
     ref_file_list = sep_ref(ref, id)
 
-    command = "python2 /Users/luorunpeng/bio_tools/quast-5.1.0rc1/metaquast.py --unique-mapping -m 250 -t 8 "
+    command = "python2 {0} --unique-mapping -m 250 -t 8 ".format(quast)
 
     for fname in files:
         command += fname + " "
@@ -60,15 +62,29 @@ def quast_eval(files, ref=None, o=None, id=0):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(prog="quast_evaluation.py", description=usage)
     parser.add_argument(
+        "-quast",
+        "--path_to_quast",
+        dest="quast",
+        required=True,
+        help="path to MetaQuast python script"
+    )
+    parser.add_argument(
         "-cs",
         "--contig_files",
         dest="files",
+        default=None,
         nargs="+",
-        required=True,
-        help="<Required> contig files",
+        help="contig files from different tools, separated by space",
     )
     parser.add_argument(
-        "-ref", "--ref_file", dest="ref_file", type=str, required=True, help="ref file"
+        "-d",
+        "--contig_dir",
+        dest="idir",
+        default=None,
+        help="contig files from different tools, stored in the directory",
+    )
+    parser.add_argument(
+        "-ref", "--ref_file", dest="ref_file", type=str, required=True, help="ref file (single)"
     )
     parser.add_argument(
         "-o",
@@ -76,8 +92,17 @@ if __name__ == "__main__":
         dest="output_dir",
         type=str,
         required=True,
-        help="output_dir",
+        help="output directory",
     )
     args = parser.parse_args()
 
-    quast_eval(args.files, args.ref_file, args.output_dir)
+    if args.idir != None and (not os.path.exists(args.idir) or not os.path.isdir(args.idir)):
+        print("Please provide correct directory")
+        sys.exit(1)
+
+    if (args.idir == None and args.files == None) or (args.idir != None and args.files != None):
+        print("Please provide correct query input")
+        sys.exit(1)
+    files = args.files if args.files != None else [str(args.idir) + s for s in sorted(os.listdir(args.idir))]
+
+    quast_eval(files, args.ref_file, args.output_dir, args.quast)

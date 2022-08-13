@@ -34,7 +34,7 @@ def run(args, logger):
 def main():
     parser = argparse.ArgumentParser(
         prog="vsAware",
-        description="""Construct full-length viral strains under deno vo approach 
+        description="""Construct full-length viral strains under de novo approach 
         from contigs and assembly graph, currently supports SPAdes""",
     )
 
@@ -73,7 +73,7 @@ def main():
         default=None,
         type=int,
         help=(
-            "minimum node coverage cutoff, also apply to filter the low-coverage contig [default: auto]"
+            "minimum node coverage cutoff, also apply to filter the low-coverage strain [default: auto]"
         ),
     )
 

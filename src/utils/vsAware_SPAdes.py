@@ -54,6 +54,7 @@ def run(args, logger):
     logger.debug("id mapping: " + str(idx_mapping))
 
     # cut-off coverage, graph preprocess parameter
+    THRESHOLD = 0
     if args.min_cov != None:
         THRESHOLD = args.min_cov
         logger.info("user-defined node minimum coverage: {0}".format(THRESHOLD))
@@ -134,6 +135,7 @@ def run(args, logger):
             args.ref_file,
             simp_node_dict3,
             "{0}/gfa/cts_graph_L3.gfa".format(TEMP_DIR),
+            logger,
             False,
             "{0}/paf/node_to_ref.paf".format(TEMP_DIR),
             "{0}/tmp/temp_gfa_to_fasta_pre.fasta".format(TEMP_DIR),
@@ -144,7 +146,7 @@ def run(args, logger):
             "{0}/paf/pre_contigs_to_strain.paf".format(TEMP_DIR),
         )
         map_ref_to_contig(
-            contig_dict, "{0}/paf/pre_contigs_to_strain.paf".format(TEMP_DIR)
+            contig_dict, logger, "{0}/paf/pre_contigs_to_strain.paf".format(TEMP_DIR)
         )
     # end stat
 
@@ -174,6 +176,7 @@ def run(args, logger):
             args.ref_file,
             simp_node_dictf,
             "{0}/gfa/final_graph.gfa".format(TEMP_DIR),
+            logger,
             False,
             "{0}/paf/node_to_ref_red.paf".format(TEMP_DIR),
             "{0}/tmp/temp_gfa_to_fasta.fasta".format(TEMP_DIR),
@@ -184,7 +187,7 @@ def run(args, logger):
             "{0}/paf/post_contigs_to_strain.paf".format(TEMP_DIR),
         )
         map_ref_to_contig(
-            contig_dict, "{0}/paf/post_contigs_to_strain.paf".format(TEMP_DIR)
+            contig_dict, logger, "{0}/paf/post_contigs_to_strain.paf".format(TEMP_DIR)
         )
     # end stat
 

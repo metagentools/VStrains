@@ -331,6 +331,12 @@ def delta_estimation(graph: Graph, logger: Logger, tempdir, cutoff_size=200):
             m = graph.vp.dp[node]
             xs.extend([lv, rv])
             ys.extend([m, m])
+
+    plt.figure(figsize=(12, 8))
+    plt.hist([b - a for b, a in zip(ys, xs)], bins=len(ys))
+    plt.title("delta_hist_plot")
+    plt.savefig("{0}{1}".format(tempdir, "/tmp/delta_hist_plot.png"))
+
     logger.debug("sample size: " + str(sample_size))
     if sample_size < cutoff_size:
         b0 = 32.23620072586657
@@ -344,11 +350,6 @@ def delta_estimation(graph: Graph, logger: Logger, tempdir, cutoff_size=200):
         )
         logger.info("done")
         return b0, b1
-
-    plt.figure(figsize=(12, 8))
-    plt.hist([b - a for b, a in zip(ys, xs)], bins=len(ys))
-    plt.title("delta_hist_plot")
-    plt.savefig("{0}{1}".format(tempdir, "/tmp/delta_hist_plot.png"))
 
     df = pd.DataFrame({"x": xs, "y": ys})
     # find n_clusters
@@ -451,8 +452,6 @@ def graph_simplification(
         + str(len(simp_edge_dict))
     )
     node_to_contig_dict, edge_to_contig_dict = contig_map_node(contig_dict)
-    removed_node_dict = {}
-    removed_edge_dict = {}
     # iterate until no more node be removed from the graph
     for id, node in list(simp_node_dict.items()):
         if graph.vp.dp[node] <= min_cov:
@@ -460,7 +459,6 @@ def graph_simplification(
                 continue
 
             graph_remove_vertex(graph, simp_node_dict, id, printout=False)
-            removed_node_dict[id] = node
 
             for e in set(node.all_edges()):
                 uid = graph.vp.id[e.source()]
@@ -469,7 +467,6 @@ def graph_simplification(
                     continue
                 if (uid, vid) in simp_edge_dict:
                     graph_remove_edge(graph, simp_edge_dict, uid, vid, printout=False)
-                    removed_edge_dict[(uid, vid)] = e
 
     logger.debug(
         "Remain nodes: "
@@ -478,4 +475,4 @@ def graph_simplification(
         + str(len(simp_edge_dict))
     )
     logger.info("done")
-    return removed_node_dict, removed_edge_dict
+    return

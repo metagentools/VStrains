@@ -458,9 +458,7 @@ def spades_paths_parser(
                 # filter contig
                 if segments == []:
                     continue
-                if float(ccov) <= min_cov:
-                    continue
-                if int(clen) < min_len and total_n < 2:
+                if total_n < 2 and (float(ccov) <= min_cov or int(clen) < min_len):
                     continue
                 for i, subpath in enumerate(segments):
                     repeat_dict = {}

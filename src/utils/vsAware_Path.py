@@ -32,11 +32,7 @@ def bellman_ford(graph: Graph, src, tgt, logger: Logger):
         for e in graph.edges():
             u = e.source()
             v = e.target()
-            if (
-                dist[u] != sys.maxsize
-                and dist[v] != sys.maxsize
-                and dist[u] + graph.ep.eval[e] < dist[v]
-            ):
+            if dist[u] != sys.maxsize and dist[v] != sys.maxsize and dist[u] + graph.ep.eval[e] < dist[v]:
                 logger.error("negative cycle exist in connected path")
                 sys.exit(1)
         path = []
@@ -163,10 +159,7 @@ def get_similarity(graph: Graph, contig_dict: dict, logger: Logger, b0, b1):
     return contig_similarity
 
 
-def label_filter_dfs(graph: Graph, s, t, is_rev=False):
-
-    if is_rev:
-        graph.set_reversed(True)
+def label_filter_dfs(graph: Graph, contig: list, is_rev=False):
 
     def dfs(graph: Graph, stack: list, visited: dict):
         for oe in list(stack[-1].out_edges()):
@@ -182,6 +175,11 @@ def label_filter_dfs(graph: Graph, s, t, is_rev=False):
         stack.pop()
         return
 
+    if is_rev:
+        graph.set_reversed(True)
+
+    s = [v for v in graph.vertices() if graph.vp.id[v] == contig[0]][0]
+    t = [v for v in graph.vertices() if graph.vp.id[v] == contig[-1]][0]
     visited = dict.fromkeys(list(graph.vertices()), "unvisited")
     stack = [s] if is_rev else [t]
     visited[stack[0]] = "instack"
@@ -207,11 +205,9 @@ def set_filter(graph: Graph, simp_node_dict: dict, contig: list):
             graph.ep.keep[ie] = False
 
     # forward cycle
-    label_filter_dfs(
-        graph, simp_node_dict[contig[0]], simp_node_dict[contig[-1]], False
-    )
+    label_filter_dfs(graph, contig, False)
     # reverse cycle
-    label_filter_dfs(graph, simp_node_dict[contig[0]], simp_node_dict[contig[-1]], True)
+    label_filter_dfs(graph, contig, True)
 
     graph.set_edge_filter(graph.ep.keep)
     return
@@ -241,7 +237,6 @@ def set_edge_weight(graph: Graph, ccov, b0, b1):
             # P2
             graph.ep.eval[e] = 0
     return
-
 
 def extract_cand_path(
     graph: Graph,
@@ -302,24 +297,14 @@ def extract_cand_path(
                             in_tip_contig_dict[cno] = contig_dict.pop(cno)
                             logger.debug("in tip contig - " + str(cno))
                         else:
-                            logger.error(
-                                list_to_string(
-                                    contig,
-                                    "forward cycle, but not in tip, error contig",
-                                )
-                            )
+                            logger.error(list_to_string(contig, "forward cycle, but not in tip, error contig"))
                             sys.exit(1)
                     elif can_reach_rev:
                         if out_tip:
                             out_tip_contig_dict[cno] = contig_dict.pop(cno)
                             logger.debug("out tip contig - " + str(cno))
                         else:
-                            logger.error(
-                                list_to_string(
-                                    contig,
-                                    "backward cycle, but not out tip, error contig",
-                                )
-                            )
+                            logger.error(list_to_string(contig, "backward cycle, but not out tip, error contig"))
                             sys.exit(1)
                     else:
                         linear_contig_dict[cno] = contig_dict.pop(cno)

@@ -1188,26 +1188,26 @@ def cyclic_to_dag(
     return removed_edges
 
 
-def reachable(graph: Graph, simp_node_dict: dict, src, tgt):
+def reachable(graph: Graph, src, tgt):
     """
     determine whether src can possibly reach the tgt
     """
-    visited = dict.fromkeys(simp_node_dict.keys(), False)
+    visited = dict.fromkeys(graph.vertices(), False)
 
     count_down = 1 if src != tgt else 2
     queue = [src]
     while queue:
         curr = queue.pop()
-        visited[graph.vp.id[curr]] = True
+        visited[curr] = True
         if curr == tgt:
             count_down -= 1
             if count_down == 0:
                 return True
             else:
-                visited[graph.vp.id[curr]] = False
+                visited[curr] = False
 
         for oute in curr.out_edges():
             out = oute.target()
-            if not visited[graph.vp.id[out]]:
+            if not visited[out]:
                 queue.append(out)
     return False

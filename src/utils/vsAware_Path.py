@@ -2,6 +2,7 @@
 
 from graph_tool.all import Graph
 from utils.vsAware_Utilities import *
+from graph_tool.topology import shortest_path
 
 
 def bellman_ford(graph: Graph, src, tgt, logger: Logger):
@@ -17,16 +18,20 @@ def bellman_ford(graph: Graph, src, tgt, logger: Logger):
     dist[src] = 0
     for _ in range(1, graph.num_vertices()):
         for e in graph.edges():
+            if not graph.ep.keep[e]:
+                continue
             u = e.source()
             v = e.target()
             if dist[u] != sys.maxsize and dist[u] + graph.ep.eval[e] < dist[v]:
                 dist[v] = dist[u] + graph.ep.eval[e]
                 parent[v] = u
-    if dist[tgt] == sys.maxsize:
+    if dist[tgt] == sys.maxsize or parent[tgt] == None:
         logger.error("target is not reachable: " + str(graph.vp.id[tgt]))
         sys.exit(1)
     else:
         for e in graph.edges():
+            if not graph.ep.keep[e]:
+                continue
             u = e.source()
             v = e.target()
             if dist[u] != sys.maxsize and dist[v] != sys.maxsize and dist[u] + graph.ep.eval[e] < dist[v]:
@@ -159,21 +164,32 @@ def get_similarity(graph: Graph, contig_dict: dict, logger: Logger, b0, b1):
 def label_filter_dfs(graph: Graph, contig: list, is_rev=False):
 
     def dfs(graph: Graph, stack: list, visited: dict):
-        for oe in list(stack[-1].out_edges()):
-            next = oe.target()
-            if visited[next] == "instack":
-                graph.ep.keep[oe] = False
-                # print(path_to_id_string(graph, stack[stack.index(next):], "cyc"))
-            elif visited[next] == "unvisited":
-                visited[next] = "instack"
-                stack.append(next)
-                dfs(graph, stack, visited)
+        if not is_rev:
+            for oe in list(stack[-1].out_edges()):
+                if not graph.ep.keep[oe]:
+                    continue
+                next = oe.target()
+                if visited[next] == "instack":
+                    graph.ep.keep[oe] = False
+                    # print(path_to_id_string(graph, stack[stack.index(next):], "cyc"))
+                elif visited[next] == "unvisited":
+                    visited[next] = "instack"
+                    stack.append(next)
+                    dfs(graph, stack, visited)
+        else:
+            for ie in list(stack[-1].in_edges()):
+                if not graph.ep.keep[ie]:
+                    continue
+                prev = ie.source()
+                if visited[prev] == "instack":
+                    graph.ep.keep[ie] = False
+                elif visited[prev] == "unvisited":
+                    visited[prev] = "instack"
+                    stack.append(prev)
+                    dfs(graph, stack, visited)  
         visited[stack[-1]] = "done"
         stack.pop()
         return
-
-    if is_rev:
-        graph.set_reversed(True)
 
     s = [v for v in graph.vertices() if graph.vp.id[v] == contig[0]][0]
     t = [v for v in graph.vertices() if graph.vp.id[v] == contig[-1]][0]
@@ -181,8 +197,6 @@ def label_filter_dfs(graph: Graph, contig: list, is_rev=False):
     stack = [s] if is_rev else [t]
     visited[stack[0]] = "instack"
     dfs(graph, stack, visited)
-    if is_rev:
-        graph.set_reversed(False)
     return
 
 
@@ -206,7 +220,6 @@ def set_filter(graph: Graph, simp_node_dict: dict, contig: list):
     # reverse cycle
     label_filter_dfs(graph, contig, True)
 
-    graph.set_edge_filter(graph.ep.keep)
     return
 
 
@@ -274,7 +287,7 @@ def extract_cand_path(
             self_contig_dict[cno] = contig_dict.pop(cno)
         else:
             if not is_dag:
-                if reachable(graph, simp_node_dict, s, t):
+                if reachable(graph, s, t):
                     cyclic_contig_dict[cno] = contig_dict.pop(cno)
                     logger.debug("cyclic contig - " + str(cno))
                 else:
@@ -282,8 +295,8 @@ def extract_cand_path(
                     ct = simp_node_dict[contig[-1]]
                     in_tip = cs != ct and cs in global_src.out_neighbors()
                     out_tip = cs != ct and ct in global_sink.in_neighbors()
-                    can_reach = reachable(graph, simp_node_dict, ct, ct)
-                    can_reach_rev = reachable(graph, simp_node_dict, cs, cs)
+                    can_reach = reachable(graph, ct, ct)
+                    can_reach_rev = reachable(graph, cs, cs)
 
                     assert not (
                         can_reach and can_reach_rev
@@ -385,7 +398,10 @@ def extract_cand_path(
             s = nt
             t = ns
             contig.insert(0, graph.vp.id[ns])
+            simp_node_dict[graph.vp.id[ns]] = ns
+
         set_filter(graph, simp_node_dict, contig)
+
         sp_vlist, sp_score = bellman_ford(graph, s, t, logger)
 
         if ns != None:
@@ -400,6 +416,7 @@ def extract_cand_path(
                 graph.ep.flow[ie] = f
                 simp_edge_dict[(graph.vp.id[src], graph.vp.id[s])] = ie
             contig.pop(0)
+            simp_node_dict.pop(graph.vp.id[ns])
         logger.debug(
             path_to_id_string(graph, sp_vlist, "found path score: {0}".format(sp_score))
         )
@@ -420,7 +437,6 @@ def extract_cand_path(
         strain.extend([simp_node_dict[n] for n in contig])
         strain.extend(sp_vlist[1:-1])
 
-        graph.clear_filters()
         final_strain_check(
             graph,
             simp_node_dict,
@@ -533,7 +549,6 @@ def extract_cand_path(
         strain.extend([simp_node_dict[n] for n in contig])
         strain.extend(sptail_vlist[1:-1])
 
-        graph.clear_filters()
         final_strain_check(
             graph,
             simp_node_dict,

@@ -44,7 +44,7 @@ conda create --name vsAware-env
 # activate conda environment
 conda activate vsAware-env
 
-conda install -c bioconda -c conda-forge python=3 graph-tool minimap2 numpy pandas scikit-learn
+conda install -c bioconda -c conda-forge python=3 graph-tool minimap2 numpy pandas scikit-learn gfapy
 ```
 
 <a name="sec2.2"></a>

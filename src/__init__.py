@@ -93,7 +93,7 @@ def main():
         "--reference_fa",
         dest="ref_file",
         type=str,
-        help="path to the reference strain, .fasta format, DEBUG_MODE only",
+        help=argparse.SUPPRESS,
     )
 
     parser.add_argument(

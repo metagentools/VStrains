@@ -384,6 +384,7 @@ def extract_cand_path(
                 graph.remove_edge(e)
             s = nt
             t = ns
+            contig.insert(0, graph.vp.id[ns])
         set_filter(graph, simp_node_dict, contig)
         sp_vlist, sp_score = bellman_ford(graph, s, t, logger)
 
@@ -398,7 +399,7 @@ def extract_cand_path(
                 graph.ep.color[ie] = c
                 graph.ep.flow[ie] = f
                 simp_edge_dict[(graph.vp.id[src], graph.vp.id[s])] = ie
-
+            contig.pop(0)
         logger.debug(
             path_to_id_string(graph, sp_vlist, "found path score: {0}".format(sp_score))
         )

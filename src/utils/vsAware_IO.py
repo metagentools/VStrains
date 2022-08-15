@@ -331,7 +331,7 @@ def flipped_gfa_to_graph(gfa_file, logger: Logger):
 
 
 def graph_to_gfa(
-    graph: Graph, simp_node_dict: dict, edge_dict: dict, logger: Logger, filename
+    graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, logger: Logger, filename
 ):
     """
     store the swapped graph in simplifed_graph.
@@ -348,7 +348,7 @@ def graph_to_gfa(
                     )
                 )
 
-        for (u, v), e in edge_dict.items():
+        for (u, v), e in simp_edge_dict.items():
             node_u = simp_node_dict[u] if u in simp_node_dict else None
             node_v = simp_node_dict[v] if v in simp_node_dict else None
 

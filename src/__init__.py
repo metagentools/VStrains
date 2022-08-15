@@ -132,7 +132,7 @@ def main():
             )
             print("\nExiting...\n")
             sys.exit(1)
-    if args.assembler.lower() == "megahit":
+    elif args.assembler.lower() == "megahit":
         None
     else:
         print("\nPlease make sure to provide the correct assembler type (SPAdes).")

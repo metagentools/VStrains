@@ -4,7 +4,7 @@ conda activate spades-hapConstruction-env
 
 python eval_script/quast_evaluation.py -d benchmark/sim_result/5HIV/ -ref benchmark/strains/5-strain-HIV.fasta -o quast5hiv/ -quast ~/bio_tools/quast-5.1.0rc1/metaquast.py 
 # # 5 HIV
-# python src/__init__.py -a spades -g benchmark/fastq/5-strain-HIV-20000x/output_careful/assembly_graph_after_simplification.gfa -p benchmark/fastq/5-strain-HIV-20000x/output_careful/contigs.paths -o acc_5_hiv_careful/ -d
+python src/__init__.py -a spades -g benchmark/fastq/5-strain-HIV-20000x/output_careful/assembly_graph_after_simplification.gfa -p benchmark/fastq/5-strain-HIV-20000x/output_careful/contigs.paths -o acc_5_hiv_careful/ -d
 # # python eval_script/quast_evaluation.py -cs benchmark/fastq/5-strain-HIV-20000x/output_careful/contigs.fasta ~/Desktop/benchmark/shortread/vgflow+savage/vgflow5hiv/haps.final.fasta acc_5_hiv_careful/strain.fasta -ref benchmark/strains/5-strain-HIV.fasta -o quast5hiv/ -quast ~/bio_tools/quast-5.1.0rc1/metaquast.py 
 
 # # 6 POLIO

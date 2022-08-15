@@ -34,7 +34,7 @@ __status__ = ""
 def run(args, logger):
     TEMP_DIR = args.output_dir
 
-    logger.info("vsAware-Megahit started")
+    logger.info("vsAware-MEGAHIT started")
 
     logger.info(">>>STAGE: parsing graph and contigs")
     graph, simp_node_dict, simp_edge_dict = gfa_to_graph(args.gfa_file, logger)
@@ -220,5 +220,5 @@ def run(args, logger):
             "{0}/strain.fasta".format(TEMP_DIR),
             "{0}/paf/strain_to_ref.paf".format(TEMP_DIR),
         )
-    logger.info("vsAware-SPAdes finished")
+    logger.info("vsAware-MEGAHIT finished")
     return 0

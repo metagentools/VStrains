@@ -11,6 +11,7 @@ from datetime import date
 
 from utils import (
     vsAware_SPAdes,
+    vsAware_Megahit
 )
 
 __author__ = "Runpeng Luo"
@@ -27,6 +28,7 @@ def run(args, logger):
     numpy.seterr(all="raise")
     RUNNER = {
         "spades": vsAware_SPAdes.run,
+        "megahit": vsAware_Megahit.run
     }
     RUNNER[args.assembler](args, logger)
 
@@ -44,7 +46,7 @@ def main():
         dest="assembler",
         type=str,
         required=True,
-        choices=["spades"],
+        choices=["spades", "megahit"],
         help="name of the assembler used. [spades]",
     )
 
@@ -121,6 +123,8 @@ def main():
         print("\nExiting...\n")
         sys.exit(1)
 
+    args.assembler = args.assembler.lower()
+
     if args.assembler.lower() == "spades":
         if (not args.path_file) or (not os.path.exists(args.path_file)):
             print(
@@ -128,6 +132,8 @@ def main():
             )
             print("\nExiting...\n")
             sys.exit(1)
+    if args.assembler.lower() == "megahit":
+        None
     else:
         print("\nPlease make sure to provide the correct assembler type (SPAdes).")
         print("\nExiting...\n")
@@ -204,7 +210,8 @@ def main():
     logger.info("Input arguments:")
     logger.info("Assembly type: " + args.assembler)
     logger.info("Assembly graph file: " + args.gfa_file)
-    logger.info("Contig paths file: " + args.path_file)
+    if args.assembler == 'spades':
+        logger.info("Contig paths file: " + args.path_file)
     logger.info("Output directory: " + os.path.abspath(args.output_dir))
     if args.dev:
         logger.info("*DEBUG MODE is turned ON")

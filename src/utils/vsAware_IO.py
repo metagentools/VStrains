@@ -50,10 +50,28 @@ def gfa_to_graph(gfa_file, logger: Logger, init_ori=1):
         # segment, convert into Node^- and Node^+
         [t, seg_no, seg] = (str(line).split("\t"))[:3]
         tags = (str(line).split("\t"))[3:]
-        dp = [tag for tag in tags if tag.startswith("dp") or tag.startswith("DP")][0]
+        dp_float = 0
+        ln = 0
+        kc = 0
+        for tag in tags:
+            if tag.startswith("dp") or tag.startswith("DP"):
+                dp_float = float(tag.split(":")[2])
+                break
+            if tag.startswith("ln") or tag.startswith("LN"):
+                ln = int(tag.split(":")[2])
+            if tag.startswith("kc") or tag.startswith("KC"):
+                kc = int(tag.split(":")[2])
+            if ln != 0 and kc != 0:
+                break
+
         # gfa format check
-        assert t == "S" and (dp[:2] == "DP" or dp[:2] == "dp")
-        dp_float = float(dp.split(":")[2])
+        if t != "S" or (dp_float == 0 and (ln == 0 or kc == 0)):
+            logger.error("file: {0}, Illegal graph format, please double check if the graph has been contaminated".format(gfa_file))
+            sys.exit(1)
+
+        if dp_float == 0:
+            dp_float = kc/ln
+
         v_pos = graph.add_vertex()
         graph.vp.seq[v_pos] = seg
         graph.vp.dp[v_pos] = dp_float
@@ -381,8 +399,7 @@ def spades_paths_parser(
     logger: Logger,
     path_file,
     min_len=250,
-    min_cov=0,
-    at_least_one_edge=False,
+    min_cov=0
 ):
     """
     Map SPAdes's contig to the graph, return all the suitable contigs.
@@ -469,13 +486,6 @@ def spades_paths_parser(
                             repeat_dict[k] += 1
                     subpath = list(dict.fromkeys(subpath))
 
-                    if at_least_one_edge and len(subpath) == 1:
-                        if (
-                            simp_node_dict[subpath[0]].in_degree() == 0
-                            and simp_node_dict[subpath[-1]].out_degree() == 0
-                        ):
-                            # isolated contig
-                            continue
                     if len(segments) != 1:
                         contig_dict[cno + "$" + str(i)] = [
                             subpath,
@@ -500,6 +510,24 @@ def spades_paths_parser(
     logger.info("done")
     return contig_dict, contig_info
 
+def megahit_contig_parser(
+    graph: Graph,
+    logger: Logger,
+    min_len=250,
+    min_cov=0,
+):
+    """
+    Return the nodes be classified by contig via coverage and length
+    """
+    logger.info("preparing megahit contig..")
+    contig_dict = {}
+    contig_info = {}
+
+    for v in graph.vertices():
+        if len(graph.vp.seq[v]) > min_len and graph.vp.dp[v] > min_cov:
+            contig_dict["c" + str(graph.vp.id[v])] = [[graph.vp.id[v]], len(graph.vp.seq[v]), graph.vp.dp[v]]
+            contig_info["c" + str(graph.vp.id[v])] = (None, dict())
+    return contig_dict, contig_info
 
 def contig_dict_to_fasta(
     graph: Graph, simp_node_dict: dict, contig_dict: dict, output_file

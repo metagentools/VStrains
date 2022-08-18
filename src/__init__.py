@@ -10,8 +10,7 @@ import time
 from datetime import date
 
 from utils import (
-    vsAware_SPAdes,
-    vsAware_Megahit
+    vsAware_SPAdes
 )
 
 __author__ = "Runpeng Luo"
@@ -28,7 +27,6 @@ def run(args, logger):
     numpy.seterr(all="raise")
     RUNNER = {
         "spades": vsAware_SPAdes.run,
-        "megahit": vsAware_Megahit.run
     }
     RUNNER[args.assembler](args, logger)
 
@@ -46,7 +44,7 @@ def main():
         dest="assembler",
         type=str,
         required=True,
-        choices=["spades", "megahit"],
+        choices=["spades"],
         help="name of the assembler used. [spades]",
     )
 
@@ -132,8 +130,6 @@ def main():
             )
             print("\nExiting...\n")
             sys.exit(1)
-    elif args.assembler.lower() == "megahit":
-        None
     else:
         print("\nPlease make sure to provide the correct assembler type (SPAdes).")
         print("\nExiting...\n")

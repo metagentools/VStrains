@@ -510,25 +510,6 @@ def spades_paths_parser(
     logger.info("done")
     return contig_dict, contig_info
 
-def megahit_contig_parser(
-    graph: Graph,
-    logger: Logger,
-    min_len=250,
-    min_cov=0,
-):
-    """
-    Return the nodes be classified by contig via coverage and length
-    """
-    logger.info("preparing megahit contig..")
-    contig_dict = {}
-    contig_info = {}
-
-    for v in graph.vertices():
-        if len(graph.vp.seq[v]) > min_len and graph.vp.dp[v] > min_cov:
-            contig_dict["c" + str(graph.vp.id[v])] = [[graph.vp.id[v]], len(graph.vp.seq[v]), graph.vp.dp[v]]
-            contig_info["c" + str(graph.vp.id[v])] = (None, dict())
-    return contig_dict, contig_info
-
 def contig_dict_to_fasta(
     graph: Graph, simp_node_dict: dict, contig_dict: dict, output_file
 ):

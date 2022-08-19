@@ -20,7 +20,9 @@ Table of Contents
 <a name="sec1"></a>
 # About vsAware
 
-TODO
+vsAware is a strain-aware assembly tools, which constructs full-length virus strain with aid from de Bruijn assembly graph and Strain-oblivious assembled contigs.
+
+Please refer to our [paper](NULL) and [supplementary Material](NULL) for details methodology.
 
 <a name="sec2"></a>
 # Installation

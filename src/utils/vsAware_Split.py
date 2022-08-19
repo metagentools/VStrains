@@ -7,6 +7,15 @@ from utils.vsAware_Utilities import *
 from utils.vsAware_CovBalance import assign_edge_flow, coverage_rebalance_s
 from utils.vsAware_IO import graph_to_gfa, flipped_gfa_to_graph
 
+__author__ = "Runpeng Luo"
+__copyright__ = "Copyright 2022-2025, vsAware Project"
+__credits__ = ["Runpeng Luo", "Yu Lin"]
+__license__ = "MIT"
+__version__ = "1.0.0"
+__maintainer__ = "Runpeng Luo"
+__email__ = "John.Luo@anu.edu.au"
+__status__ = "Production"
+
 
 def iterated_graph_split(
     graph: Graph,

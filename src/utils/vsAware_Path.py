@@ -2,7 +2,15 @@
 
 from graph_tool.all import Graph
 from utils.vsAware_Utilities import *
-from graph_tool.topology import shortest_path
+
+__author__ = "Runpeng Luo"
+__copyright__ = "Copyright 2022-2025, vsAware Project"
+__credits__ = ["Runpeng Luo", "Yu Lin"]
+__license__ = "MIT"
+__version__ = "1.0.0"
+__maintainer__ = "Runpeng Luo"
+__email__ = "John.Luo@anu.edu.au"
+__status__ = "Production"
 
 
 def bellman_ford(graph: Graph, src, tgt, logger: Logger):
@@ -34,7 +42,11 @@ def bellman_ford(graph: Graph, src, tgt, logger: Logger):
                 continue
             u = e.source()
             v = e.target()
-            if dist[u] != sys.maxsize and dist[v] != sys.maxsize and dist[u] + graph.ep.eval[e] < dist[v]:
+            if (
+                dist[u] != sys.maxsize
+                and dist[v] != sys.maxsize
+                and dist[u] + graph.ep.eval[e] < dist[v]
+            ):
                 logger.error("negative cycle exist in connected path")
                 sys.exit(1)
         path = []
@@ -162,7 +174,6 @@ def get_similarity(graph: Graph, contig_dict: dict, logger: Logger, b0, b1):
 
 
 def label_filter_dfs(graph: Graph, contig: list, is_rev=False):
-
     def dfs(graph: Graph, stack: list, visited: dict):
         if not is_rev:
             for oe in list(stack[-1].out_edges()):
@@ -186,7 +197,7 @@ def label_filter_dfs(graph: Graph, contig: list, is_rev=False):
                 elif visited[prev] == "unvisited":
                     visited[prev] = "instack"
                     stack.append(prev)
-                    dfs(graph, stack, visited)  
+                    dfs(graph, stack, visited)
         visited[stack[-1]] = "done"
         stack.pop()
         return
@@ -248,6 +259,7 @@ def set_edge_weight(graph: Graph, ccov, b0, b1):
             graph.ep.eval[e] = 0
     return
 
+
 def extract_cand_path(
     graph: Graph,
     simp_node_dict: dict,
@@ -307,14 +319,24 @@ def extract_cand_path(
                             in_tip_contig_dict[cno] = contig_dict.pop(cno)
                             logger.debug("in tip contig - " + str(cno))
                         else:
-                            logger.error(list_to_string(contig, "forward cycle, but not in tip, error contig"))
+                            logger.error(
+                                list_to_string(
+                                    contig,
+                                    "forward cycle, but not in tip, error contig",
+                                )
+                            )
                             sys.exit(1)
                     elif can_reach_rev:
                         if out_tip:
                             out_tip_contig_dict[cno] = contig_dict.pop(cno)
                             logger.debug("out tip contig - " + str(cno))
                         else:
-                            logger.error(list_to_string(contig, "backward cycle, but not out tip, error contig"))
+                            logger.error(
+                                list_to_string(
+                                    contig,
+                                    "backward cycle, but not out tip, error contig",
+                                )
+                            )
                             sys.exit(1)
                     else:
                         linear_contig_dict[cno] = contig_dict.pop(cno)
@@ -525,11 +547,15 @@ def extract_cand_path(
         sptail_vlist, sptail_score = bellman_ford(graph, ct, global_sink, logger)
 
         logger.debug(
-            path_to_id_string(graph, sphead_vlist, "found gs-s path score: {0}".format(sphead_score))
+            path_to_id_string(
+                graph, sphead_vlist, "found gs-s path score: {0}".format(sphead_score)
+            )
         )
 
         logger.debug(
-            path_to_id_string(graph, sptail_vlist, "found t-gt path score: {0}".format(sptail_score))
+            path_to_id_string(
+                graph, sptail_vlist, "found t-gt path score: {0}".format(sptail_score)
+            )
         )
 
         if sphead_score + sptail_score > 0:

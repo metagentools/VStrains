@@ -1,13 +1,23 @@
-import sys, os
+import os
 import subprocess
 import argparse
 import time
 
-
-usage = "Build assembly graph&contig using SPAdes --careful mode, with input pair-end reads and store the graph."
+__author__ = "Runpeng Luo"
+__copyright__ = "Copyright 2022-2025, vsAware Project"
+__credits__ = ["Runpeng Luo", "Yu Lin"]
+__license__ = "MIT"
+__version__ = "1.0.0"
+__maintainer__ = "Runpeng Luo"
+__email__ = "John.Luo@anu.edu.au"
+__status__ = "Production"
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(prog="preprocess_reads.py", description=usage)
+    parser = argparse.ArgumentParser(
+        prog="spades_wrapper.py",
+        description="""Build assembly graph&contig using SPAdes --careful mode, 
+        with input pair-end reads and store the graph.""",
+    )
     parser.add_argument(
         "-f",
         "--forward",
@@ -69,6 +79,6 @@ if __name__ == "__main__":
     t1_stop = time.perf_counter()
     t2_stop = time.process_time()
 
-    print("\preprocess reads completed")
+    print("\SPAdes assembly completed")
     print("Elapsed time: {:.1f} seconds".format(t1_stop - global_t1_start))
     print("CPU process time: {:.1f} seconds".format(t2_stop - global_t2_start))

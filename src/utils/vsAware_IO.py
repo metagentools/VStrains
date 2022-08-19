@@ -9,6 +9,15 @@ import re
 
 from utils.vsAware_Utilities import path_len, reverse_seq, print_vertex, path_ids_to_seq
 
+__author__ = "Runpeng Luo"
+__copyright__ = "Copyright 2022-2025, vsAware Project"
+__credits__ = ["Runpeng Luo", "Yu Lin"]
+__license__ = "MIT"
+__version__ = "1.0.0"
+__maintainer__ = "Runpeng Luo"
+__email__ = "John.Luo@anu.edu.au"
+__status__ = "Production"
+
 
 def init_graph():
     graph = Graph(directed=True)
@@ -66,11 +75,15 @@ def gfa_to_graph(gfa_file, logger: Logger, init_ori=1):
 
         # gfa format check
         if t != "S" or (dp_float == 0 and (ln == 0 or kc == 0)):
-            logger.error("file: {0}, Illegal graph format, please double check if the graph has been contaminated".format(gfa_file))
+            logger.error(
+                "file: {0}, Illegal graph format, please double check if the graph has been contaminated".format(
+                    gfa_file
+                )
+            )
             sys.exit(1)
 
         if dp_float == 0:
-            dp_float = kc/ln
+            dp_float = kc / ln
 
         v_pos = graph.add_vertex()
         graph.vp.seq[v_pos] = seg
@@ -399,7 +412,7 @@ def spades_paths_parser(
     logger: Logger,
     path_file,
     min_len=250,
-    min_cov=0
+    min_cov=0,
 ):
     """
     Map SPAdes's contig to the graph, return all the suitable contigs.
@@ -509,6 +522,7 @@ def spades_paths_parser(
     logger.debug(str(contig_info))
     logger.info("done")
     return contig_dict, contig_info
+
 
 def contig_dict_to_fasta(
     graph: Graph, simp_node_dict: dict, contig_dict: dict, output_file

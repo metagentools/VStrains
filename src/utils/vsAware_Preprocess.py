@@ -14,6 +14,15 @@ from sklearn.cluster import KMeans
 from sklearn.linear_model import LinearRegression
 from sklearn.metrics import silhouette_score
 
+__author__ = "Runpeng Luo"
+__copyright__ = "Copyright 2022-2025, vsAware Project"
+__credits__ = ["Runpeng Luo", "Yu Lin"]
+__license__ = "MIT"
+__version__ = "1.0.0"
+__maintainer__ = "Runpeng Luo"
+__email__ = "John.Luo@anu.edu.au"
+__status__ = "Production"
+
 
 def reindexing(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict):
     idx_mapping = {}

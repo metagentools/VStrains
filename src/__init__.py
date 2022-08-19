@@ -9,18 +9,16 @@ import logging
 import time
 from datetime import date
 
-from utils import (
-    vsAware_SPAdes
-)
+from utils import vsAware_SPAdes
 
 __author__ = "Runpeng Luo"
-__copyright__ = ""
+__copyright__ = "Copyright 2022-2025, vsAware Project"
 __credits__ = ["Runpeng Luo", "Yu Lin"]
-__license__ = ""
-__version__ = "0.0.1"
+__license__ = "MIT"
+__version__ = "1.0.0"
 __maintainer__ = "Runpeng Luo"
-__email__ = ""
-__status__ = ""
+__email__ = "John.Luo@anu.edu.au"
+__status__ = "Production"
 
 
 def run(args, logger):
@@ -206,7 +204,7 @@ def main():
     logger.info("Input arguments:")
     logger.info("Assembly type: " + args.assembler)
     logger.info("Assembly graph file: " + args.gfa_file)
-    if args.assembler == 'spades':
+    if args.assembler == "spades":
         logger.info("Contig paths file: " + args.path_file)
     logger.info("Output directory: " + os.path.abspath(args.output_dir))
     if args.dev:

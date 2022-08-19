@@ -22,13 +22,13 @@ from utils.vsAware_IO import (
 
 
 __author__ = "Runpeng Luo"
-__copyright__ = ""
+__copyright__ = "Copyright 2022-2025, vsAware Project"
 __credits__ = ["Runpeng Luo", "Yu Lin"]
-__license__ = ""
-__version__ = "0.0.1"
+__license__ = "MIT"
+__version__ = "1.0.0"
 __maintainer__ = "Runpeng Luo"
-__email__ = ""
-__status__ = ""
+__email__ = "John.Luo@anu.edu.au"
+__status__ = "Production"
 
 
 def run(args, logger):

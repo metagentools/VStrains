@@ -22,10 +22,6 @@ def assign_edge_flow(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict):
     """
     for (u, v), e in simp_edge_dict.items():
 
-        if graph.ep.color[e] != "black":
-            # forbidden edge
-            continue
-
         u_node = simp_node_dict[u]
         u_out_sum = numpy.sum([graph.vp.dp[n] for n in u_node.out_neighbors()])
 
@@ -65,8 +61,6 @@ def coverage_rebalance_s(
         graph_add_edge(graph, simp_edge_dict, u, uid, node, graph.vp.id[node], 0, 0)
         graph_add_edge(graph, simp_edge_dict, node, graph.vp.id[node], v, vid, 0, 0)
 
-    # all the previous depth has been stored in the dict
-    # ratio: normalised balanced node depth / previous node depth
     coverage_rebalance_ave(graph, simp_node_dict, simp_edge_dict, logger)
 
     logger.debug("remove incident nodes")
@@ -122,10 +116,6 @@ def coverage_rebalance_ave(
         it += 1
         # ****************************-E Step
         for (u, v), e in simp_edge_dict.items():
-            if graph.ep.color[e] != "black":
-                # forbidden edge
-                continue
-
             u_node = simp_node_dict[u]
             u_out_sum = numpy.sum([graph.vp.dp[n] for n in u_node.out_neighbors()])
 
@@ -139,43 +129,32 @@ def coverage_rebalance_ave(
                 ]
             )
         # ****************************-Validation
-        deltas = []
-        for no, node in simp_node_dict.items():
-            node_in_degree = len(
-                [e for e in node.in_edges() if graph.ep.color[e] == "black"]
-            )
-            node_out_degree = len(
-                [e for e in node.out_edges() if graph.ep.color[e] == "black"]
-            )
-            if node_in_degree == 0:
+        deltas = 0
+        for node in simp_node_dict.values():
+            if node.in_degree() == 0:
                 inflow = graph.vp.dp[node]
             else:
                 inflow = numpy.sum(
                     [
                         graph.ep.flow[e]
                         for e in node.in_edges()
-                        if graph.ep.color[e] == "black"
                     ]
                 )
 
-            if node_out_degree == 0:
+            if node.out_degree() == 0:
                 outflow = graph.vp.dp[node]
             else:
                 outflow = numpy.sum(
                     [
                         graph.ep.flow[e]
                         for e in node.out_edges()
-                        if graph.ep.color[e] == "black"
                     ]
                 )
 
-            dominator = (inflow + outflow) / 2
-            if dominator != 0.0:
-                deltas.append(
-                    (no, (graph.vp.dp[node] * abs(inflow - outflow)) / dominator)
-                )
+            if inflow + outflow != 0.0:
+                deltas += (2 * graph.vp.dp[node] * abs(inflow - outflow)) / (inflow + outflow)
 
-        sum_delta = sum([k[1] for k in deltas]) / sum(
+        sum_delta = deltas / sum(
             [graph.vp.dp[node] for node in graph.vertices()]
         )
         if sum_delta < cutoff:
@@ -194,22 +173,19 @@ def coverage_rebalance_ave(
             for edge in graph.edges():
                 graph.ep.flow[edge] = graph.ep.flow[edge] / sum_ratio
         # ****************************-M Step
-        for no, node in simp_node_dict.items():
+        for node in simp_node_dict.values():
             inflow = numpy.sum([graph.ep.flow[e] for e in node.in_edges()])
             outflow = numpy.sum([graph.ep.flow[e] for e in node.out_edges()])
-            if node.in_degree() == 0 and node.out_degree() == 0:
-                graph.vp.dp[node] = graph.vp.dp[node]
-            elif node.in_degree() == 0 and node.out_degree() != 0:
-                graph.vp.dp[node] = outflow
-            elif node.in_degree() != 0 and node.out_degree() == 0:
-                graph.vp.dp[node] = inflow
-            else:
+            if node.in_degree() != 0 and node.out_degree() != 0:
                 graph.vp.dp[node] = numpy.mean([inflow, outflow])
+            elif node.in_degree() == 0 and node.out_degree() == 0:
+                graph.vp.dp[node] = graph.vp.dp[node]
+            else:
+                graph.vp.dp[node] = max(inflow, outflow)
     # final evaluation
     sum_ratio = (
         sum([graph.vp.dp[u] for u in simp_node_dict.values()]) / sum_depth_before
     )
-    assert sum_ratio > 0
 
     logger.debug("scaled ratio, normalizing: " + str(sum_ratio))
     for node in simp_node_dict.values():

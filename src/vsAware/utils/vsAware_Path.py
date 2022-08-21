@@ -182,7 +182,6 @@ def label_filter_dfs(graph: Graph, contig: list, is_rev=False):
                 next = oe.target()
                 if visited[next] == "instack":
                     graph.ep.keep[oe] = False
-                    # print(path_to_id_string(graph, stack[stack.index(next):], "cyc"))
                 elif visited[next] == "unvisited":
                     visited[next] = "instack"
                     stack.append(next)
@@ -286,8 +285,7 @@ def extract_cand_path(
     self_contig_dict = {}
     linear_contig_dict = {}
     cyclic_contig_dict = {}
-    in_tip_contig_dict = {}
-    out_tip_contig_dict = {}
+    tip_contig_dict = {}
     for cno, [contig, clen, ccov] in list(contig_dict.items()):
         if ccov <= threshold:
             continue
@@ -305,39 +303,9 @@ def extract_cand_path(
                 else:
                     cs = simp_node_dict[contig[0]]
                     ct = simp_node_dict[contig[-1]]
-                    in_tip = cs != ct and cs in global_src.out_neighbors()
-                    out_tip = cs != ct and ct in global_sink.in_neighbors()
-                    can_reach = reachable(graph, ct, ct)
-                    can_reach_rev = reachable(graph, cs, cs)
-
-                    assert not (
-                        can_reach and can_reach_rev
-                    )  # impossible case, unless contig is not connected
-
-                    if can_reach:
-                        if in_tip:
-                            in_tip_contig_dict[cno] = contig_dict.pop(cno)
-                            logger.debug("in tip contig - " + str(cno))
-                        else:
-                            logger.error(
-                                list_to_string(
-                                    contig,
-                                    "forward cycle, but not in tip, error contig",
-                                )
-                            )
-                            sys.exit(1)
-                    elif can_reach_rev:
-                        if out_tip:
-                            out_tip_contig_dict[cno] = contig_dict.pop(cno)
-                            logger.debug("out tip contig - " + str(cno))
-                        else:
-                            logger.error(
-                                list_to_string(
-                                    contig,
-                                    "backward cycle, but not out tip, error contig",
-                                )
-                            )
-                            sys.exit(1)
+                    if reachable(graph, ct, ct) or reachable(graph, cs, cs):
+                        tip_contig_dict[cno] = contig_dict.pop(cno)
+                        logger.debug("tip contig - " + str(cno))
                     else:
                         linear_contig_dict[cno] = contig_dict.pop(cno)
                         logger.debug("linear contig - " + str(cno))
@@ -475,27 +443,12 @@ def extract_cand_path(
             logger,
         )
 
-    logger.debug("=====Secondary Step: in tip contig path extraction=====")
-    for cno, [contig, clen, ccov] in in_tip_contig_dict.items():
+    logger.debug("=====Secondary Step: tip contig path extraction=====")
+    for cno, [contig, clen, ccov] in tip_contig_dict.items():
         # in tip path contig
         pcov = path_cov(graph, simp_node_dict, simp_edge_dict, contig)
         logger.debug(
-            "cand strain found, in tip contig, cno: "
-            + cno
-            + " ccov: "
-            + str(pcov)
-            + " clen: "
-            + str(clen)
-        )
-        strain_dict["A" + cno] = [contig, clen, pcov]
-        graph_reduction_c(graph, [simp_node_dict[n] for n in contig], usage_dict, pcov)
-
-    logger.debug("=====Secondary Step: out tip contig path extraction=====")
-    for cno, [contig, clen, ccov] in out_tip_contig_dict.items():
-        # in tip path contig
-        pcov = path_cov(graph, simp_node_dict, simp_edge_dict, contig)
-        logger.debug(
-            "cand strain found, out tip contig, cno: "
+            "cand strain found, tip contig, cno: "
             + cno
             + " ccov: "
             + str(pcov)

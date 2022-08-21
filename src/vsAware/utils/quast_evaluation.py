@@ -66,7 +66,7 @@ if __name__ == "__main__":
         "--path_to_quast",
         dest="quast",
         required=True,
-        help="path to MetaQuast python script"
+        help="path to MetaQuast python script",
     )
     parser.add_argument(
         "-cs",
@@ -84,7 +84,12 @@ if __name__ == "__main__":
         help="contig files from different tools, stored in the directory",
     )
     parser.add_argument(
-        "-ref", "--ref_file", dest="ref_file", type=str, required=True, help="ref file (single)"
+        "-ref",
+        "--ref_file",
+        dest="ref_file",
+        type=str,
+        required=True,
+        help="ref file (single)",
     )
     parser.add_argument(
         "-o",
@@ -96,13 +101,21 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    if args.idir != None and (not os.path.exists(args.idir) or not os.path.isdir(args.idir)):
+    if args.idir != None and (
+        not os.path.exists(args.idir) or not os.path.isdir(args.idir)
+    ):
         print("Please provide correct directory")
         sys.exit(1)
 
-    if (args.idir == None and args.files == None) or (args.idir != None and args.files != None):
+    if (args.idir == None and args.files == None) or (
+        args.idir != None and args.files != None
+    ):
         print("Please provide correct query input")
         sys.exit(1)
-    files = args.files if args.files != None else [str(args.idir) + s for s in sorted(os.listdir(args.idir))]
+    files = (
+        args.files
+        if args.files != None
+        else [str(args.idir) + s for s in sorted(os.listdir(args.idir))]
+    )
 
     quast_eval(files, args.ref_file, args.output_dir, args.quast)

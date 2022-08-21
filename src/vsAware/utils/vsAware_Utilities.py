@@ -1129,9 +1129,8 @@ def retrieve_cycle(graph: Graph, n=1):
                 return n
             next = out_e.target()
             if visited[next] == "instack":
-                # revisit a visited node, cycle
                 n -= 1
-                store_cycle(stack, next)
+                cycles.append(stack[stack.index(next) :])
             elif visited[next] == "unvisited":
                 visited[next] = "instack"
                 stack.append(next)
@@ -1139,11 +1138,6 @@ def retrieve_cycle(graph: Graph, n=1):
         visited[stack[-1]] = "done"
         stack.pop()
         return n
-
-    def store_cycle(stack: list, next):
-        stack = stack[stack.index(next) :]
-        # print("Cycle: ", list_to_string([graph.vp.id[node] for node in stack]))
-        cycles.append(stack[:])
 
     visited = dict.fromkeys(list(graph.vertices()), "unvisited")
 

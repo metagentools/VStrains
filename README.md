@@ -83,11 +83,9 @@ optional arguments:
   -p PATH_FILE, --path PATH_FILE
                         contig file from SPAdes (.paths format), only required for SPAdes. e.g., contigs.paths
   -mc MIN_COV, --minimum_coverage MIN_COV
-                        minimum node coverage cutoff, [default: auto]
+                        minimum node coverage cutoff, also apply to filter the low-coverage strain [default: auto]
   -ml MIN_LEN, --minimum_contig_length MIN_LEN
                         minimum initial contig length for strains [default: 250]
-  -r REF_FILE, --reference_fa REF_FILE
-                        path to the reference strain, .fasta format, DEBUG_MODE only
   -o OUTPUT_DIR, --output_dir OUTPUT_DIR
                         path to the output directory [default: acc/]
 ```
@@ -113,11 +111,11 @@ python vsAware.py -a spades -g assembly_graph_after_simplification.gfa -p contig
 
 ### Minimum Node Coverage
 
-This sets the minimum node coverage for filtering the inaccurate nodes from initial assembly graph. By default, the node coverage is automatically set to 5% of median node coverage among the graph by tool, which demonstrates good result. Please use `-mc` flag to input the customized minimum node coverage if needed.
+This sets the minimum node coverage for filtering the inaccurate nodes from initial assembly graph. By default, the node coverage is automatically set based on coverage distribution, which demonstrates good result among all tested datasets. Please use `-mc` flag to input the customized minimum node coverage if needed.
 
 ### Minimum Contig Length
 
-Since SPAdes usually output all the nodes from assembly graph as contigs, short output contig may lead to less accuracy and confidence. By default, contig with length less than 250bp (as 250bp is single read length from pair-end read) is filtered out. Please use `-ml` flag to input the customized minimum node coverage if needed.
+Since SPAdes usually output all the nodes from assembly graph as contigs, short or low coverage contig may lead to less accuracy and confidence. By default, single node contig with length less than 250bp or coverage less then `--mc` (defined above) is filtered out. Please use `-ml` flag to input the customized minimum contig length if needed.
 
 <a name="sec4"></a>
 # Citation

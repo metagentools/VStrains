@@ -414,7 +414,7 @@ def extract_cand_path(
         if sp_score > 0:
             if not forced[cno]:
                 logger.debug("current path is positive weighted, not optimal, re-queue")
-                forced = True
+                forced[cno] = True
                 continue
             else:
                 logger.debug(
@@ -514,7 +514,7 @@ def extract_cand_path(
         if sphead_score + sptail_score > 0:
             if not forced[cno]:
                 logger.debug("current path is positive weighted, not optimal, re-queue")
-                forced = True
+                forced[cno] = True
                 continue
             else:
                 logger.debug(

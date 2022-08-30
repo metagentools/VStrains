@@ -98,12 +98,11 @@ def coverage_rebalance_s(
 def coverage_rebalance_ave(
     graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, logger: Logger
 ):
-    BOUND_ITER = len(simp_node_dict) ** 2
-    it = 0
-
     # set cutoff delta
     cutoff = 0.00001 * len(simp_node_dict)
     logger.debug("cutoff coverage-unbalance rate: " + str(cutoff))
+    BOUND_ITER = len(simp_node_dict) + len(simp_edge_dict)
+    it = 0
     # store previous node depth
     prev_dp_dict = {}
     for no, v in simp_node_dict.items():
@@ -188,6 +187,8 @@ def coverage_rebalance_ave(
     )
 
     logger.debug("scaled ratio, normalizing: " + str(sum_ratio))
+    logger.debug("iteration count: " + str(it))
+    logger.debug("iteration bound: " + str(BOUND_ITER))
     for node in simp_node_dict.values():
         # only scale the connected nodes
         if node.in_degree() > 0 or node.out_degree() > 0:

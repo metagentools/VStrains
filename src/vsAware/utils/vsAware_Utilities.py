@@ -54,16 +54,14 @@ def map_ref_to_graph(
         for Line in paf:
             splited = (Line[:-1]).split("\t")
             seg_no = str(splited[0])
-            seg_l = int(splited[1])
-            seg_s = int(splited[2])
-            seg_f = int(splited[3])
+            seg_len = int(splited[1])
             ref_no = str(splited[5])
-            nmatch = int(splited[9])
-            nblock = int(splited[10])
-            mark = int(splited[11])
+            match_region = int(splited[10])
+            tags = splited[12:]
+            nm = int([s.split(":")[2] for s in tags if s.startswith("NM")][0])
             if seg_no not in simp_node_dict:
                 continue
-            if (nmatch / nblock) == 1:
+            if nm == 0 and match_region == seg_len:
                 if ref_no not in strain_dict:
                     strain_dict[ref_no] = []
                 strain_dict[ref_no].append(seg_no)
@@ -81,7 +79,7 @@ def map_ref_to_graph(
     return strain_dict
 
 
-def map_ref_to_contig(contig_dict: dict, logger: Logger, paf_file):
+def map_ref_to_contig(contig_dict: dict, logger: Logger, paf_file, store_mapping=True):
     logger.debug("map ref to contig")
     strain_dict = {}
     with open(paf_file, "r") as paf:
@@ -97,12 +95,16 @@ def map_ref_to_contig(contig_dict: dict, logger: Logger, paf_file):
             mark = int(splited[11])
             if seg_no not in contig_dict:
                 continue
-            if (nmatch / nblock) >= 0.99:
+            if (nmatch / nblock) >= 0.999:
                 if ref_no not in strain_dict:
                     strain_dict[ref_no] = set()
                 strain_dict[ref_no].add(seg_no)
         paf.close()
 
+    if not store_mapping:
+        subprocess.check_call(
+            "rm {0}".format(paf_file), shell=True
+        )
     for sno, cnos in strain_dict.items():
         logger.debug("--------------------------------->")
         logger.debug(
@@ -245,7 +247,7 @@ def contig_dict_remapping(
         else:
             rtn_set = set()
             for id in curr_set:
-                rtn_set = rtn_set.union(merge_id(id_mapping_r, id_mapping_r[id], id))
+                rtn_set = rtn_set.union(merge_id(id_mapping_r, id_mapping_r.get(id, []), id))
             return rtn_set
 
     logger.info("contig resolution..")
@@ -257,7 +259,7 @@ def contig_dict_remapping(
         red_id_mapping[id] = all_set
         logger.debug("Node {0} maps to {1}".format(id, all_set))
 
-    for cno, (contig, _, _) in list(contig_dict.items()):
+    for cno, (contig, _, ccov) in list(contig_dict.items()):
         logger.debug("---------------------------------------------")
         logger.debug(
             "Current mapping contig: " + str(cno) + ", " + list_to_string(contig)
@@ -272,27 +274,32 @@ def contig_dict_remapping(
             else:
                 logger.debug("single mapping, replace" + list_to_string(paths[0]))
                 contig_dict.pop(cno)
-                subcov = path_cov(graph, simp_node_dict, simp_edge_dict, paths[0])
+                # subcov = path_cov(graph, simp_node_dict, simp_edge_dict, paths[0])
                 contig_dict[cno] = [
                     paths[0],
                     path_len(graph, [simp_node_dict[no] for no in paths[0]]),
-                    subcov,
+                    ccov,
                 ]
         else:
             contig_dict.pop(cno)
             logger.debug(
-                "multi mapping for the current contig: whole contig is ambiguous mapping, keep the intersection reduced one only"
-                + cno
+                "multi mapping for the current contig {0}: whole contig is ambiguous mapping, keep the intersection reduced one only".format(cno)
             )
             final_path = reduce(lambda a, b: [i for i in a if i in b], paths)
             if len(final_path) > 0:
                 # at least one node
                 logger.debug("selected mapped contig: " + str(final_path))
                 sublen = path_len(graph, [simp_node_dict[no] for no in final_path])
-                subcov = path_cov(graph, simp_node_dict, simp_edge_dict, final_path)
-                contig_dict[cno] = [final_path, sublen, subcov]
+                # subcov = path_cov(graph, simp_node_dict, simp_edge_dict, final_path)
+                contig_dict[cno] = [final_path, sublen, ccov]
+            # logger.debug("multiple sub-contig")
+            # for i, p in enumerate(paths):
+            #     logger.debug(list_to_string(p, "alt path"))
+            #     sublen = path_len(graph, [simp_node_dict[no] for no in p])
+            #     subcov = path_cov(graph, simp_node_dict, simp_edge_dict, p)
+            #     contig_dict[cno + "$" + str(i)] = [p, sublen, subcov]
     logger.info("done")
-    return
+    return red_id_mapping
 
 
 def simp_path(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict):
@@ -340,7 +347,7 @@ def simple_paths_to_dict(graph: Graph, simp_node_dict: dict, simp_edge_dict: dic
         pids = [graph.vp.id[n] for n in p]
         name = str(id)
         clen = path_len(graph, p)
-        cov = numpy.max([graph.vp.dp[n] for n in p])
+        cov = numpy.mean([graph.vp.dp[n] for n in p])
         simp_path_dict[name] = [pids, clen, cov]
         # print("Simple PATH: ", list_to_string(pids))
     return simp_path_dict
@@ -351,6 +358,7 @@ def simp_path_compactification(
     simp_node_dict: dict,
     simp_edge_dict: dict,
     contig_dict: dict,
+    pe_info: dict,
     logger: Logger,
 ):
     """
@@ -399,6 +407,16 @@ def simp_path_compactification(
                 )
         cv = graph_add_vertex(graph, simp_node_dict, id, ccov, cseq, printout=False)
         contig_info.append([src, tgt, cno, cv, in_edges, out_edges])
+        if pe_info != None:
+            for nno in simp_node_dict.keys():
+                pe_info[(min(id, nno), max(id, nno))] = 0
+                if nno != id:
+                    for sub_id in contig:
+                        pe_info[(min(id, nno), max(id, nno))] += pe_info[(min(sub_id, nno), max(sub_id, nno))]
+            for (pu,pv) in list(pe_info.keys()):
+                if pu in contig or pv in contig:
+                    # out of date
+                    pe_info.pop((min(pu,pv),max(pu,pv)))
 
     # recover all the in-out edges surrounding the contigs
     for [_, _, _, node, in_edges, out_edges] in contig_info:
@@ -408,11 +426,8 @@ def simp_path_compactification(
                     graph,
                     simp_edge_dict,
                     simp_node_dict[u],
-                    u,
                     node,
-                    graph.vp.id[node],
                     o,
-                    printout=False,
                 )
 
             for [_, tgt, _, in_node, _, _] in contig_info:
@@ -424,11 +439,8 @@ def simp_path_compactification(
                         graph,
                         simp_edge_dict,
                         in_node,
-                        graph.vp.id[in_node],
                         node,
-                        graph.vp.id[node],
                         o,
-                        printout=False,
                     )
 
         for (u, v, o) in out_edges:
@@ -437,9 +449,7 @@ def simp_path_compactification(
                     graph,
                     simp_edge_dict,
                     node,
-                    graph.vp.id[node],
                     simp_node_dict[v],
-                    v,
                     o,
                     printout=False,
                 )
@@ -453,34 +463,33 @@ def simp_path_compactification(
                         graph,
                         simp_edge_dict,
                         node,
-                        graph.vp.id[node],
                         out_node,
-                        graph.vp.id[out_node],
                         o,
                         printout=False,
                     )
     # fix the contig, with simple path be concated
-    for cno, (contig, _, ccov) in list(contig_dict.items()):
-        new_contig = []
-        for no in contig:
-            if node_to_simp_node[no] == no:
-                new_contig.append(no)
-            else:
-                if len(new_contig) == 0:
-                    new_contig.append(node_to_simp_node[no])
+    if contig_dict != None:
+        for cno, (contig, _, ccov) in list(contig_dict.items()):
+            new_contig = []
+            for no in contig:
+                if node_to_simp_node[no] == no:
+                    new_contig.append(no)
                 else:
-                    if node_to_simp_node[no] != new_contig[-1]:
+                    if len(new_contig) == 0:
                         new_contig.append(node_to_simp_node[no])
-        logger.debug(
-            "cno: {0} from {1} to {2}".format(
-                cno, list_to_string(contig), list_to_string(new_contig)
+                    else:
+                        if node_to_simp_node[no] != new_contig[-1]:
+                            new_contig.append(node_to_simp_node[no])
+            logger.debug(
+                "cno: {0} from {1} to {2}".format(
+                    cno, list_to_string(contig), list_to_string(new_contig)
+                )
             )
-        )
-        contig_dict[cno] = [
-            new_contig,
-            path_len(graph, [simp_node_dict[no] for no in new_contig]),
-            ccov,
-        ]
+            contig_dict[cno] = [
+                new_contig,
+                path_len(graph, [simp_node_dict[no] for no in new_contig]),
+                ccov,
+            ]
     logger.info("done")
     return
 
@@ -878,9 +887,7 @@ def graph_add_edge(
     graph: Graph,
     simp_edge_dict: dict,
     src,
-    src_id,
     tgt,
-    tgt_id,
     overlap,
     flow=0,
     s="add edge",
@@ -891,7 +898,7 @@ def graph_add_edge(
     graph.ep.overlap[edge] = overlap
     graph.ep.color[edge] = color
     graph.ep.flow[edge] = flow
-    simp_edge_dict[(src_id, tgt_id)] = edge
+    simp_edge_dict[(graph.vp.id[src], graph.vp.id[tgt])] = edge
     if printout:
         print_edge(graph, edge, s)
     return edge

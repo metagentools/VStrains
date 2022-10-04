@@ -8,6 +8,7 @@ import sys
 import re
 
 from utils.vsAware_Utilities import path_len, reverse_seq, print_vertex, path_ids_to_seq
+from utils.vsAware_CovBalance import assign_edge_flow
 
 __author__ = "Runpeng Luo"
 __copyright__ = "Copyright 2022-2025, vsAware Project"
@@ -503,11 +504,11 @@ def spades_paths_parser(
                         contig_dict[cno + "$" + str(i)] = [
                             subpath,
                             path_len(graph, [simp_node_dict[id] for id in subpath]),
-                            ccov,
+                            float(ccov),
                         ]
                         contig_info[cno + "$" + str(i)] = (None, repeat_dict)
                     else:
-                        contig_dict[cno] = [subpath, int(clen), ccov]
+                        contig_dict[cno] = [subpath, int(clen), float(ccov)]
                         contig_info[cno] = (None, repeat_dict)
 
             contigs_file.close()
@@ -544,6 +545,25 @@ def contig_dict_to_fasta(
             fasta.write(seq)
         fasta.close()
 
+def strain_dict_to_fasta(
+    strain_dict: dict, output_file
+):
+    """
+    Store strain dict into fastq file
+    """
+    subprocess.check_call("touch {0}; echo > {0}".format(output_file), shell=True)
+
+    with open(output_file, "w") as fasta:
+        for cno, (sseq, clen, ccov) in sorted(
+            strain_dict.items(), key=lambda x: x[1][1], reverse=True
+        ):
+            contig_name = (
+                ">" + str(cno) + "_" + str(clen) + "_" + str(round(ccov, 2)) + "\n"
+            )
+            seq = sseq + "\n"
+            fasta.write(contig_name)
+            fasta.write(seq)
+        fasta.close()
 
 def contig_dict_to_path(
     contig_dict: dict, output_file, id_mapping: dict = None, keep_original=False
@@ -573,8 +593,48 @@ def contig_dict_to_path(
                             rid = rid[1:] + "-"
                         path_ids += rid + ","
                 else:
-                    path_ids += str(id) + ","
+                    for iid in str(id).split("&"):
+                        if iid.find("*") != -1:
+                            rid = iid[: iid.find("*")]
+                        else:
+                            rid = iid
+                        path_ids += str(rid) + ","
             path_ids = path_ids[:-1] + "\n"
             paths.write(contig_name)
             paths.write(path_ids)
         paths.close()
+
+def process_pe_info(node_ids, pe_info_file, st_info_file):
+    pe_info = {}
+    for u in node_ids:
+        for v in node_ids:
+            pe_info[(min(u,v),max(u,v))] = 0
+    with open(pe_info_file, "r") as file:
+        for line in file:
+            if line == "\n":
+                break
+            [u,v,mark] = line[:-1].split(":")[:3]
+            # bidirection
+            key = (min(u,v),max(u,v))
+            if pe_info.get(key) != None:
+                pe_info[key] += int(mark)
+        file.close()
+   
+    with open(st_info_file, "r") as file:
+        for line in file:
+            if line == "\n":
+                break
+            [u,v,mark] = line[:-1].split(":")[:3]
+            # bidirection
+            key = (min(u,v),max(u,v))
+            if pe_info.get(key) != None:
+                pe_info[key] += int(mark)
+        file.close()
+
+    return pe_info
+
+def store_reinit_graph(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, logger: Logger, opt_filename):
+    graph_to_gfa(graph, simp_node_dict, simp_edge_dict, logger, opt_filename)
+    grapho, simp_node_dicto, simp_edge_dicto = flipped_gfa_to_graph(opt_filename, logger)
+    assign_edge_flow(grapho, simp_node_dicto, simp_edge_dicto)
+    return grapho, simp_node_dicto, simp_edge_dicto

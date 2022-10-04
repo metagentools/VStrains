@@ -58,8 +58,8 @@ def coverage_rebalance_s(
         incident_vs.append((u, node, v, graph.ep.overlap[edge]))
         graph_remove_edge(graph, simp_edge_dict, uid, vid)
         graph.remove_edge(edge)
-        graph_add_edge(graph, simp_edge_dict, u, uid, node, graph.vp.id[node], 0, 0)
-        graph_add_edge(graph, simp_edge_dict, node, graph.vp.id[node], v, vid, 0, 0)
+        graph_add_edge(graph, simp_edge_dict, u, node, 0, 0)
+        graph_add_edge(graph, simp_edge_dict, node, v, 0, 0)
 
     coverage_rebalance_ave(graph, simp_node_dict, simp_edge_dict, logger)
 
@@ -78,9 +78,7 @@ def coverage_rebalance_s(
             graph,
             simp_edge_dict,
             src,
-            graph.vp.id[src],
             tgt,
-            graph.vp.id[tgt],
             overlap,
             graph.vp.dp[node],
         )
@@ -89,7 +87,7 @@ def coverage_rebalance_s(
 
     for (uid, vid, o) in removed_edges:
         graph_add_edge(
-            graph, simp_edge_dict, simp_node_dict[uid], uid, simp_node_dict[vid], vid, o
+            graph, simp_edge_dict, simp_node_dict[uid], simp_node_dict[vid], o
         )
     logger.info("done")
     return
@@ -100,6 +98,9 @@ def coverage_rebalance_ave(
 ):
     # set cutoff delta
     cutoff = 0.00001 * len(simp_node_dict)
+    # 0.005
+    # * len(simp_node_dict)
+    # 0.00001 * len(simp_node_dict)
     logger.debug("cutoff coverage-unbalance rate: " + str(cutoff))
     BOUND_ITER = len(simp_node_dict) + len(simp_edge_dict)
     it = 0
@@ -156,6 +157,7 @@ def coverage_rebalance_ave(
         sum_delta = deltas / sum(
             [graph.vp.dp[node] for node in graph.vertices()]
         )
+        logger.debug("delta: " + str(sum_delta))
         if sum_delta < cutoff:
             logger.debug("final delta: " + str(sum_delta))
             break

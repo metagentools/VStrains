@@ -354,24 +354,32 @@ def threshold_estimation(graph: Graph, logger: Logger, temp_dir):
     plt.savefig("{0}{1}".format(temp_dir, "/tmp/bar_plot.png"))
     return threshold
 
-
+# legacy FIXME
 def delta_estimation(graph: Graph, logger: Logger, tempdir, cutoff_size=200):
     logger.info("Start delta estimation")
     xs = []
     ys = []
     sample_size = 0
     for node in graph.vertices():
-        if (
-            sum([x.out_degree() for x in node.in_neighbors()]) == node.in_degree()
-            and sum([y.in_degree() for y in node.out_neighbors()]) == node.out_degree()
-        ):
-            if node.in_degree() > 1:
-                sample_size += 1
-            lv = sum([graph.vp.dp[n] for n in node.in_neighbors()])
-            rv = sum([graph.vp.dp[n] for n in node.out_neighbors()])
-            m = graph.vp.dp[node]
-            xs.extend([lv, rv])
-            ys.extend([m, m])
+        if node.in_degree() != 0:
+            isum = sum([graph.ep.flow[e] for e in node.in_edges()])
+            xs.append(isum)
+            ys.append(graph.vp.dp[node])
+        if node.out_degree() != 0:
+            osum = sum([graph.ep.flow[e] for e in node.out_edges()])
+            xs.append(osum)
+            ys.append(graph.vp.dp[node])
+        # if (
+        #     sum([x.out_degree() for x in node.in_neighbors()]) == node.in_degree()
+        #     and sum([y.in_degree() for y in node.out_neighbors()]) == node.out_degree()
+        # ):
+        #     if node.in_degree() > 1:
+        #         sample_size += 1
+        #     lv = sum([graph.vp.dp[n] for n in node.in_neighbors()])
+        #     rv = sum([graph.vp.dp[n] for n in node.out_neighbors()])
+        #     m = graph.vp.dp[node]
+        #     xs.extend([lv, rv])
+            # ys.extend([m, m])
 
     plt.figure(figsize=(12, 8))
     plt.hist([b - a for b, a in zip(ys, xs)], bins=len(ys))
@@ -494,7 +502,10 @@ def graph_simplification(
         + " Total edges: "
         + str(len(simp_edge_dict))
     )
-    node_to_contig_dict, edge_to_contig_dict = contig_map_node(contig_dict)
+    node_to_contig_dict = {}
+    edge_to_contig_dict = {}
+    if contig_dict != None:
+        node_to_contig_dict, edge_to_contig_dict = contig_map_node(contig_dict)
     # iterate until no more node be removed from the graph
     for id, node in list(simp_node_dict.items()):
         if graph.vp.dp[node] <= min_cov:

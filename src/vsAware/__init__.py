@@ -88,6 +88,7 @@ def main():
         "-r",
         "--reference_fa",
         dest="ref_file",
+        default=None,
         type=str,
         help=argparse.SUPPRESS,
     )
@@ -107,6 +108,41 @@ def main():
         dest="dev",
         action="store_true",
         default=False,
+        help=argparse.SUPPRESS,
+    )
+
+    #FIXME temp holder
+    parser.add_argument(
+        "-e1",
+        "--pe_info",
+        dest="pe_info",
+        type=str,
+        help=argparse.SUPPRESS,
+    )
+
+    parser.add_argument(
+        "-e2",
+        "--st_info",
+        dest="st_info",
+        default=None,
+        type=str,
+        help=argparse.SUPPRESS,
+    )
+
+    parser.add_argument(
+        "-fwd",
+        "--fwd_file",
+        dest="fwd",
+        default=None,
+        type=str,
+        help=argparse.SUPPRESS,
+    )
+
+    parser.add_argument(
+        "-rve",
+        "--rve_file",
+        dest="rve",
+        type=str,
         help=argparse.SUPPRESS,
     )
 

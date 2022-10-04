@@ -6,6 +6,7 @@ import numpy
 from utils.vsAware_Utilities import *
 from utils.vsAware_CovBalance import assign_edge_flow, coverage_rebalance_s
 from utils.vsAware_IO import graph_to_gfa, flipped_gfa_to_graph
+from utils.vsAware_IO import contig_dict_to_fasta, contig_dict_to_path
 
 __author__ = "Runpeng Luo"
 __copyright__ = "Copyright 2022-2025, vsAware Project"
@@ -27,6 +28,7 @@ def iterated_graph_split(
     b0,
     b1,
     threshold,
+    ref_file,
 ):
     BOUND_ITER = len(simp_node_dict) ** 2
     it = 0
@@ -69,6 +71,23 @@ def iterated_graph_split(
             prev_ids,
             logger,
         )
+
+        contig_dict_to_path(contig_dict, "{0}/tmp/inte_contigs.paths".format(tempdir))
+        contig_dict_to_fasta(
+            graphb,
+            simp_node_dictb,
+            contig_dict,
+            "{0}/tmp/inte_contigs.fasta".format(tempdir),
+        )
+        minimap_api(
+            ref_file,
+            "{0}/tmp/inte_contigs.fasta".format(tempdir),
+            "{0}/paf/inte_contigs_to_strain.paf".format(tempdir),
+        )
+        map_ref_to_contig(
+            contig_dict, logger, "{0}/paf/inte_contigs_to_strain.paf".format(tempdir)
+        )
+
         # non-trivial branch split
         num_split = graph_splitting(
             graphb,
@@ -79,6 +98,7 @@ def iterated_graph_split(
             b0,
             b1,
             threshold,
+            ref_file
         )
         graph_to_gfa(
             graphb,
@@ -92,7 +112,7 @@ def iterated_graph_split(
         )
 
         simp_path_compactification(
-            graphc, simp_node_dictc, simp_edge_dictc, contig_dict, logger
+            graphc, simp_node_dictc, simp_edge_dictc, contig_dict, None, None, logger
         )
 
         graph_to_gfa(
@@ -138,7 +158,7 @@ def iterated_graph_split(
     assign_edge_flow(grapho, simp_node_dicto, simp_edge_dicto)
 
     # remove duplicated contigs
-    contig_dup_removed_s(contig_dict, logger)
+    # contig_dup_removed_s(contig_dict, logger)
     # concat overlapped contigs
     concat_overlap_contig(grapho, simp_node_dicto, simp_edge_dicto, contig_dict, logger)
     trim_contig_dict(grapho, simp_node_dicto, contig_dict, logger)
@@ -171,73 +191,70 @@ def graph_split_trivial(
                 id_mapping[id] = set()
             ines = [ue for ue in node.in_edges() if graph.ep.color[ue] == "black"]
             outes = [ve for ve in node.out_edges() if graph.ep.color[ve] == "black"]
-            if len(ines) == 0 and len(outes) > 1:
-                logger.debug(id + " current node is source node, split left")
-                graph.vp.color[node] = "gray"
-                # create len(outes) subnodes
-                s = "A"
-                for i in range(len(outes)):
-                    oute = outes[i]
-                    tgt = oute.target()
-                    snode = graph_add_vertex(
-                        graph,
-                        simp_node_dict,
-                        id + "*" + chr(ord(s) + i),
-                        graph.ep.flow[oute],
-                        graph.vp.seq[node],
-                    )
-                    graph.ep.color[oute] = "gray"
-                    sedge = graph_add_edge(
-                        graph,
-                        simp_edge_dict,
-                        snode,
-                        graph.vp.id[snode],
-                        tgt,
-                        graph.vp.id[tgt],
-                        graph.ep.overlap[oute],
-                        graph.ep.flow[oute],
-                    )
-                    simp_node_dict[graph.vp.id[snode]] = snode
-                    simp_edge_dict[
-                        (graph.vp.id[sedge.source()], graph.vp.id[sedge.target()])
-                    ] = sedge
-                    id_mapping[id].add(graph.vp.id[snode])
-                has_split = True
-                trivial_split_count += 1
-            elif len(ines) > 1 and len(outes) == 0:
-                logger.debug(id + " current node is sink node, split right")
-                graph.vp.color[node] = "gray"
-                # create len(ines) subnodes
-                s = "A"
-                for i in range(len(ines)):
-                    ine = ines[i]
-                    src = ine.source()
-                    snode = graph_add_vertex(
-                        graph,
-                        simp_node_dict,
-                        id + "*" + chr(ord(s) + i),
-                        graph.ep.flow[ine],
-                        graph.vp.seq[node],
-                    )
-                    graph.ep.color[ine] = "gray"
-                    sedge = graph_add_edge(
-                        graph,
-                        simp_edge_dict,
-                        src,
-                        graph.vp.id[src],
-                        snode,
-                        graph.vp.id[snode],
-                        graph.ep.overlap[ine],
-                        graph.ep.flow[ine],
-                    )
-                    simp_node_dict[graph.vp.id[snode]] = snode
-                    simp_edge_dict[
-                        (graph.vp.id[sedge.source()], graph.vp.id[sedge.target()])
-                    ] = sedge
-                    id_mapping[id].add(graph.vp.id[snode])
-                has_split = True
-                trivial_split_count += 1
-            elif len(ines) == 1 and len(outes) > 1:
+            # if len(ines) == 0 and len(outes) > 1:
+            #     logger.debug(id + " current node is source node, split left")
+            #     graph.vp.color[node] = "gray"
+            #     # create len(outes) subnodes
+            #     s = "A"
+            #     for i in range(len(outes)):
+            #         oute = outes[i]
+            #         tgt = oute.target()
+            #         snode = graph_add_vertex(
+            #             graph,
+            #             simp_node_dict,
+            #             id + "*" + chr(ord(s) + i),
+            #             graph.ep.flow[oute],
+            #             graph.vp.seq[node],
+            #         )
+            #         graph.ep.color[oute] = "gray"
+            #         sedge = graph_add_edge(
+            #             graph,
+            #             simp_edge_dict,
+            #             snode,
+            #             tgt,
+            #             graph.ep.overlap[oute],
+            #             graph.ep.flow[oute],
+            #         )
+            #         simp_node_dict[graph.vp.id[snode]] = snode
+            #         simp_edge_dict[
+            #             (graph.vp.id[sedge.source()], graph.vp.id[sedge.target()])
+            #         ] = sedge
+            #         id_mapping[id].add(graph.vp.id[snode])
+            #     has_split = True
+            #     trivial_split_count += 1
+            # elif len(ines) > 1 and len(outes) == 0:
+            #     logger.debug(id + " current node is sink node, split right")
+            #     graph.vp.color[node] = "gray"
+            #     # create len(ines) subnodes
+            #     s = "A"
+            #     for i in range(len(ines)):
+            #         ine = ines[i]
+            #         src = ine.source()
+            #         snode = graph_add_vertex(
+            #             graph,
+            #             simp_node_dict,
+            #             id + "*" + chr(ord(s) + i),
+            #             graph.ep.flow[ine],
+            #             graph.vp.seq[node],
+            #         )
+            #         graph.ep.color[ine] = "gray"
+            #         sedge = graph_add_edge(
+            #             graph,
+            #             simp_edge_dict,
+            #             src,
+            #             snode,
+            #             graph.ep.overlap[ine],
+            #             graph.ep.flow[ine],
+            #         )
+            #         simp_node_dict[graph.vp.id[snode]] = snode
+            #         simp_edge_dict[
+            #             (graph.vp.id[sedge.source()], graph.vp.id[sedge.target()])
+            #         ] = sedge
+            #         id_mapping[id].add(graph.vp.id[snode])
+            #     has_split = True
+            #     trivial_split_count += 1
+            # el
+            if len(ines) == 1 and len(outes) > 1:
                 logger.debug(id + " split left")
                 graph.vp.color[node] = "gray"
                 ine = ines[0]
@@ -259,9 +276,7 @@ def graph_split_trivial(
                         graph,
                         simp_edge_dict,
                         snode,
-                        graph.vp.id[snode],
                         tgt,
-                        graph.vp.id[tgt],
                         graph.ep.overlap[oute],
                         graph.ep.flow[oute],
                     )
@@ -277,9 +292,7 @@ def graph_split_trivial(
                         graph,
                         simp_edge_dict,
                         src,
-                        graph.vp.id[src],
                         snode,
-                        graph.vp.id[snode],
                         graph.ep.overlap[ine],
                         graph.ep.flow[oute],
                     )
@@ -311,9 +324,7 @@ def graph_split_trivial(
                         graph,
                         simp_edge_dict,
                         src,
-                        graph.vp.id[src],
                         snode,
-                        graph.vp.id[snode],
                         graph.ep.overlap[ine],
                         graph.ep.flow[ine],
                     )
@@ -326,9 +337,7 @@ def graph_split_trivial(
                         graph,
                         simp_edge_dict,
                         snode,
-                        graph.vp.id[snode],
                         tgt,
-                        graph.vp.id[tgt],
                         graph.ep.overlap[oute],
                         graph.ep.flow[ine],
                     )
@@ -351,6 +360,26 @@ def graph_split_trivial(
         logger.info("done")
         return trivial_split_count, id_mapping
 
+def best_aln_score(graph: Graph, ori, strain, ref_file, temp_dir):
+    fname = "{0}/temp_{1}.fa".format(temp_dir, ori)
+    pafname = "{0}/temp_{1}_aln.paf".format(temp_dir, ori)
+    subprocess.check_call("echo \"\" > {0}".format(fname), shell=True)
+    with open(fname, "w") as f:
+        f.write(">{0}\n".format(ori))
+        f.write("{0}\n".format(path_to_seq(graph, strain, "")))
+        f.close()
+    minimap_api(ref_file, fname, pafname)
+    subprocess.check_call("rm {0}".format(fname), shell=True)
+    best_aln = []
+    with open(pafname, "r") as paf:
+        for line in paf.readlines():
+            splited = line[:-1].split("\t")
+            if len(splited) < 12:
+                continue
+            best_aln.append([splited[0], int(splited[10]), splited[5], int(splited[10]) - int(splited[9])])
+        paf.close()
+    subprocess.check_call("rm {0}".format(pafname), shell=True)
+    return best_aln
 
 def graph_splitting(
     graph: Graph,
@@ -361,6 +390,7 @@ def graph_splitting(
     b0,
     b1,
     threshold,
+    ref_file
 ):
     """
     n-n branch splitting, # FIXME add more restrict rule to avoid false positive split
@@ -420,7 +450,7 @@ def graph_splitting(
                         no,
                         next_no,
                     ) not in simp_edge_dict:
-                        # print("edge has been removed already")
+                        # logger.debug("edge has been removed already")
                         continue
                     logger.debug("Delta: " + str(delta))
                     involved_contigs = []
@@ -429,31 +459,44 @@ def graph_splitting(
                     for cno in support_contigs:
                         contig, clen, ccov = contig_dict[cno]
                         if len(contig) < 3:
-                            # print("unnecessary contig (len < 3) check: ", contig)
+                            # logger.debug("unnecessary contig (len < 3) check: ", contig)
                             if prev_no in contig or next_no in contig:
                                 involved_contigs.append(cno)
                         elif prev_no in contig and next_no in contig:
                             is_conf = True
                             involved_contigs.append(cno)
-                            # print_contig(cno, clen, ccov, contig, "support contig ")
+                            print_contig(cno, clen, ccov, contig, logger, "support contig ")
                         elif prev_no in contig and next_no not in contig:
-                            # print("contig {0}, {1} pass cross edge".format(cno, ccov))
+                            logger.debug("contig {0}, {1} pass cross edge".format(cno, ccov))
                             cross_talk = True
                             break
                         elif prev_no not in contig and next_no in contig:
-                            # print("contig {0}, {1} pass cross edge".format(cno, ccov))
+                            logger.debug("contig {0}, {1} pass cross edge".format(cno, ccov))
                             cross_talk = True
                             break
                         else:
                             None
                     if cross_talk:
                         None
-                        # print("- current branch split forbidden, cross talk", prev_no, no, next_no)
+                        logger.debug("- current branch split forbidden, cross talk {0} -> {1} -> {2}".format(prev_no, no, next_no))
                     elif not is_conf and (ine_usage[ie] > 1 or oute_usage[oe] > 1):
                         None
-                        # print("- current branch split forbidden, no supporting contig path, ambigous split", prev_no, no, next_no)
+                        logger.debug("- current branch split forbidden, no supporting contig path, ambigous split {0} -> {1} -> {2}".format(prev_no, no, next_no))
                     else:
-                        logger.debug("- branch split performed")
+                        logger.debug("- branch split performed - {0}:{1} - {2} - {3}:{4} - (is_conf: {5})".format(prev_no, graph.ep.flow[ie], no, next_no, graph.ep.flow[oe], is_conf))
+                        # map to reference to check correctness
+                        ref_l = best_aln_score(graph, "L", [prev_node], ref_file, ".")
+                        ref_r = best_aln_score(graph, "R", [next_node], ref_file, ".")
+                        best_aln_l = [ref for [_, l, ref, nm] in ref_l if nm == 0 and l == len(graph.vp.seq[prev_node])]
+                        best_aln_r = [ref for [_, l, ref, nm] in ref_r if nm == 0 and l == len(graph.vp.seq[next_node])]
+                        its_refs = set(best_aln_l).intersection(set(best_aln_r))
+                        logger.debug("aln left: " + str(best_aln_l))
+                        logger.debug("aln right: " + str(best_aln_r))
+                        if len(its_refs) != 0:
+                            logger.debug("perfect split")
+                        else:
+                            logger.debug("potential incorrect split")
+
                         split_branches.append(no)
 
                         subid = no + "*" + str(i)
@@ -473,9 +516,7 @@ def graph_splitting(
                             graph,
                             simp_edge_dict,
                             prev_node,
-                            prev_no,
                             sub_node,
-                            subid,
                             graph.ep.overlap[ie],
                             graph.ep.flow[ie],
                         )
@@ -483,9 +524,7 @@ def graph_splitting(
                             graph,
                             simp_edge_dict,
                             sub_node,
-                            subid,
                             next_node,
-                            next_no,
                             graph.ep.overlap[oe],
                             graph.ep.flow[oe],
                         )
@@ -507,9 +546,9 @@ def graph_splitting(
     for cno, [contig, _, _] in list(contig_dict.items()):
         if len(contig) <= 1 and contig[0] not in simp_node_dict:
             contig_dict.pop(cno)
-            # print("isolated contig node {0}, prepared to pop, check any replacement".format(cno))
+            # logger.debug("isolated contig node {0}, prepared to pop, check any replacement".format(cno))
             if contig[0] in no_mapping:
-                # print("mapping: {0} -> {1}".format(contig[0], no_mapping[contig[0]]))
+                # logger.debug("mapping: {0} -> {1}".format(contig[0], no_mapping[contig[0]]))
                 s = "A"
                 for i, mapped in enumerate(no_mapping[contig[0]]):
                     if mapped in simp_node_dict:
@@ -519,7 +558,7 @@ def graph_splitting(
                             path_len(graph, [mapped_node]),
                             graph.vp.dp[mapped_node],
                         ]
-                        # print("mapped cno: ", cno+chr(ord(s) + i), mapped)
+                        # logger.debug("mapped cno: ", cno+chr(ord(s) + i), mapped)
 
     # remove all the isolated low cov node&edge not in contig
     node_to_contig_dict, _ = contig_map_node(contig_dict)

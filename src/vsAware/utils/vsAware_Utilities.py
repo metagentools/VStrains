@@ -20,6 +20,26 @@ __email__ = "John.Luo@anu.edu.au"
 __status__ = "Production"
 
 
+def assign_edge_flow(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict):
+    """
+    Assign the edge flow based on node weight and contig alignment.
+    """
+    for (u, v), e in simp_edge_dict.items():
+
+        u_node = simp_node_dict[u]
+        u_out_sum = numpy.sum([graph.vp.dp[n] for n in u_node.out_neighbors()])
+
+        v_node = simp_node_dict[v]
+        v_in_sum = numpy.sum([graph.vp.dp[n] for n in v_node.in_neighbors()])
+
+        graph.ep.flow[e] = numpy.mean(
+            [
+                (graph.vp.dp[v_node] / u_out_sum) * graph.vp.dp[u_node],
+                (graph.vp.dp[u_node] / v_in_sum) * graph.vp.dp[v_node],
+            ]
+        )
+    return
+
 def map_ref_to_graph(
     ref_file,
     simp_node_dict: dict,
@@ -149,6 +169,52 @@ def trim_contig_dict(
     logger.info("done")
     return contig_dict
 
+def is_non_trivial(graph, node):
+    us = [graph.vp.id[e.source()] for e in node.in_edges() if graph.ep.color[e] == "black"]
+    ws = [graph.vp.id[e.target()] for e in node.out_edges() if graph.ep.color[e] == "black"]
+    intersects = set(us).intersection(set(ws))
+    return len(us) > max(len(intersects), 1) and len(ws) > max(len(intersects), 1)
+
+def get_non_trivial_branches(graph: Graph, simp_node_dict: dict):
+    non_trivial_branches = {}
+    for no, node in simp_node_dict.items():
+        if is_non_trivial(graph, node):
+            non_trivial_branches[no] = node
+    return non_trivial_branches
+
+def increment_nt_branch_coverage(graph: Graph, simp_node_dict: dict, logger: Logger):
+    nt_branches = get_non_trivial_branches(graph, simp_node_dict)
+    for no, node in nt_branches.items():
+        prev_dp = graph.vp.dp[node]
+        if (
+            sum([x.out_degree() for x in node.in_neighbors()]) == node.in_degree()
+            and sum([y.in_degree() for y in node.out_neighbors()]) == node.out_degree()
+        ):
+            sum_in_dp = sum(graph.vp.dp[n] for n in node.in_neighbors())
+            sum_out_dp = sum(graph.vp.dp[n] for n in node.out_neighbors())
+            graph.vp.dp[node] = max([prev_dp, sum_in_dp, sum_out_dp])
+            logger.debug("Simple NT Branch:{0}, cov: {1} -> {2}".format(no, prev_dp, graph.vp.dp[node]))
+
+        else:
+            sum_in_flow = sum(graph.ep.flow[e] for e in node.in_edges())
+            sum_out_flow = sum(graph.ep.flow[e] for e in node.out_edges())
+            graph.vp.dp[node] = max([prev_dp, sum_in_flow, sum_out_flow])
+            logger.debug("Non-Simple NT Branch:{0}, cov: {1} -> {2}".format(no, prev_dp, graph.vp.dp[node]))
+
+def contig_resolve(contig_dict: dict):
+    rid = ""
+    for cno in contig_dict.keys():
+        [contig, clen, ccov] = contig_dict[cno]
+        rcontig = []
+        for id in contig:
+            for iid in str(id).split("&"):
+                if iid.find("*") != -1:
+                    rid = iid[: iid.find("*")]
+                else:
+                    rid = iid
+                rcontig.append(rid)
+        contig_dict[cno] = [rcontig, clen, ccov]
+    return
 
 def contig_map_node(contig_dict: dict):
     node_to_contig_dict = {}

@@ -40,7 +40,7 @@ def quast_eval(files, ref, o, quast, id=0):
 
     ref_file_list = sep_ref(ref, id)
 
-    command = "python2 {0} --unique-mapping -m 0 -t 8 ".format(quast)
+    command = "python2 {0} --unique-mapping -m 500 -t 8 ".format(quast)
 
     for fname in files:
         command += fname + " "

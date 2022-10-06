@@ -1,12 +1,10 @@
 #!/usr/bin/env python3
-import argparse
 import os
 import time
 import subprocess
 import numpy
-from datetime import date
-
 import multiprocessing
+import logging
 
 __author__ = "Runpeng Luo"
 __copyright__ = "Copyright 2022-2025, vsAware Project"
@@ -18,8 +16,8 @@ __email__ = "John.Luo@anu.edu.au"
 __status__ = "Production"
 
 def process_paf_file(index2id, index2reflen, len_index2id, read_ids, fwd_paf_file, rve_paf_file, tid):
-    print("Thread {0} start".format(tid))
-    print("current pid: {0}".format(os.getpid()))
+    # print("Thread {0} start".format(tid))
+    # print("current pid: {0}".format(os.getpid()))
     start = time.time()
 
     node_mat = numpy.zeros((len_index2id, len_index2id), dtype=int)
@@ -57,8 +55,8 @@ def process_paf_file(index2id, index2reflen, len_index2id, read_ids, fwd_paf_fil
         with open(file, "r") as fwd_paf:
             file_count = 0
             for line in fwd_paf:
-                if round((time.time() - start) % 60) == 1:
-                    print("Thread {0}: Processed {1} mapping up to now.".format(tid, file_count))
+                # if round((time.time() - start) % 60) == 1:
+                #     print("Thread {0}: Processed {1} mapping up to now.".format(tid, file_count))
                 if line == "\n":
                     break
                 splited = (line[:-1]).split("\t")
@@ -149,8 +147,8 @@ def process_paf_file(index2id, index2reflen, len_index2id, read_ids, fwd_paf_fil
 
     for (glb_id, fwdlen, revlen) in index2read:
         glb_index = read2index[glb_id]
-        if round((time.time() - start) % 60) == 0:
-            print("{0}, thread: {1} current read id: {2}".format(date.today().strftime("%B %d, %Y"), tid, glb_id))
+        # if round((time.time() - start) % 60) == 0:
+        #     print("{0}, thread: {1} current read id: {2}".format(date.today().strftime("%B %d, %Y"), tid, glb_id))
         
         
         lefts = retrieve_single_end_saturation(glb_index, conf_alns_f, conf_cords_f, fwdlen)
@@ -176,8 +174,8 @@ def process_paf_file(index2id, index2reflen, len_index2id, read_ids, fwd_paf_fil
         conf_alns_r[glb_index] = None
 
     elapsed = time.time() - start
-    print("thread: {0} found non unique kmer count: {1}".format(tid, nonunique_counter))
-    print("thread: {0} time spent for processing paf file: {1}".format(tid, elapsed))
+    # print("thread: {0} found non unique kmer count: {1}".format(tid, nonunique_counter))
+    # print("thread: {0} time spent for processing paf file: {1}".format(tid, elapsed))
     return node_mat, short_mat
 
 def batch_split(fwd_file: str, rve_file: str, temp_dir: str, batch_size: int, do_split: bool):
@@ -214,8 +212,8 @@ def batch_split(fwd_file: str, rve_file: str, temp_dir: str, batch_size: int, do
             # marker_test = 1
             # total_size = min(marker_test, total_size) 
             for i in range( total_size):
-                if i % batch_size == 0:
-                    print("Processed {0} reads up to now.".format(i))
+                # if i % batch_size == 0:
+                #     print("Processed {0} reads up to now.".format(i))
                 [_, fseq, _, feval] = [
                     s[:-1] for s in fwd_reads[i * 4 : (i + 1) * 4]
                 ]
@@ -288,19 +286,19 @@ def batch_split(fwd_file: str, rve_file: str, temp_dir: str, batch_size: int, do
         fwd.close()
         rve.close()
 
-    print("total number of reads (before): ", total_size)
-    print("total reads containing N: ", n_reads)
-    print("total reads too short [<128]: ", short_reads)
-    print("total number of reads (used): ", used_reads)
-    print("total number of forward reads kmer: ", fkmer)
-    print("total number of reverse reads kmer: ", rkmer)
+    # print("total number of reads (before): ", total_size)
+    # print("total reads containing N: ", n_reads)
+    # print("total reads too short [<128]: ", short_reads)
+    # print("total number of reads (used): ", used_reads)
+    # print("total number of forward reads kmer: ", fkmer)
+    # print("total number of reverse reads kmer: ", rkmer)
     return read_summary, sub_files
 
-def minimap_alignment(fasta_file, sub_files, temp_dir):
+def minimap_alignment(fasta_file, sub_files, temp_dir, logger: logging.Logger):
+    start = time.time()
+    logger.info("Start minimap2 alignments")
     paf_files = []
     for i, (sub_fwd_filename, sub_rve_filename) in enumerate(sub_files):
-        print("minimap reads {0},{1} to graph..".format(sub_fwd_filename, sub_rve_filename))
-        start = time.time()
         sub_fwd_paf = "{0}/temp_fwd_aln_{1}.paf".format(temp_dir, i)
         subprocess.check_call(
             "minimap2 -c -t 16 {0} {1} > {2}".format(
@@ -325,47 +323,19 @@ def minimap_alignment(fasta_file, sub_files, temp_dir):
         )
 
         paf_files.append((sub_fwd_paf, sub_rve_paf))
-        elapsed = time.time() - start
-        print("Time spent for minimap2: ", elapsed)
+    elapsed = time.time() - start
+    logger.debug("Time spent for minimap2: ", elapsed)
     return paf_files
 
-def main():
-    parser = argparse.ArgumentParser(
-        prog="pe_info",
-        description="""Align Paired-End reads to nodes in graph to obtain strong links""",
-    )
-
-    parser.add_argument(
-        "-g", "--gfa,", dest="gfa", type=str, required=True, help="graph, .gfa format"
-    )
-
-    parser.add_argument(
-        "-o", "--output_dir", dest="dir", type=str, required=True, help="output directory",
-    )
-
-    parser.add_argument(
-        "-f", "--forward", dest="fwd", required=True, help="forward read, .fastq"
-    )
-
-    parser.add_argument(
-        "-r", "--reverse", dest="rve", required=True, help="reverse read, .fastq"
-    )
-
-    args = parser.parse_args()
-
-    # initialize output directory
-    if args.dir[-1] == "/":
-        args.dir = args.dir[:-1]
-    subprocess.check_call("rm -rf {0}".format(args.dir), shell=True)
-    os.makedirs(args.dir, exist_ok=True)
-
+def aln_pe_reads(gfa_file, fwd_file, rve_file, temp_dir, logger: logging.Logger, batch_size=40000, pcount=8):
+    logger.info("Start Pair-end alignment..")
     glb_start = time.time()
-    tmp_g2s_file = "{0}/temp_graph_seq.fasta".format(args.dir)
+    tmp_g2s_file = "{0}/temp_graph_seq.fasta".format(temp_dir)
 
     # convert gfa to fasta file
     index2id = []
     index2reflen = []
-    with open(args.gfa, "r") as gfa:
+    with open(gfa_file, "r") as gfa:
         with open(tmp_g2s_file, "w") as fasta:
             for Line in gfa:
                 splited = (Line[:-1]).split("\t")
@@ -377,25 +347,25 @@ def main():
         gfa.close()
 
     # split reads to several batches
-    read_summary, sub_files = batch_split(args.fwd, args.rve, args.dir, 40000, True)
+    read_summary, sub_files = batch_split(fwd_file, rve_file, temp_dir, batch_size, True)
     # minimap2 reads to fasta file
-    paf_files = minimap_alignment(tmp_g2s_file, sub_files, args.dir)
+    paf_files = minimap_alignment(tmp_g2s_file, sub_files, temp_dir, logger)
 
     len_index2id = len(index2id)
     # process paf files
     local_mats = None
     args_proc = [(index2id, index2reflen, len_index2id, read_summary[i], paf_files[i][0], paf_files[i][1], i) for i in range(len(paf_files))]
-    with multiprocessing.Pool(multiprocessing.cpu_count()) as pool:
+    with multiprocessing.Pool(min(multiprocessing.cpu_count(), pcount)) as pool:
         local_mats = pool.starmap(process_paf_file, args_proc)
         pool.close()
         pool.join()
 
-    print("All processes have finished their job, combine the result.")
+    logger.info("All processes have finished alignment job, combine the result.")
     # combine all the outputs
     glb_node_mat = numpy.sum(numpy.array([mat for (mat,_) in local_mats]), axis=0)
     glb_strand_mat = numpy.sum(numpy.array([mat for (_,mat) in local_mats]), axis=0)
-    out_file = "{0}/pe_info".format(args.dir)
-    out_file2 = "{0}/st_info".format(args.dir)
+    out_file = "{0}/pe_info".format(temp_dir)
+    out_file2 = "{0}/st_info".format(temp_dir)
     subprocess.check_call("touch {0}; echo " " > {0}".format(out_file), shell=True)
     with open(out_file, "w") as outfile:
         with open(out_file2, "w") as outfile2:
@@ -407,9 +377,5 @@ def main():
         outfile.close()
 
     glb_elapsed = time.time() - glb_start
-    print("Global time elapsed: ", glb_elapsed)
-    print("result stored in: ", out_file)
-
-
-if __name__ == "__main__":
-    main()
+    logger.info("Global time elapsed for alignment: {0}".format(glb_elapsed))
+    return

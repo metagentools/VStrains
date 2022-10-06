@@ -7,8 +7,7 @@ import subprocess
 import sys
 import re
 
-from utils.vsAware_Utilities import path_len, reverse_seq, print_vertex, path_ids_to_seq
-from utils.vsAware_CovBalance import assign_edge_flow
+from utils.vsAware_Utilities import *
 
 __author__ = "Runpeng Luo"
 __copyright__ = "Copyright 2022-2025, vsAware Project"
@@ -630,8 +629,10 @@ def process_pe_info(node_ids, pe_info_file, st_info_file):
             if pe_info.get(key) != None:
                 pe_info[key] += int(mark)
         file.close()
-
-    return pe_info
+    dcpy_pe_info = {}
+    for (uid, wid), u in pe_info.items():
+        dcpy_pe_info[(uid, wid)] = u
+    return pe_info, dcpy_pe_info
 
 def store_reinit_graph(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, logger: Logger, opt_filename):
     graph_to_gfa(graph, simp_node_dict, simp_edge_dict, logger, opt_filename)

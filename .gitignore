@@ -44,6 +44,7 @@ example/
 benchmark/*
 quast*/
 acc*/
+testcase/
 src/tmp/*
 *.fa
 *.fq

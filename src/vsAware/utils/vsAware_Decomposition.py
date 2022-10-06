@@ -17,19 +17,6 @@ __email__ = "John.Luo@anu.edu.au"
 __status__ = "Production"
 
 
-def is_non_trivial(graph, node):
-    us = [graph.vp.id[e.source()] for e in node.in_edges() if graph.ep.color[e] == "black"]
-    ws = [graph.vp.id[e.target()] for e in node.out_edges() if graph.ep.color[e] == "black"]
-    intersects = set(us).intersection(set(ws))
-    return len(us) > max(len(intersects), 1) and len(ws) > max(len(intersects), 1)
-
-def get_non_trivial_branches(graph: Graph, simp_node_dict: dict):
-    non_trivial_branches = {}
-    for no, node in simp_node_dict.items():
-        if is_non_trivial(graph, node):
-            non_trivial_branches[no] = node
-    return non_trivial_branches
-
 def link_split(sec_comb: list, kept_link: dict, in_usage: dict, in_capacity: dict, out_usage: dict, out_capacity: dict, logger):
     """update split plan using paired end & single end information
     """

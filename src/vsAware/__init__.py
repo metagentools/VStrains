@@ -111,24 +111,6 @@ def main():
         help=argparse.SUPPRESS,
     )
 
-    #FIXME temp holder
-    parser.add_argument(
-        "-e1",
-        "--pe_info",
-        dest="pe_info",
-        type=str,
-        help=argparse.SUPPRESS,
-    )
-
-    parser.add_argument(
-        "-e2",
-        "--st_info",
-        dest="st_info",
-        default=None,
-        type=str,
-        help=argparse.SUPPRESS,
-    )
-
     parser.add_argument(
         "-fwd",
         "--fwd_file",
@@ -196,6 +178,7 @@ def main():
         os.makedirs(args.output_dir + "/gfa/")
         os.makedirs(args.output_dir + "/tmp/")
         os.makedirs(args.output_dir + "/paf/")
+        os.makedirs(args.output_dir + "/aln/")
     except OSError as _:
         print("\nCurrent output directory is not empty")
         print("Please empty/re-create the output directory: " + str(args.output_dir))

@@ -234,7 +234,7 @@ def contig_extension(graph: Graph, simp_node_dict: dict, contig: list, ccov, ful
                     logger.debug("Last bit fail")
     return final_path
 
-def final_extension(graph: Graph, simp_node_dict: dict, contig: list, usages: dict, nt_branches: dict, full_link: dict, logger: Logger):
+def final_extension(graph: Graph, simp_node_dict: dict, contig: list, full_link: dict, logger: Logger):
     visited = dict.fromkeys(simp_node_dict.keys(), False)
     for no in contig[1:-1]:
         visited[no] = True
@@ -332,7 +332,7 @@ def reduce_id_simple(id_l: list):
                 ids.append(iid)
     return ids
 
-def path_extension(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, contig_dict: dict, full_link: dict, pe_info: dict, logger: Logger, threshold, ref_file, temp_dir):
+def path_extension(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, contig_dict: dict, full_link: dict, pe_info: dict, logger: Logger, threshold, temp_dir):
     logger.debug("-------------------------PATH Extension, delta: {0}".format(threshold))
     usages = dict.fromkeys(simp_node_dict.keys(), 0) # record the usage of each nodes
     strain_dict = {}
@@ -379,16 +379,6 @@ def path_extension(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, con
             usages.pop(no)
             for new_no in red_id_mapping[no]:
                 usages[new_no] = u
-
-        map_ref_to_graph(
-            ref_file,
-            simp_node_dict,
-            "{0}/gfa/graph_S{1}.gfa".format(temp_dir, rid),
-            logger,
-            False,
-            "{0}/paf/node_to_ref_S{1}.paf".format(temp_dir, rid),
-            "{0}/tmp/temp_gfa_to_fasta_S{1}.fasta".format(temp_dir, rid),
-        )
         ############################
         # get longest contig
         (longest_cno, [contig, clen, ccov]) = max(contig_dict.items(), key=lambda tp: tp[1][1])
@@ -406,7 +396,6 @@ def path_extension(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, con
 
         path = contig_extension(graph, simp_node_dict, contig, min(ccov, bbl_cov), full_link, logger, threshold)
         pno = "A" + str(rid)
-        path_seq = path_to_seq(graph, path, pno)
         plen = path_len(graph, path)
         path_ids = [graph.vp.id[n] for n in path]
         sno2ids[pno] = []
@@ -420,7 +409,7 @@ def path_extension(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, con
         pcov = min([ccov, bbl_pcov, bbl_cov])
         logger.debug(path_to_id_string(graph, path, "---*extended from contig {0}".format(longest_cno)))
         logger.debug("name: {0}, plen: {1}, pcov: {2}, bubble cov: {3}".format(pno, plen, pcov, bbl_pcov))
-        strain_dict[pno] = [path_seq, plen, pcov]
+        strain_dict[pno] = [sno2ids[pno], plen, pcov]
         for pid in path_ids:
             if pid in strain_dict:
                 strain_dict.pop(pid)
@@ -525,11 +514,16 @@ def path_extension(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, con
         if usages[graph.vp.id[node]] == 0:
             logger.debug("Extend from free node: {0}".format(graph.vp.id[node]))
             ccov = graph.vp.dp[node]
-            path = final_extension(graph, simp_node_dict, [graph.vp.id[node]], usages, nt_branches, final_links, logger)
+            path = final_extension(graph, simp_node_dict, [graph.vp.id[node]], final_links, logger)
             pno = "N" + str(rid)
-            path_seq = path_to_seq(graph, path, pno)
             plen = path_len(graph, path)
             path_ids = [graph.vp.id[n] for n in path]
+            pids = []
+            for pid in path_ids:
+                if pid in sno2ids:
+                    pids.extend(sno2ids[pid])
+                else:
+                    pids.append(pid)
             for pid in path_ids:
                 if pid in strain_dict:
                     strain_dict.pop(pid)
@@ -537,12 +531,11 @@ def path_extension(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, con
             pcov = numpy.median([graph.vp.dp[node] for node in pbubbles]) if len(pbubbles) != 0 else graph.vp.dp[node]
             logger.debug(path_to_id_string(graph, path, "---*extended from free node {0}".format(graph.vp.id[node])))
             logger.debug("name: {0}, plen: {1}, pcov: {2}".format(pno, plen, pcov))
-            if pcov > threshold:
-                strain_dict[pno] = [path_seq, plen, pcov]
+            strain_dict[pno] = [pids, plen, pcov]
             for node in path:
                 usages[graph.vp.id[node]] += 1
             rid += 1
     for sno, [_, _, scov] in list(strain_dict.items()):
-        if scov <= threshold:
+        if scov <= 2*threshold:
             strain_dict.pop(sno)
     return strain_dict, usages

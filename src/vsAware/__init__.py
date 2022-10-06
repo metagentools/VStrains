@@ -71,7 +71,7 @@ def main():
         default=None,
         type=int,
         help=(
-            "minimum node coverage cutoff, also apply to filter the low-coverage strain [default: auto]"
+            "minimum node coverage cutoff [default: auto]"
         ),
     )
 
@@ -81,7 +81,7 @@ def main():
         dest="min_len",
         default=None,
         type=int,
-        help=("minimum initial contig length for strains [default: 250]"),
+        help=("minimum initial contig length [default: 250]"),
     )
 
     parser.add_argument(
@@ -115,17 +115,20 @@ def main():
         "-fwd",
         "--fwd_file",
         dest="fwd",
+        required=True,
         default=None,
         type=str,
-        help=argparse.SUPPRESS,
+        help="sequencing reads, forward strand (.fastq format)",
     )
 
     parser.add_argument(
         "-rve",
         "--rve_file",
         dest="rve",
+        required=True,
+        default=None,
         type=str,
-        help=argparse.SUPPRESS,
+        help="sequencing reads, reverse strand (.fastq format)",
     )
 
     args = parser.parse_args()

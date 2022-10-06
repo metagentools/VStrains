@@ -70,9 +70,9 @@ vsAware natively support assembly result from SPAdes (includes metaSPAdes, metav
 ## Quick Usage
 
 ```bash
-usage: vsAware [-h] -a {spades} -g GFA_FILE [-p PATH_FILE] [-mc MIN_COV] [-ml MIN_LEN] [-r REF_FILE] [-o OUTPUT_DIR]
+usage: vsAware [-h] -a {spades} -g GFA_FILE [-p PATH_FILE] [-mc MIN_COV] [-ml MIN_LEN] [-o OUTPUT_DIR] -fwd FWD -rve RVE
 
-Construct full-length viral strains under deno vo approach from contigs and assembly graph, currently supports SPAdes
+Construct full-length viral strains under de novo approach from contigs and assembly graph, currently supports SPAdes
 
 optional arguments:
   -h, --help            show this help message and exit
@@ -83,14 +83,18 @@ optional arguments:
   -p PATH_FILE, --path PATH_FILE
                         contig file from SPAdes (.paths format), only required for SPAdes. e.g., contigs.paths
   -mc MIN_COV, --minimum_coverage MIN_COV
-                        minimum node coverage cutoff, also apply to filter the low-coverage strain [default: auto]
+                        minimum node coverage cutoff [default: auto]
   -ml MIN_LEN, --minimum_contig_length MIN_LEN
-                        minimum initial contig length for strains [default: 250]
+                        minimum initial contig length [default: 250]
   -o OUTPUT_DIR, --output_dir OUTPUT_DIR
                         path to the output directory [default: acc/]
+  -fwd FWD, --fwd_file FWD
+                        sequencing reads, forward strand (.fastq format)
+  -rve RVE, --rve_file RVE
+                        sequencing reads, reverse strand (.fastq format)
 ```
 
-vsAware takes as input assembly graph in Graphical Fragment Assembly (GFA) Format and reported contig information. Both input can be found in the output directory after running SPAdes assembler. Do not modify any contig/node name from the assembly result for consistency. Please refer to [SPAdes](https://github.com/ablab/spades) for further guideline. Example usage as below:
+vsAware takes as input assembly graph in Graphical Fragment Assembly (GFA) Format and reported contig information. Both input can be found in the output directory after running SPAdes assembler. Please also provide the sequencing reads in paired end format (e.g., forward.fastq, reverse.fastq) together as inputs. Do not modify any contig/node name from the assembly result for consistency. Please refer to [SPAdes](https://github.com/ablab/spades) for further guideline. Example usage as below:
 
 ```bash
 # SPAdes assembler example, pair-end reads
@@ -103,7 +107,7 @@ python spades.py -1 forward.fa -2 reverse.fa --careful -t 16 -o output_dir
 For SPAdes, we recommend to use `--careful` option for more accurate assembly graph and contigs result. Please use `assembly_graph_after_simplification.gfa` and `contigs.paths` as input, and set `-a` flag to `spades`. Example usage as below:
 
 ```bash
-python vsAware.py -a spades -g assembly_graph_after_simplification.gfa -p contigs.paths -o output_dir
+python vsAware.py -a spades -g assembly_graph_after_simplification.gfa -p contigs.paths -o output_dir -fwd forward.fastq -rve reverse.fastq
 ```
 
 <a name="sec3.3"></a>
@@ -115,7 +119,7 @@ This sets the minimum node coverage for filtering the inaccurate nodes from init
 
 ### Minimum Contig Length
 
-Since SPAdes usually output all the nodes from assembly graph as contigs, short or low coverage contig may lead to less accuracy and confidence. By default, single node contig with length less than 250bp or coverage less then `--mc` (defined above) is filtered out. Please use `-ml` flag to input the customized minimum contig length if needed.
+Since SPAdes normally output all the nodes from assembly graph as contigs, short or low coverage contig may lead to less accuracy and confidence. By default, single node contig with length less than 250bp or coverage less then `--mc` (defined above) is filtered out. Please use `-ml` flag to input the customized minimum contig length if needed.
 
 <a name="sec4"></a>
 # Citation

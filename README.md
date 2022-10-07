@@ -46,7 +46,7 @@ conda create --name vsAware-env
 # activate conda environment
 conda activate vsAware-env
 
-conda install -c bioconda -c conda-forge python=3 graph-tool minimap2 numpy pandas scikit-learn gfapy
+conda install -c bioconda -c conda-forge python=3 graph-tool minimap2 numpy gfapy
 ```
 
 <a name="sec2.2"></a>
@@ -58,8 +58,8 @@ Manually install dependencies:
 And python modules:
 - [graph-tool](https://graph-tool.skewed.de)
 - [numpy](https://numpy.org)
-- [scikit-learn](https://scikit-learn.org/stable/install.html)
-- [pandas](https://pandas.pydata.org/docs/getting_started/install.html)
+<!-- - [scikit-learn](https://scikit-learn.org/stable/install.html)
+- [pandas](https://pandas.pydata.org/docs/getting_started/install.html) -->
 
 <a name="sec3"></a>
 # Running vsAware

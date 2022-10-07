@@ -6,13 +6,8 @@ from graph_tool.all import Graph
 
 import numpy
 import matplotlib.pyplot as plt
-import pandas as pd
 
 from utils.vsAware_Utilities import *
-
-from sklearn.cluster import KMeans
-from sklearn.linear_model import LinearRegression
-from sklearn.metrics import silhouette_score
 
 __author__ = "Runpeng Luo"
 __copyright__ = "Copyright 2022-2025, vsAware Project"
@@ -353,131 +348,6 @@ def threshold_estimation(graph: Graph, logger: Logger, temp_dir):
     plt.xticks(numpy.arange(min(dps), max(dps) + 1, 50.0))
     plt.savefig("{0}{1}".format(temp_dir, "/tmp/bar_plot.png"))
     return threshold
-
-# legacy FIXME
-def delta_estimation(graph: Graph, logger: Logger, tempdir, cutoff_size=200):
-    logger.info("Start delta estimation")
-    xs = []
-    ys = []
-    sample_size = 0
-    for node in graph.vertices():
-        if node.in_degree() != 0:
-            isum = sum([graph.ep.flow[e] for e in node.in_edges()])
-            xs.append(isum)
-            ys.append(graph.vp.dp[node])
-        if node.out_degree() != 0:
-            osum = sum([graph.ep.flow[e] for e in node.out_edges()])
-            xs.append(osum)
-            ys.append(graph.vp.dp[node])
-        # if (
-        #     sum([x.out_degree() for x in node.in_neighbors()]) == node.in_degree()
-        #     and sum([y.in_degree() for y in node.out_neighbors()]) == node.out_degree()
-        # ):
-        #     if node.in_degree() > 1:
-        #         sample_size += 1
-        #     lv = sum([graph.vp.dp[n] for n in node.in_neighbors()])
-        #     rv = sum([graph.vp.dp[n] for n in node.out_neighbors()])
-        #     m = graph.vp.dp[node]
-        #     xs.extend([lv, rv])
-            # ys.extend([m, m])
-
-    plt.figure(figsize=(12, 8))
-    plt.hist([b - a for b, a in zip(ys, xs)], bins=len(ys))
-    plt.title("delta_hist_plot")
-    plt.savefig("{0}{1}".format(tempdir, "/tmp/delta_hist_plot.png"))
-
-    logger.debug("sample size: " + str(sample_size))
-    if sample_size < cutoff_size:
-        b0 = 32.23620072586657
-        b1 = 0.009936800927088535
-        logger.debug(
-            "use default delta estimation function: Delta = |"
-            + str(b0)
-            + "+"
-            + str(b1)
-            + "* Coverage |"
-        )
-        logger.info("done")
-        return b0, b1
-
-    df = pd.DataFrame({"x": xs, "y": ys})
-    # find n_clusters
-    ncs = [i for i in range(2, len(xs) // 10)]
-    scores = []
-    for n_c in ncs:
-        clusterer = KMeans(n_clusters=n_c)
-        preds = clusterer.fit_predict(df)
-        score = silhouette_score(df, preds)
-        scores.append(score)
-
-    plt.figure(figsize=(12, 8))
-    plt.plot(ncs, scores, c="black")
-    plt.title("K-Means Silhouette Score", size=20)
-    plt.xlabel("number of cluster", size=16)
-    plt.ylabel("score", size=16)
-    plt.savefig("{0}{1}".format(tempdir, "/tmp/silhouette_score_delta.png"))
-
-    optim_nc = max(ncs, key=lambda x: scores[ncs.index(x)])
-    logger.debug("Optim n_cluster: " + str(optim_nc))
-    # clustering
-    kmc = KMeans(n_clusters=optim_nc)
-    kmc_model = kmc.fit(df)
-    clust_medians = []
-    clust_x = []
-    # plot
-    colors = ["red", "blue", "green", "purple", "orange"]
-    plt.figure(figsize=(12, 8))
-    for i in range(numpy.max(kmc_model.labels_) + 1):
-        cxs = df[kmc_model.labels_ == i].iloc[:, 0]
-        cys = df[kmc_model.labels_ == i].iloc[:, 1]
-        if len(cxs) < 10:
-            logger.debug("skip cluster: " + str(kmc_model.cluster_centers_[i]))
-            continue
-        plt.scatter(cxs, cys, label=i, c=colors[i % len(colors)], alpha=0.5)
-        vals = []
-        for (x1, y1) in zip(cxs, cys):
-            for (x2, y2) in zip(cxs, cys):
-                if x1 != x2 and y1 != y2:
-                    vals.append(max(abs(y1 - y2), abs(x1 - x2)))
-        clust_x.append(kmc_model.cluster_centers_[i][0])
-        clust_medians.append(numpy.median(vals))
-
-    plt.scatter(
-        kmc_model.cluster_centers_[:, 0],
-        kmc_model.cluster_centers_[:, 1],
-        label="Cluster Centers",
-        c="black",
-        s=200,
-    )
-    plt.title("K-Means Clustering", size=20)
-    plt.xlabel(df.columns[0], size=16)
-    plt.ylabel(df.columns[1], size=16)
-    plt.legend()
-
-    plt.figure(figsize=(12, 8))
-    plt.scatter(clust_x, clust_medians, label="Cluster Centers", c="black", s=100)
-    lr = LinearRegression()
-    # fit the data using linear regression
-    # the reshaping is because the function expects more columns in x
-    model = lr.fit(numpy.array(clust_x).reshape(-1, 1), clust_medians)
-    b0 = model.intercept_
-    b1 = model.coef_[0]
-    logger.debug("The intercept of this model is:" + str(model.intercept_))
-    logger.debug("The slope coefficient of this model is:" + str(model.coef_[0]))
-    logger.debug(
-        "Thus the equation is: Delta = |" + str(b0) + "+" + str(b1) + "* Coverage |"
-    )
-
-    x_range = [0, max(clust_x)]  # get the bounds for x
-    y_range = [b0, b0 + b1 * x_range[1]]  # get the bounds for y
-    plt.plot(x_range, y_range, c="red")
-    plt.title("Regression", size=20)
-    plt.xlabel("coverage", size=16)
-    plt.ylabel("delta", size=16)
-    plt.savefig("{0}{1}".format(tempdir, "/tmp/cluster_delta.png"))
-    logger.info("done")
-    return b0, b1
-
 
 def graph_simplification(
     graph: Graph,

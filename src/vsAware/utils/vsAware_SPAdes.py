@@ -18,8 +18,8 @@ from utils.vsAware_IO import (
 )
 from utils.vsAware_Decomposition import *
 from utils.vsAware_Extension import path_extension, best_matching
-from utils.pe_alignment_parallel import aln_pe_reads
-
+import os
+import sys
 
 __author__ = "Runpeng Luo"
 __copyright__ = "Copyright 2022-2025, vsAware Project"
@@ -118,7 +118,8 @@ def run(args, logger):
             logger.debug("unreliable contig with low coverage: {0}".format(cno))
 
     # obtain paired end information
-    aln_pe_reads("{0}/gfa/s_graph_L1.gfa".format(TEMP_DIR), args.fwd, args.rve, "{0}/aln".format(TEMP_DIR), logger)
+    script_path = "{0}/pe_alignment_parallel.py".format(os.path.abspath(os.path.dirname(__file__)))
+    subprocess.check_call("python {0} -g {1} -o {2} -f {3} -r {4}".format(script_path, "{0}/gfa/s_graph_L1.gfa".format(TEMP_DIR), "{0}/aln".format(TEMP_DIR), args.fwd, args.rve), shell=True)
     pe_info_file = "{0}/aln/pe_info".format(TEMP_DIR)
     st_info_file = "{0}/aln/st_info".format(TEMP_DIR)
     pe_info, dcpy_pe_info = process_pe_info(simp_node_dict1.keys(), pe_info_file, st_info_file)

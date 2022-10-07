@@ -7,8 +7,6 @@ import numpy
 import sys
 from datetime import date
 
-import multiprocessing
-
 __author__ = "Runpeng Luo"
 __copyright__ = "Copyright 2022-2025, vsAware Project"
 __credits__ = ["Runpeng Luo", "Yu Lin"]
@@ -19,7 +17,7 @@ __email__ = "John.Luo@anu.edu.au"
 __status__ = "Production"
 
 def process_paf_file(index2id, index2reflen, len_index2id, read_ids, fwd_paf_file, rve_paf_file, tid):
-    print("Thread {0} start".format(tid))
+    print("Batch {0} start".format(tid))
     print("current pid: {0}".format(os.getpid()))
     start = time.time()
 
@@ -59,7 +57,7 @@ def process_paf_file(index2id, index2reflen, len_index2id, read_ids, fwd_paf_fil
             file_count = 0
             for line in fwd_paf:
                 if round((time.time() - start) % 60) == 1:
-                    print("Thread {0}: Processed {1} mapping up to now.".format(tid, file_count))
+                    print("Batch {0}: Processed {1} mapping up to now.".format(tid, file_count))
                 if line == "\n":
                     break
                 splited = (line[:-1]).split("\t")
@@ -151,7 +149,7 @@ def process_paf_file(index2id, index2reflen, len_index2id, read_ids, fwd_paf_fil
     for (glb_id, fwdlen, revlen) in index2read:
         glb_index = read2index[glb_id]
         if round((time.time() - start) % 60) == 0:
-            print("{0}, thread: {1} current read id: {2}".format(date.today().strftime("%B %d, %Y"), tid, glb_id))
+            print("{0}, Batch: {1} current read id: {2}".format(date.today().strftime("%B %d, %Y"), tid, glb_id))
         
         
         lefts = retrieve_single_end_saturation(glb_index, conf_alns_f, conf_cords_f, fwdlen)
@@ -177,8 +175,8 @@ def process_paf_file(index2id, index2reflen, len_index2id, read_ids, fwd_paf_fil
         conf_alns_r[glb_index] = None
 
     elapsed = time.time() - start
-    print("thread: {0} found non unique kmer count: {1}".format(tid, nonunique_counter))
-    print("thread: {0} time spent for processing paf file: {1}".format(tid, elapsed))
+    print("Batch: {0} found non unique kmer count: {1}".format(tid, nonunique_counter))
+    print("Batch: {0} time spent for processing paf file: {1}".format(tid, elapsed))
     return node_mat, short_mat
 
 def batch_split(fwd_file: str, rve_file: str, temp_dir: str, batch_size: int, do_split: bool):
@@ -382,18 +380,26 @@ def main():
     paf_files = minimap_alignment(tmp_g2s_file, sub_files, args.dir)
 
     len_index2id = len(index2id)
-    # process paf files
-    local_mats = None
-    args_proc = [(index2id, index2reflen, len_index2id, read_summary[i], paf_files[i][0], paf_files[i][1], i) for i in range(len(paf_files))]
-    with multiprocessing.Pool(multiprocessing.cpu_count()) as pool:
-        local_mats = pool.starmap(process_paf_file, args_proc)
-        pool.close()
-        pool.join()
+    node_mats = []
+    strand_mats = []
+
+    for i in range(len(paf_files)):
+        (node_mat, strand_mat) = process_paf_file(index2id, index2reflen, len_index2id, read_summary[i], paf_files[i][0], paf_files[i][1], i)
+        node_mats.append(node_mat)
+        strand_mats.append(strand_mat)
+
+    # # process paf files
+    # local_mats = None
+    # args_proc = [(index2id, index2reflen, len_index2id, read_summary[i], paf_files[i][0], paf_files[i][1], i) for i in range(len(paf_files))]
+    # with multiprocessing.Pool(multiprocessing.cpu_count()) as pool:
+    #     local_mats = pool.starmap(process_paf_file, args_proc)
+    #     pool.close()
+    #     pool.join()
 
     print("All processes have finished their job, combine the result.")
     # combine all the outputs
-    glb_node_mat = numpy.sum(numpy.array([mat for (mat,_) in local_mats]), axis=0)
-    glb_strand_mat = numpy.sum(numpy.array([mat for (_,mat) in local_mats]), axis=0)
+    glb_node_mat = numpy.sum(numpy.array(node_mats), axis=0)
+    glb_strand_mat = numpy.sum(numpy.array(strand_mats), axis=0)
     out_file = "{0}/pe_info".format(args.dir)
     out_file2 = "{0}/st_info".format(args.dir)
     subprocess.check_call("touch {0}; echo " " > {0}".format(out_file), shell=True)

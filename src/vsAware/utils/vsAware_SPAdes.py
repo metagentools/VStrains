@@ -117,9 +117,14 @@ def run(args, logger):
             contig_dict.pop(cno)
             logger.debug("unreliable contig with low coverage: {0}".format(cno))
 
+    # get graph kmer size
+    ksize = graph1.ep.overlap[list(graph1.edges())[0]]
+    logger.info("graph kmer size: {0}".format(ksize))
+
     # obtain paired end information
     script_path = "{0}/pe_alignment_parallel.py".format(os.path.abspath(os.path.dirname(__file__)))
-    subprocess.check_call("python {0} -g {1} -o {2} -f {3} -r {4}".format(script_path, "{0}/gfa/s_graph_L1.gfa".format(TEMP_DIR), "{0}/aln".format(TEMP_DIR), args.fwd, args.rve), shell=True)
+    subprocess.check_call("python {0} -g {1} -o {2} -f {3} -r {4} -k {5}".
+        format(script_path, "{0}/gfa/s_graph_L1.gfa".format(TEMP_DIR), "{0}/aln".format(TEMP_DIR), args.fwd, args.rve, ksize), shell=True)
     pe_info_file = "{0}/aln/pe_info".format(TEMP_DIR)
     st_info_file = "{0}/aln/st_info".format(TEMP_DIR)
     pe_info, dcpy_pe_info = process_pe_info(simp_node_dict1.keys(), pe_info_file, st_info_file)

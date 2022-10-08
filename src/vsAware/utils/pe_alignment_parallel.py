@@ -16,7 +16,7 @@ __maintainer__ = "Runpeng Luo"
 __email__ = "John.Luo@anu.edu.au"
 __status__ = "Production"
 
-def process_paf_file(index2id, index2reflen, len_index2id, read_ids, fwd_paf_file, rve_paf_file, tid):
+def process_paf_file(index2id, index2reflen, len_index2id, read_ids, fwd_paf_file, rve_paf_file, split_len, tid):
     print("Batch {0} start".format(tid))
     print("current pid: {0}".format(os.getpid()))
     start = time.time()
@@ -66,36 +66,13 @@ def process_paf_file(index2id, index2reflen, len_index2id, read_ids, fwd_paf_fil
                 ref_no = str(splited[5])
                 ref_start_coord = int(splited[7]) # 0-based
                 nm = int(splited[10]) - int(splited[9])
-                if nm == 0 and int(splited[10]) == 128:
+                if nm == 0 and int(splited[10]) == split_len:
                     if file == fwd_paf_file:
                         conf_alns_f[read2index[int(glb_seg_no)]][int(sub_no)].append(id2index[ref_no])
                         conf_cords_f[read2index[int(glb_seg_no)]][int(sub_no)].append(ref_start_coord)
                     else:
                         conf_alns_r[read2index[int(glb_seg_no)]][int(sub_no)].append(id2index[ref_no])
                         conf_cords_r[read2index[int(glb_seg_no)]][int(sub_no)].append(ref_start_coord)
-
-                # cur_status = None
-
-                # if file == fwd_paf_file:
-                #     cur_status = conf_alns_f[read2index[int(glb_seg_no)]][int(sub_no)]
-                # else:
-                #     cur_status = conf_alns_r[read2index[int(glb_seg_no)]][int(sub_no)]
-                # if nm == 0 and int(splited[10]) == 128:
-                #     if cur_status != -1:
-                #         # another perfect match, ambiguous, mark as empty string
-                #         cur_status = -2
-                #     else:
-                #         # first perfect match ever found
-                #         cur_status = id2index[ref_no]
-                #         if file == fwd_paf_file:
-                #             conf_cords_f[read2index[int(glb_seg_no)]][int(sub_no)] = ref_start_coord
-                #         else:
-                #             conf_cords_r[read2index[int(glb_seg_no)]][int(sub_no)] = ref_start_coord
-
-                # if file == fwd_paf_file:
-                #     conf_alns_f[read2index[int(glb_seg_no)]][int(sub_no)] = cur_status
-                # else:
-                #     conf_alns_r[read2index[int(glb_seg_no)]][int(sub_no)] = cur_status
                 file_count += 1
             fwd_paf.close()
 
@@ -106,7 +83,7 @@ def process_paf_file(index2id, index2reflen, len_index2id, read_ids, fwd_paf_fil
         "rm {0}".format(rve_paf_file), shell=True
     )
     nonunique_counter = 0
-    def retrieve_single_end_saturation(glb_index, conf_alns, conf_cords, rlen=250, ks=128):
+    def retrieve_single_end_saturation(glb_index, conf_alns, conf_cords, rlen, ks):
         nodes = numpy.zeros(len_index2id, dtype=int)
         coords = [None for _ in range(len_index2id)]
         kindices = [None for _ in range(len_index2id)]
@@ -129,18 +106,10 @@ def process_paf_file(index2id, index2reflen, len_index2id, read_ids, fwd_paf_fil
         for i, v in enumerate(nodes):
             if coords[i] == None or kindices[i] == None:
                 continue
-            # if coords[i] > 0 and kindices[i] > 0:
-            #     continue
             L = max(coords[i], coords[i] - kindices[i])
             R = min(coords[i]+index2reflen[i] - 1, coords[i] - kindices[i] + rlen - 1)
-            saturate = R - L - 127 + 1
+            saturate = R - L - (split_len - 1) + 1
             expected = (min(rlen, index2reflen[i]) - ks + 1) * (rlen - ks)/rlen
-            # print("current node: ",index2id[i], "kmer-count:", v)
-            # print("saturate: ", saturate)
-            # print("L: ", L, "R: ", R)
-            # print("coords on ref: ", coords[i])
-            # print("kindex on read: ", kindices[i])
-            # at most 10 error in first 5 or last 5 kindexes
             if v >= max(min(saturate, expected), 1):
                 # print(i,v,"passed")
                 saturates.append(i)
@@ -152,8 +121,8 @@ def process_paf_file(index2id, index2reflen, len_index2id, read_ids, fwd_paf_fil
             print("{0}, Batch: {1} current read id: {2}".format(date.today().strftime("%B %d, %Y"), tid, glb_id))
         
         
-        lefts = retrieve_single_end_saturation(glb_index, conf_alns_f, conf_cords_f, fwdlen)
-        rights = retrieve_single_end_saturation(glb_index, conf_alns_r, conf_cords_r, revlen)
+        lefts = retrieve_single_end_saturation(glb_index, conf_alns_f, conf_cords_f, fwdlen, split_len)
+        rights = retrieve_single_end_saturation(glb_index, conf_alns_r, conf_cords_r, revlen, split_len)
         
         k = 0
         for i in lefts:
@@ -179,7 +148,7 @@ def process_paf_file(index2id, index2reflen, len_index2id, read_ids, fwd_paf_fil
     print("Batch: {0} time spent for processing paf file: {1}".format(tid, elapsed))
     return node_mat, short_mat
 
-def batch_split(fwd_file: str, rve_file: str, temp_dir: str, batch_size: int, do_split: bool):
+def batch_split(fwd_file: str, rve_file: str, temp_dir: str, batch_size: int, do_split: bool, split_len):
     """split the read file into several 
     Args:
         fwd_file (str): _description_
@@ -188,7 +157,6 @@ def batch_split(fwd_file: str, rve_file: str, temp_dir: str, batch_size: int, do
     Returns:
         list: list of batch files
     """
-    split_len = 128
     n_reads = 0
     short_reads = 0
     used_reads = 0
@@ -210,7 +178,7 @@ def batch_split(fwd_file: str, rve_file: str, temp_dir: str, batch_size: int, do
             total_size = min(len(fwd_reads) // 4, len(rev_reads) // 4)
             # marker_test = 1
             # total_size = min(marker_test, total_size) 
-            for i in range( total_size):
+            for i in range(total_size):
                 if i % batch_size == 0:
                     print("Processed {0} reads up to now.".format(i))
                 [_, fseq, _, feval] = [
@@ -222,7 +190,7 @@ def batch_split(fwd_file: str, rve_file: str, temp_dir: str, batch_size: int, do
                 if fseq.count("N") or rseq.count("N"):
                     n_reads += 1
                     continue
-                if len(fseq) < 128 or len(rseq) < 128:
+                if len(fseq) < split_len or len(rseq) < split_len:
                     short_reads += 1
                     continue
                 used_reads += 1
@@ -287,7 +255,7 @@ def batch_split(fwd_file: str, rve_file: str, temp_dir: str, batch_size: int, do
 
     print("total number of reads (before): ", total_size)
     print("total reads containing N: ", n_reads)
-    print("total reads too short [<128]: ", short_reads)
+    print("total reads too short [<{0}]: ".format(split_len), short_reads)
     print("total number of reads (used): ", used_reads)
     print("total number of forward reads kmer: ", fkmer)
     print("total number of reverse reads kmer: ", rkmer)
@@ -349,6 +317,10 @@ def main():
         "-r", "--reverse", dest="rve", required=True, help="reverse read, .fastq"
     )
 
+    parser.add_argument(
+        "-k", "--kmer_size", dest="kmer_size", type=int, default=128, help="unique kmer size"
+    )
+
     args = parser.parse_args()
 
     # initialize output directory
@@ -374,8 +346,9 @@ def main():
             fasta.close()
         gfa.close()
 
+    split_len = args.kmer_size + 1
     # split reads to several batches
-    read_summary, sub_files = batch_split(args.fwd, args.rve, args.dir, 40000, True)
+    read_summary, sub_files = batch_split(args.fwd, args.rve, args.dir, 40000, True, split_len)
     # minimap2 reads to fasta file
     paf_files = minimap_alignment(tmp_g2s_file, sub_files, args.dir)
 
@@ -384,17 +357,9 @@ def main():
     strand_mats = []
 
     for i in range(len(paf_files)):
-        (node_mat, strand_mat) = process_paf_file(index2id, index2reflen, len_index2id, read_summary[i], paf_files[i][0], paf_files[i][1], i)
+        (node_mat, strand_mat) = process_paf_file(index2id, index2reflen, len_index2id, read_summary[i], paf_files[i][0], paf_files[i][1], split_len, i)
         node_mats.append(node_mat)
         strand_mats.append(strand_mat)
-
-    # # process paf files
-    # local_mats = None
-    # args_proc = [(index2id, index2reflen, len_index2id, read_summary[i], paf_files[i][0], paf_files[i][1], i) for i in range(len(paf_files))]
-    # with multiprocessing.Pool(multiprocessing.cpu_count()) as pool:
-    #     local_mats = pool.starmap(process_paf_file, args_proc)
-    #     pool.close()
-    #     pool.join()
 
     print("All processes have finished their job, combine the result.")
     # combine all the outputs

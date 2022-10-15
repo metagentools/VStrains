@@ -121,7 +121,7 @@ Since SPAdes normally output all the nodes from assembly graph as contigs, short
 <a name="sec4"></a>
 # Citation
 
-TODO
+Runpeng Luo and Yu Lin, VStrains: De Novo Reconstruction of Viral Strains via Iterative Path Extraction From Assembly Graphs (submited)
 
 <a name="sec5"></a>
 # Feedback and bug reports

@@ -20,7 +20,7 @@ Table of Contents
 <a name="sec1"></a>
 # About VStrains
 
-VStrains, a de novo approach for reconstructing strains from viral quasispecies.
+VStrains is a de novo approach for reconstructing strains from viral quasispecies.
 
 <!-- Please refer to our [paper](NULL) and [supplementary Material](NULL) for details methodology. -->
 

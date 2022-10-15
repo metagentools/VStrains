@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 
-from utils.vsAware_Utilities import *
-from utils.vsAware_Preprocess import (
+from utils.VStrains_Utilities import *
+from utils.VStrains_Preprocess import (
     graph_simplification,
     reindexing,
     threshold_estimation,
 )
-from utils.vsAware_IO import (
+from utils.VStrains_IO import (
     graph_to_gfa,
     flipped_gfa_to_graph,
     gfa_to_graph,
@@ -16,13 +16,13 @@ from utils.vsAware_IO import (
     process_pe_info,
     store_reinit_graph
 )
-from utils.vsAware_Decomposition import *
-from utils.vsAware_Extension import path_extension, best_matching
+from utils.VStrains_Decomposition import *
+from utils.VStrains_Extension import path_extension, best_matching
 import os
 import sys
 
 __author__ = "Runpeng Luo"
-__copyright__ = "Copyright 2022-2025, vsAware Project"
+__copyright__ = "Copyright 2022-2025, VStrains Project"
 __credits__ = ["Runpeng Luo", "Yu Lin"]
 __license__ = "MIT"
 __version__ = "1.0.0"
@@ -34,7 +34,7 @@ __status__ = "Production"
 def run(args, logger):
     TEMP_DIR = args.output_dir
 
-    logger.info("vsAware-SPAdes started")
+    logger.info("VStrains-SPAdes started")
 
     logger.info(">>>STAGE: parsing graph and contigs")
     graph, simp_node_dict, simp_edge_dict = gfa_to_graph(args.gfa_file, logger)
@@ -122,9 +122,10 @@ def run(args, logger):
     logger.info("graph kmer size: {0}".format(ksize))
 
     # obtain paired end information
-    script_path = "{0}/pe_alignment_parallel.py".format(os.path.abspath(os.path.dirname(__file__)))
+    script_path = "{0}/VStrains_Alignment.py".format(os.path.abspath(os.path.dirname(__file__)))
     subprocess.check_call("python {0} -g {1} -o {2} -f {3} -r {4} -k {5}".
         format(script_path, "{0}/gfa/s_graph_L1.gfa".format(TEMP_DIR), "{0}/aln".format(TEMP_DIR), args.fwd, args.rve, ksize), shell=True)
+    logger.info("paired end information stored")
     pe_info_file = "{0}/aln/pe_info".format(TEMP_DIR)
     st_info_file = "{0}/aln/st_info".format(TEMP_DIR)
     pe_info, dcpy_pe_info = process_pe_info(simp_node_dict1.keys(), pe_info_file, st_info_file)
@@ -162,7 +163,7 @@ def run(args, logger):
     # end stat
 
     # split the branches using link information
-    graphf, simp_node_dictf, simp_edge_dictf = iter_graph_decomposition(
+    graphf, simp_node_dictf, simp_edge_dictf = iter_graph_disentanglement(
         graph2, simp_node_dict2, simp_edge_dict2,
         contig_dict, pe_info, args.ref_file, logger, 0.05 * numpy.median([graph2.vp.dp[node] for node in graph2.vertices()]), TEMP_DIR)
 
@@ -239,5 +240,5 @@ def run(args, logger):
             "{0}/strain.fasta".format(TEMP_DIR),
             "{0}/paf/strain_to_ref.paf".format(TEMP_DIR),
         )
-    logger.info("vsAware-SPAdes finished")
+    logger.info("VStrains-SPAdes finished")
     return 0

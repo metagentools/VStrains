@@ -5,10 +5,9 @@ import time
 import subprocess
 import numpy
 import sys
-from datetime import date
 
 __author__ = "Runpeng Luo"
-__copyright__ = "Copyright 2022-2025, vsAware Project"
+__copyright__ = "Copyright 2022-2025, VStrains Project"
 __credits__ = ["Runpeng Luo", "Yu Lin"]
 __license__ = "MIT"
 __version__ = "1.0.0"
@@ -56,8 +55,6 @@ def process_paf_file(index2id, index2reflen, len_index2id, read_ids, fwd_paf_fil
         with open(file, "r") as fwd_paf:
             file_count = 0
             for line in fwd_paf:
-                if round((time.time() - start) % 60) == 1:
-                    print("Batch {0}: Processed {1} mapping up to now.".format(tid, file_count))
                 if line == "\n":
                     break
                 splited = (line[:-1]).split("\t")
@@ -75,7 +72,7 @@ def process_paf_file(index2id, index2reflen, len_index2id, read_ids, fwd_paf_fil
                         conf_cords_r[read2index[int(glb_seg_no)]][int(sub_no)].append(ref_start_coord)
                 file_count += 1
             fwd_paf.close()
-
+    # print("Batch {0} finished alignment file parsing".format(tid))
     subprocess.check_call(
         "rm {0}".format(fwd_paf_file), shell=True
     )
@@ -116,11 +113,7 @@ def process_paf_file(index2id, index2reflen, len_index2id, read_ids, fwd_paf_fil
         return saturates
 
     for (glb_id, fwdlen, revlen) in index2read:
-        glb_index = read2index[glb_id]
-        if round((time.time() - start) % 60) == 0:
-            print("{0}, Batch: {1} current read id: {2}".format(date.today().strftime("%B %d, %Y"), tid, glb_id))
-        
-        
+        glb_index = read2index[glb_id]        
         lefts = retrieve_single_end_saturation(glb_index, conf_alns_f, conf_cords_f, fwdlen, split_len)
         rights = retrieve_single_end_saturation(glb_index, conf_alns_r, conf_cords_r, revlen, split_len)
         
@@ -144,6 +137,7 @@ def process_paf_file(index2id, index2reflen, len_index2id, read_ids, fwd_paf_fil
         conf_alns_r[glb_index] = None
 
     elapsed = time.time() - start
+    print("Batch {0} finished".format(tid))
     print("Batch: {0} found non unique kmer count: {1}".format(tid, nonunique_counter))
     print("Batch: {0} time spent for processing paf file: {1}".format(tid, elapsed))
     return node_mat, short_mat
@@ -179,8 +173,8 @@ def batch_split(fwd_file: str, rve_file: str, temp_dir: str, batch_size: int, do
             # marker_test = 1
             # total_size = min(marker_test, total_size) 
             for i in range(total_size):
-                if i % batch_size == 0:
-                    print("Processed {0} reads up to now.".format(i))
+                # if i % batch_size == 0:
+                #     print("Processed {0} reads up to now.".format(i))
                 [_, fseq, _, feval] = [
                     s[:-1] for s in fwd_reads[i * 4 : (i + 1) * 4]
                 ]

@@ -1,6 +1,5 @@
-from utils.vsAware_Split import best_aln_score
-from utils.vsAware_Utilities import *
-from utils.vsAware_IO import (
+from utils.VStrains_Utilities import *
+from utils.VStrains_IO import (
     store_reinit_graph
 )
 import matplotlib.pyplot as plt
@@ -8,7 +7,7 @@ import numpy
 
 
 __author__ = "Runpeng Luo"
-__copyright__ = "Copyright 2022-2025, vsAware Project"
+__copyright__ = "Copyright 2022-2025, VStrains Project"
 __credits__ = ["Runpeng Luo", "Yu Lin"]
 __license__ = "MIT"
 __version__ = "1.0.0"
@@ -73,8 +72,8 @@ def cov_split(us: list, ws: list, pe_info: dict, sec_comb: list, kept_link: dict
                     pe_info[(min(uid, wid), max(uid, wid))]) 
     return
 
-def graph_decomposition(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, contig_dict: dict, pe_info: dict, logger: Logger, ref_file: str, temp_dir: str, count_id: int, threshold, is_prim: bool):
-    logger.info("graph non-trivial split using alignment&coverage information.. isPrim: {0}".format(is_prim))
+def balance_split(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, contig_dict: dict, pe_info: dict, logger: Logger, ref_file: str, temp_dir: str, count_id: int, threshold, is_prim: bool):
+    logger.info("balance split using contigs&paired end links&coverage information.. isPrim: {0}".format(is_prim))
     correct_X = []
     correct_Y = []
     false_error_X = []
@@ -508,6 +507,136 @@ def trivial_split(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, pe_i
     logger.debug("Total split-ted trivial branch count: {0}".format(trivial_split_count))
     return trivial_split_count, id_mapping
 
+def global_trivial_split(
+    graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, logger: Logger
+):
+    """
+    Split the graph, for any (0|1)->N, N->(0|1) branch, split by forking the 1 edge to N edge.
+    """
+    logger.info("graph trivial split..")
+
+    BOUND_ITER = len(simp_node_dict) ** 2
+    has_split = True
+    trivial_split_count = 0
+    id_mapping = {}
+    for id in simp_node_dict.keys():
+        id_mapping[id] = set()
+    while has_split and trivial_split_count < BOUND_ITER:
+        has_split = False
+        for id in list(simp_node_dict.keys()):
+            node = simp_node_dict[id]
+            if graph.vp.color[node] != "black":
+                continue
+            if id not in id_mapping:
+                id_mapping[id] = set()
+            ines = [ue for ue in node.in_edges() if graph.ep.color[ue] == "black"]
+            outes = [ve for ve in node.out_edges() if graph.ep.color[ve] == "black"]
+            if len(ines) == 1 and len(outes) > 1:
+                logger.debug(id + " split left")
+                graph.vp.color[node] = "gray"
+                ine = ines[0]
+                src = ine.source()
+                graph.ep.color[ine] = "gray"
+                s = "A"
+                for i in range(len(outes)):
+                    oute = outes[i]
+                    tgt = oute.target()
+                    snode = graph_add_vertex(
+                        graph,
+                        simp_node_dict,
+                        id + "*" + chr(ord(s) + i),
+                        graph.ep.flow[oute],
+                        graph.vp.seq[node],
+                    )
+                    graph.ep.color[oute] = "gray"
+                    sedge_out = graph_add_edge(
+                        graph,
+                        simp_edge_dict,
+                        snode,
+                        tgt,
+                        graph.ep.overlap[oute],
+                        graph.ep.flow[oute],
+                    )
+                    simp_node_dict[graph.vp.id[snode]] = snode
+                    simp_edge_dict[
+                        (
+                            graph.vp.id[sedge_out.source()],
+                            graph.vp.id[sedge_out.target()],
+                        )
+                    ] = sedge_out
+
+                    sedge_in = graph_add_edge(
+                        graph,
+                        simp_edge_dict,
+                        src,
+                        snode,
+                        graph.ep.overlap[ine],
+                        graph.ep.flow[oute],
+                    )
+                    simp_edge_dict[
+                        (graph.vp.id[sedge_in.source()], graph.vp.id[sedge_in.target()])
+                    ] = sedge_in
+                    id_mapping[id].add(graph.vp.id[snode])
+                has_split = True
+                trivial_split_count += 1
+            elif len(ines) > 1 and len(outes) == 1:
+                logger.debug(id + " split right")
+                graph.vp.color[node] = "gray"
+                oute = outes[0]
+                tgt = oute.target()
+                graph.ep.color[oute] = "gray"
+                s = "A"
+                for i in range(len(ines)):
+                    ine = ines[i]
+                    src = ine.source()
+                    snode = graph_add_vertex(
+                        graph,
+                        simp_node_dict,
+                        id + "*" + chr(ord(s) + i),
+                        graph.ep.flow[ine],
+                        graph.vp.seq[node],
+                    )
+                    graph.ep.color[ine] = "gray"
+                    sedge_in = graph_add_edge(
+                        graph,
+                        simp_edge_dict,
+                        src,
+                        snode,
+                        graph.ep.overlap[ine],
+                        graph.ep.flow[ine],
+                    )
+                    simp_node_dict[graph.vp.id[snode]] = snode
+                    simp_edge_dict[
+                        (graph.vp.id[sedge_in.source()], graph.vp.id[sedge_in.target()])
+                    ] = sedge_in
+
+                    sedge_out = graph_add_edge(
+                        graph,
+                        simp_edge_dict,
+                        snode,
+                        tgt,
+                        graph.ep.overlap[oute],
+                        graph.ep.flow[ine],
+                    )
+                    simp_edge_dict[
+                        (
+                            graph.vp.id[sedge_out.source()],
+                            graph.vp.id[sedge_out.target()],
+                        )
+                    ] = sedge_out
+                    id_mapping[id].add(graph.vp.id[snode])
+                has_split = True
+                trivial_split_count += 1
+            else:
+                None
+    if trivial_split_count >= BOUND_ITER:
+        logger.warning("Strange topology detected, exit trivial split immediately")
+        return None, id_mapping
+    else:
+        logger.debug("No of trivial branch be removed: " + str(trivial_split_count))
+        logger.info("done")
+        return trivial_split_count, id_mapping
+
 def edge_cleaning(graph: Graph, simp_edge_dict: dict, contig_dict: dict, pe_info: dict, logger: Logger):
     """
     Detect the crossing edges and select the confident edges only.
@@ -570,7 +699,7 @@ def edge_cleaning(graph: Graph, simp_edge_dict: dict, contig_dict: dict, pe_info
                 logger.debug("disjoint unsupported edge: {0} -> {1}, kept".format(u,v))
     return assigned
 
-def iter_graph_decomposition(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, contig_dict: dict, pe_info: dict, ref_file: str, logger: Logger, threshold, temp_dir):
+def iter_graph_disentanglement(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, contig_dict: dict, pe_info: dict, ref_file: str, logger: Logger, threshold, temp_dir):
     BOUND_ITER = len(simp_node_dict) ** 2
     it = 0
     total_removed_branch = 0
@@ -579,7 +708,7 @@ def iter_graph_decomposition(graph: Graph, simp_node_dict: dict, simp_edge_dict:
     for is_prim in [True, False]: # False
         do_trivial_split = True
         while it < BOUND_ITER:
-            num_split = graph_decomposition(graph, simp_node_dict, simp_edge_dict, contig_dict, pe_info, logger, ref_file, temp_dir, it, threshold, is_prim)
+            num_split = balance_split(graph, simp_node_dict, simp_edge_dict, contig_dict, pe_info, logger, ref_file, temp_dir, it, threshold, is_prim)
             graph, simp_node_dict, simp_edge_dict = store_reinit_graph(
                 graph, simp_node_dict, simp_edge_dict, logger,  
                 "{0}/gfa/split_graph_L{1}d.gfa".format(temp_dir, iterCount))
@@ -652,3 +781,25 @@ def iter_graph_decomposition(graph: Graph, simp_node_dict: dict, simp_edge_dict:
     graph, simp_node_dict, simp_edge_dict, logger,  
     "{0}/gfa/split_graph_final.gfa".format(temp_dir))
     return graph, simp_node_dict, simp_edge_dict
+
+
+def best_aln_score(graph: Graph, ori, strain, ref_file, temp_dir):
+    fname = "{0}/temp_{1}.fa".format(temp_dir, ori)
+    pafname = "{0}/temp_{1}_aln.paf".format(temp_dir, ori)
+    subprocess.check_call("echo \"\" > {0}".format(fname), shell=True)
+    with open(fname, "w") as f:
+        f.write(">{0}\n".format(ori))
+        f.write("{0}\n".format(path_to_seq(graph, strain, "")))
+        f.close()
+    minimap_api(ref_file, fname, pafname)
+    subprocess.check_call("rm {0}".format(fname), shell=True)
+    best_aln = []
+    with open(pafname, "r") as paf:
+        for line in paf.readlines():
+            splited = line[:-1].split("\t")
+            if len(splited) < 12:
+                continue
+            best_aln.append([splited[0], int(splited[10]), splited[5], int(splited[10]) - int(splited[9])])
+        paf.close()
+    subprocess.check_call("rm {0}".format(pafname), shell=True)
+    return best_aln

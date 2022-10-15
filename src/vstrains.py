@@ -9,10 +9,10 @@ import logging
 import time
 from datetime import date
 
-from utils import vsAware_SPAdes
+from utils import VStrains_SPAdes
 
 __author__ = "Runpeng Luo"
-__copyright__ = "Copyright 2022-2025, vsAware Project"
+__copyright__ = "Copyright 2022-2025, VStrains Project"
 __credits__ = ["Runpeng Luo", "Yu Lin"]
 __license__ = "MIT"
 __version__ = "1.0.0"
@@ -24,14 +24,14 @@ __status__ = "Production"
 def run(args, logger):
     numpy.seterr(all="raise")
     RUNNER = {
-        "spades": vsAware_SPAdes.run,
+        "spades": VStrains_SPAdes.run,
     }
     RUNNER[args.assembler](args, logger)
 
 
 def main():
     parser = argparse.ArgumentParser(
-        prog="vsAware",
+        prog="VStrains",
         description="""Construct full-length viral strains under de novo approach 
         from contigs and assembly graph, currently supports SPAdes""",
     )
@@ -70,9 +70,10 @@ def main():
         dest="min_cov",
         default=None,
         type=int,
-        help=(
-            "minimum node coverage cutoff [default: auto]"
-        ),
+        help=argparse.SUPPRESS,
+        # (
+        #     "minimum node coverage cutoff [default: auto]"
+        # ),
     )
 
     parser.add_argument(
@@ -81,7 +82,8 @@ def main():
         dest="min_len",
         default=None,
         type=int,
-        help=("minimum initial contig length [default: 250]"),
+        help=argparse.SUPPRESS,
+        # ("minimum initial contig length [default: 250]"),
     )
 
     parser.add_argument(
@@ -118,7 +120,7 @@ def main():
         required=True,
         default=None,
         type=str,
-        help="sequencing reads, forward strand (.fastq format)",
+        help="paired-end sequencing reads, forward strand (.fastq format)",
     )
 
     parser.add_argument(
@@ -128,7 +130,7 @@ def main():
         required=True,
         default=None,
         type=str,
-        help="sequencing reads, reverse strand (.fastq format)",
+        help="paired-end sequencing reads, reverse strand (.fastq format)",
     )
 
     args = parser.parse_args()
@@ -188,12 +190,12 @@ def main():
         print("\nExiting...\n")
         sys.exit(1)
 
-    if os.path.exists(args.output_dir + "/vsaware.log"):
-        os.remove(args.output + "/vsaware.log")
+    if os.path.exists(args.output_dir + "/vstrains.log"):
+        os.remove(args.output + "/vstrains.log")
 
     # Setup logger
     # -----------------------
-    logger = logging.getLogger("VSAware %s" % __version__)
+    logger = logging.getLogger("VStrains %s" % __version__)
     logger.setLevel(logging.DEBUG if args.dev else logging.INFO)
 
     consoleHeader = logging.StreamHandler()
@@ -201,20 +203,20 @@ def main():
     consoleHeader.setFormatter(logging.Formatter("%(message)s"))
     logger.addHandler(consoleHeader)
 
-    fileHandler = logging.FileHandler(args.output_dir + "/vsaware.log")
+    fileHandler = logging.FileHandler(args.output_dir + "/vstrains.log")
     fileHandler.setLevel(logging.DEBUG if args.dev else logging.INFO)
     fileHandler.setFormatter(logging.Formatter("%(message)s"))
     logger.addHandler(fileHandler)
 
-    logger.info("Welcome to vsAware!")
+    logger.info("Welcome to VStrains!")
     logger.info(
-        "vsAware is a strain-aware assembly tools, which constructs full-length "
+        "VStrains is a strain-aware assembly tools, which constructs full-length "
     )
     logger.info("virus strain with aid from de Bruijn assembly graph and contigs.")
     logger.info("")
     logger.info("System information:")
     try:
-        logger.info("  VSAware version: " + str(__version__).strip())
+        logger.info("  VStrains version: " + str(__version__).strip())
         logger.info("  Python version: " + ".".join(map(str, sys.version_info[0:3])))
         logger.info("  OS: " + platform.platform())
     except Exception:
@@ -226,6 +228,8 @@ def main():
     logger.info("Input arguments:")
     logger.info("Assembly type: " + args.assembler)
     logger.info("Assembly graph file: " + args.gfa_file)
+    logger.info("Forward read file: " + args.fwd)
+    logger.info("Reverse read file: " + args.rve)
     if args.assembler == "spades":
         logger.info("Contig paths file: " + args.path_file)
     logger.info("Output directory: " + os.path.abspath(args.output_dir))
@@ -233,9 +237,9 @@ def main():
         logger.info("*DEBUG MODE is turned ON")
     logger.info("\n\n")
     logger.info(
-        "======= vsAware pipeline started. Log can be found here: "
+        "======= VStrains pipeline started. Log can be found here: "
         + os.path.abspath(args.output_dir)
-        + "/vsaware.log\n"
+        + "/vstrains.log\n"
     )
 
     formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
@@ -251,8 +255,12 @@ def main():
     fileHandler.setFormatter(logging.Formatter("%(message)s"))
 
     logger.info("")
+    logger.info("Thanks for using VStrains")
     logger.info(
         "Result is stored in {0}/strain.fasta".format(os.path.abspath(args.output_dir))
+    )
+    logger.info(
+        "You can visualise the path stored in {0}/strain.paths via {0}/gfa/graph_L0.gfa".format(os.path.abspath(args.output_dir))
     )
     logger.info("Finished: {0}".format(date.today().strftime("%B %d, %Y")))
     logger.info("Elapsed time: {0}".format(elapsed))

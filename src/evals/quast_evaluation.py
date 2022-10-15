@@ -40,8 +40,7 @@ def quast_eval(files, ref, o, quast, id=0):
 
     ref_file_list = sep_ref(ref, id)
 
-    command = "python2 {0} --unique-mapping -m 500 -t 8 ".format(quast)
-
+    command = "python2 {0} --unique-mapping --report-all-metrics -m 500 -t 8 ".format(quast)
     for fname in files:
         command += fname + " "
 
@@ -66,7 +65,7 @@ if __name__ == "__main__":
         "--path_to_quast",
         dest="quast",
         required=True,
-        help="path to MetaQuast python script",
+        help="path to MetaQuast python script, version >= 5.2.0",
     )
     parser.add_argument(
         "-cs",
@@ -81,7 +80,7 @@ if __name__ == "__main__":
         "--contig_dir",
         dest="idir",
         default=None,
-        help="contig files from different tools, stored in the directory",
+        help="contig files from different tools, stored in the directory, .fasta format",
     )
     parser.add_argument(
         "-ref",
@@ -115,6 +114,6 @@ if __name__ == "__main__":
     if args.files != None:
         files.extend(args.files)
     if args.idir != None:
-        files.extend([str(args.idir) + s for s in sorted(os.listdir(args.idir)) if s.endswith(".fasta")])
+        files.extend([str(args.idir) + s for s in sorted(os.listdir(args.idir)) if s.endswith(".fasta") or s.endswith(".fa")])
 
     quast_eval(files, args.ref_file, args.output_dir, args.quast)

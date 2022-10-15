@@ -7,10 +7,10 @@ from graph_tool.all import Graph
 import numpy
 import matplotlib.pyplot as plt
 
-from utils.vsAware_Utilities import *
+from utils.VStrains_Utilities import *
 
 __author__ = "Runpeng Luo"
-__copyright__ = "Copyright 2022-2025, vsAware Project"
+__copyright__ = "Copyright 2022-2025, VStrains Project"
 __credits__ = ["Runpeng Luo", "Yu Lin"]
 __license__ = "MIT"
 __version__ = "1.0.0"

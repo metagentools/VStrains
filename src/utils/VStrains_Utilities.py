@@ -433,7 +433,7 @@ def simp_path_compactification(
     1. reduce the coverage for each involving node by the amount of contig cov
     2. reconnect end-to-end nodes to the contig node
     """
-    logger.info("simple path compactification..")
+    logger.info("non-branching path contraction..")
     simp_path_dict = simple_paths_to_dict(graph, simp_node_dict, simp_edge_dict)
 
     graph_backup = graph.copy()
@@ -791,7 +791,7 @@ def strain_repeat_resol(
     copy_contig_dict: dict,
     logger,
 ):
-    logger.info("resolving repeat nodes in strain..")
+    logger.info("resolving repeat nodes..")
     # if contig is fully aligned to the strain, then map the repeat to the strain
     for sno, [strain, _, scov] in list(strain_dict.items()):
         cnos = set()

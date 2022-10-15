@@ -2,14 +2,13 @@
 
 
 from graph_tool.all import Graph
-from utils.vsAware_Utilities import *
-from utils.vsAware_Split import best_aln_score, graph_split_trivial
-from utils.vsAware_Decomposition import get_non_trivial_branches
-from utils.vsAware_IO import store_reinit_graph
+from utils.VStrains_Utilities import *
+from utils.VStrains_Decomposition import get_non_trivial_branches, global_trivial_split
+from utils.VStrains_IO import store_reinit_graph
 
 
 __author__ = "Runpeng Luo"
-__copyright__ = "Copyright 2022-2025, vsAware Project"
+__copyright__ = "Copyright 2022-2025, VStrains Project"
 __credits__ = ["Runpeng Luo", "Yu Lin"]
 __license__ = "MIT"
 __version__ = "1.0.0"
@@ -341,7 +340,7 @@ def path_extension(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, con
     while len(contig_dict) > 0:
         # perform trivial split
         prev_ids = list(simp_node_dict.keys())
-        trivial_split_count, id_mapping = graph_split_trivial(
+        trivial_split_count, id_mapping = global_trivial_split(
             graph, simp_node_dict, simp_edge_dict, logger
         )
         graph, simp_node_dict, simp_edge_dict = store_reinit_graph(graph, simp_node_dict, simp_edge_dict, logger, 

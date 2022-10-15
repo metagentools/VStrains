@@ -32,7 +32,7 @@ VStrains requires a 64-bit Linux system or Mac OS and python (supported versions
 <a name="sec2.1"></a>
 ## Quick Install (**recommended**)
 
-Install [(mini)conda](https://conda.io/miniconda.html) as a light-weighted package management tool. Run following commands to initialize&setup the conda environment for VStrains
+Install [(mini)conda](https://conda.io/miniconda.html) as a light-weighted package management tool. Run the following commands to initialize and setup the conda environment for VStrains
 
 ```bash
 # add channels
@@ -64,7 +64,7 @@ And python modules:
 <a name="sec3"></a>
 # Running VStrains
 
-VStrains natively support assembly result from SPAdes (includes metaSPAdes, metaviralSPAdes, etc).
+VStrains supports assembly results from [SPAdes](https://github.com/ablab/spades) (includes metaSPAdes, metaviralSPAdes, etc).
 
 <a name="sec3.1"></a>
 ## Quick Usage
@@ -91,7 +91,7 @@ optional arguments:
                         paired-end sequencing reads, reverse strand (.fastq format)
 ```
 
-VStrains takes as input assembly graph in Graphical Fragment Assembly (GFA) Format and reported contig information. Both input can be found in the output directory after running SPAdes assembler. Please also provide the sequencing reads in paired end format (e.g., forward.fastq, reverse.fastq) together as inputs. Do not modify any contig/node name from the assembly result for consistency. Please refer to [SPAdes](https://github.com/ablab/spades) for further guideline. Example usage as below:
+VStrains takes as input an assembly graph in Graphical Fragment Assembly (GFA) Format and associated contig information. Both inputs can be found in the output directory after running SPAdes assembler. Please also provide the raw reads in paired-end format (e.g., forward.fastq, reverse.fastq) together as inputs. Do not modify any contig/node name from the SPAdes assembly results for consistency. Please refer to [SPAdes](https://github.com/ablab/spades) for further guideline. Example usage as below:
 
 ```bash
 # SPAdes assembler example, pair-end reads
@@ -101,7 +101,7 @@ python spades.py -1 forward.fa -2 reverse.fa --careful -t 16 -o output_dir
 <a name="sec3.2"></a>
 ## Support SPAdes
 
-For SPAdes, we recommend to use `--careful` option for more accurate assembly graph and contigs result. Please use `assembly_graph_after_simplification.gfa` and `contigs.paths` as input, and set `-a` flag to `spades`. Example usage as below:
+For SPAdes, we recommend to use `--careful` option for more accurate assembly results. Please use `assembly_graph_after_simplification.gfa` and `contigs.paths` as input, and set `-a` flag to `spades`. Example usage as below:
 
 ```bash
 python scr/vstrains.py -a spades -g assembly_graph_after_simplification.gfa -p contigs.paths -o output_dir -fwd forward.fastq -rve reverse.fastq
@@ -126,4 +126,4 @@ Runpeng Luo and Yu Lin, VStrains: De Novo Reconstruction of Viral Strains via It
 <a name="sec5"></a>
 # Feedback and bug reports
 
-Thanks for using VStrains, please feel free to raise any concern via `Issues`.
+Thanks for using VStrains. Please feel free to provide any feedback or raise any concern via `Issues`.

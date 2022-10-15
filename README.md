@@ -20,7 +20,7 @@ Table of Contents
 <a name="sec1"></a>
 # About VStrains
 
-VStrains is a strain-aware assembly tools, which constructs full-length virus strain with aid from de Bruijn assembly graph and Strain-oblivious assembled contigs.
+VStrains, a de novo approach for reconstructing strains from viral quasispecies.
 
 <!-- Please refer to our [paper](NULL) and [supplementary Material](NULL) for details methodology. -->
 

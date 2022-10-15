@@ -104,7 +104,7 @@ python spades.py -1 forward.fa -2 reverse.fa --careful -t 16 -o output_dir
 For SPAdes, we recommend to use `--careful` option for more accurate assembly results. Please use `assembly_graph_after_simplification.gfa` and `contigs.paths` as input, and set `-a` flag to `spades`. Example usage as below:
 
 ```bash
-python scr/vstrains.py -a spades -g assembly_graph_after_simplification.gfa -p contigs.paths -o output_dir -fwd forward.fastq -rve reverse.fastq
+python src/vstrains.py -a spades -g assembly_graph_after_simplification.gfa -p contigs.paths -o output_dir -fwd forward.fastq -rve reverse.fastq
 ```
 
 <!-- <a name="sec3.3"></a> -->

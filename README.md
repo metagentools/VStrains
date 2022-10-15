@@ -1,4 +1,4 @@
-# VStrains: Graph Algorithms for De Novo Construction of Viral Strains
+# VStrains: De Novo Reconstruction of Viral Strains via Iterative Path Extraction From Assembly Graphs
 
 Manual
 ===========

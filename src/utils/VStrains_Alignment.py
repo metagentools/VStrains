@@ -15,7 +15,17 @@ __maintainer__ = "Runpeng Luo"
 __email__ = "John.Luo@anu.edu.au"
 __status__ = "Production"
 
-def process_paf_file(index2id, index2reflen, len_index2id, read_ids, fwd_paf_file, rve_paf_file, split_len, tid):
+
+def process_paf_file(
+    index2id,
+    index2reflen,
+    len_index2id,
+    read_ids,
+    fwd_paf_file,
+    rve_paf_file,
+    split_len,
+    tid,
+):
     print("Batch {0} start".format(tid))
     print("current pid: {0}".format(os.getpid()))
     start = time.time()
@@ -28,7 +38,9 @@ def process_paf_file(index2id, index2reflen, len_index2id, read_ids, fwd_paf_fil
         id2index[index2id[i]] = i
 
     read2index = {}
-    index2read = numpy.array([(k,fwdlen,revlen) for (k, _, _, fwdlen,revlen) in read_ids], dtype=int)
+    index2read = numpy.array(
+        [(k, fwdlen, revlen) for (k, _, _, fwdlen, revlen) in read_ids], dtype=int
+    )
 
     conf_alns_f = [None for _ in index2read]
     # numpy.array([None for _ in index2read], dtype=object)
@@ -39,7 +51,7 @@ def process_paf_file(index2id, index2reflen, len_index2id, read_ids, fwd_paf_fil
     # numpy.array([None for _ in index2read], dtype=object)
     conf_cords_r = [None for _ in index2read]
     # numpy.array([None for _ in index2read], dtype=object)
-    
+
     for i, (glb_index, f_local_inds, r_local_inds, _, _) in enumerate(read_ids):
         read2index[glb_index] = i
         conf_alns_f[i] = [[] for _ in range(f_local_inds)]
@@ -50,7 +62,7 @@ def process_paf_file(index2id, index2reflen, len_index2id, read_ids, fwd_paf_fil
         # numpy.array([[] for _ in range(r_local_inds)], dtype=object)
         conf_cords_r[i] = [[] for _ in range(r_local_inds)]
         # numpy.array([[] for _ in range(r_local_inds)], dtype=object)
-    
+
     for file in [fwd_paf_file, rve_paf_file]:
         with open(file, "r") as fwd_paf:
             file_count = 0
@@ -61,25 +73,30 @@ def process_paf_file(index2id, index2reflen, len_index2id, read_ids, fwd_paf_fil
                 seg_no = splited[0]
                 [glb_seg_no, sub_no] = seg_no.split("_")
                 ref_no = str(splited[5])
-                ref_start_coord = int(splited[7]) # 0-based
+                ref_start_coord = int(splited[7])  # 0-based
                 nm = int(splited[10]) - int(splited[9])
                 if nm == 0 and int(splited[10]) == split_len:
                     if file == fwd_paf_file:
-                        conf_alns_f[read2index[int(glb_seg_no)]][int(sub_no)].append(id2index[ref_no])
-                        conf_cords_f[read2index[int(glb_seg_no)]][int(sub_no)].append(ref_start_coord)
+                        conf_alns_f[read2index[int(glb_seg_no)]][int(sub_no)].append(
+                            id2index[ref_no]
+                        )
+                        conf_cords_f[read2index[int(glb_seg_no)]][int(sub_no)].append(
+                            ref_start_coord
+                        )
                     else:
-                        conf_alns_r[read2index[int(glb_seg_no)]][int(sub_no)].append(id2index[ref_no])
-                        conf_cords_r[read2index[int(glb_seg_no)]][int(sub_no)].append(ref_start_coord)
+                        conf_alns_r[read2index[int(glb_seg_no)]][int(sub_no)].append(
+                            id2index[ref_no]
+                        )
+                        conf_cords_r[read2index[int(glb_seg_no)]][int(sub_no)].append(
+                            ref_start_coord
+                        )
                 file_count += 1
             fwd_paf.close()
     # print("Batch {0} finished alignment file parsing".format(tid))
-    subprocess.check_call(
-        "rm {0}".format(fwd_paf_file), shell=True
-    )
-    subprocess.check_call(
-        "rm {0}".format(rve_paf_file), shell=True
-    )
+    subprocess.check_call("rm {0}".format(fwd_paf_file), shell=True)
+    subprocess.check_call("rm {0}".format(rve_paf_file), shell=True)
     nonunique_counter = 0
+
     def retrieve_single_end_saturation(glb_index, conf_alns, conf_cords, rlen, ks):
         nodes = numpy.zeros(len_index2id, dtype=int)
         coords = [None for _ in range(len_index2id)]
@@ -92,7 +109,9 @@ def process_paf_file(index2id, index2reflen, len_index2id, read_ids, fwd_paf_fil
                 if coords[sub_aln_status] == None:
                     coords[sub_aln_status] = conf_cords[glb_index][i][j]
                 else:
-                    coords[sub_aln_status] = min(coords[sub_aln_status], conf_cords[glb_index][i][j])
+                    coords[sub_aln_status] = min(
+                        coords[sub_aln_status], conf_cords[glb_index][i][j]
+                    )
                 if kindices[sub_aln_status] == None:
                     kindices[sub_aln_status] = i
                 else:
@@ -104,19 +123,23 @@ def process_paf_file(index2id, index2reflen, len_index2id, read_ids, fwd_paf_fil
             if coords[i] == None or kindices[i] == None:
                 continue
             L = max(coords[i], coords[i] - kindices[i])
-            R = min(coords[i]+index2reflen[i] - 1, coords[i] - kindices[i] + rlen - 1)
+            R = min(coords[i] + index2reflen[i] - 1, coords[i] - kindices[i] + rlen - 1)
             saturate = R - L - (split_len - 1) + 1
-            expected = (min(rlen, index2reflen[i]) - ks + 1) * (rlen - ks)/rlen
+            expected = (min(rlen, index2reflen[i]) - ks + 1) * (rlen - ks) / rlen
             if v >= max(min(saturate, expected), 1):
                 # print(i,v,"passed")
                 saturates.append(i)
         return saturates
 
     for (glb_id, fwdlen, revlen) in index2read:
-        glb_index = read2index[glb_id]        
-        lefts = retrieve_single_end_saturation(glb_index, conf_alns_f, conf_cords_f, fwdlen, split_len)
-        rights = retrieve_single_end_saturation(glb_index, conf_alns_r, conf_cords_r, revlen, split_len)
-        
+        glb_index = read2index[glb_id]
+        lefts = retrieve_single_end_saturation(
+            glb_index, conf_alns_f, conf_cords_f, fwdlen, split_len
+        )
+        rights = retrieve_single_end_saturation(
+            glb_index, conf_alns_r, conf_cords_r, revlen, split_len
+        )
+
         k = 0
         for i in lefts:
             for i2 in lefts[k:]:
@@ -127,7 +150,7 @@ def process_paf_file(index2id, index2reflen, len_index2id, read_ids, fwd_paf_fil
             for j2 in rights[k:]:
                 short_mat[j][j2] += 1
             k += 1
-        
+
         for i in lefts:
             for j in rights:
                 node_mat[i][j] += 1
@@ -142,8 +165,16 @@ def process_paf_file(index2id, index2reflen, len_index2id, read_ids, fwd_paf_fil
     print("Batch: {0} time spent for processing paf file: {1}".format(tid, elapsed))
     return node_mat, short_mat
 
-def batch_split(fwd_file: str, rve_file: str, temp_dir: str, batch_size: int, do_split: bool, split_len):
-    """split the read file into several 
+
+def batch_split(
+    fwd_file: str,
+    rve_file: str,
+    temp_dir: str,
+    batch_size: int,
+    do_split: bool,
+    split_len,
+):
+    """split the read file into several
     Args:
         fwd_file (str): _description_
         rve_file (str): _description_
@@ -171,16 +202,12 @@ def batch_split(fwd_file: str, rve_file: str, temp_dir: str, batch_size: int, do
             rev_reads = rve.readlines()
             total_size = min(len(fwd_reads) // 4, len(rev_reads) // 4)
             # marker_test = 1
-            # total_size = min(marker_test, total_size) 
+            # total_size = min(marker_test, total_size)
             for i in range(total_size):
                 # if i % batch_size == 0:
                 #     print("Processed {0} reads up to now.".format(i))
-                [_, fseq, _, feval] = [
-                    s[:-1] for s in fwd_reads[i * 4 : (i + 1) * 4]
-                ]
-                [_, rseq, _, reval] = [
-                    s[:-1] for s in rev_reads[i * 4 : (i + 1) * 4]
-                ]
+                [_, fseq, _, feval] = [s[:-1] for s in fwd_reads[i * 4 : (i + 1) * 4]]
+                [_, rseq, _, reval] = [s[:-1] for s in rev_reads[i * 4 : (i + 1) * 4]]
                 if fseq.count("N") or rseq.count("N"):
                     n_reads += 1
                     continue
@@ -190,15 +217,25 @@ def batch_split(fwd_file: str, rve_file: str, temp_dir: str, batch_size: int, do
                 used_reads += 1
                 local_reads += 1
                 local_list.append((fseq, feval, rseq, reval))
-                if local_reads == batch_size or (local_reads > 0 and i == total_size - 1):
+                if local_reads == batch_size or (
+                    local_reads > 0 and i == total_size - 1
+                ):
                     # file creation
-                    sub_fwd_filename = "{0}/temp_forward_{1}.fastq".format(temp_dir, batch_count)
-                    sub_rve_filename = "{0}/temp_reverse_{1}.fastq".format(temp_dir, batch_count)
-                    subprocess.check_call("touch {0}; echo " " > {0}".format(sub_fwd_filename), shell=True)
-                    subprocess.check_call("touch {0}; echo " " > {0}".format(sub_rve_filename), shell=True)
+                    sub_fwd_filename = "{0}/temp_forward_{1}.fastq".format(
+                        temp_dir, batch_count
+                    )
+                    sub_rve_filename = "{0}/temp_reverse_{1}.fastq".format(
+                        temp_dir, batch_count
+                    )
+                    subprocess.check_call(
+                        "touch {0}; echo " " > {0}".format(sub_fwd_filename), shell=True
+                    )
+                    subprocess.check_call(
+                        "touch {0}; echo " " > {0}".format(sub_rve_filename), shell=True
+                    )
                     temp_file_fwd = open(sub_fwd_filename, "w")
                     temp_file_rve = open(sub_rve_filename, "w")
-                    
+
                     read_ids = []
                     if do_split:
                         for j, (fseq, feval, rseq, reval) in enumerate(local_list):
@@ -209,7 +246,9 @@ def batch_split(fwd_file: str, rve_file: str, temp_dir: str, batch_size: int, do
                             for sub_i in range(len(fseq) - split_len + 1):
                                 subfread = fseq[sub_i : sub_i + split_len]
                                 subfeval = feval[sub_i : sub_i + split_len]
-                                temp_file_fwd.write(prefix_name + "{0} /1\n".format(sub_i))
+                                temp_file_fwd.write(
+                                    prefix_name + "{0} /1\n".format(sub_i)
+                                )
                                 temp_file_fwd.write(subfread + "\n")
                                 temp_file_fwd.write("+\n")
                                 temp_file_fwd.write(subfeval + "\n")
@@ -218,12 +257,16 @@ def batch_split(fwd_file: str, rve_file: str, temp_dir: str, batch_size: int, do
                             for sub_i in range(len(rseq) - split_len + 1):
                                 subrread = rseq[sub_i : sub_i + split_len]
                                 subreval = reval[sub_i : sub_i + split_len]
-                                temp_file_rve.write(prefix_name + "{0} /2\n".format(sub_i))
+                                temp_file_rve.write(
+                                    prefix_name + "{0} /2\n".format(sub_i)
+                                )
                                 temp_file_rve.write(subrread + "\n")
                                 temp_file_rve.write("+\n")
                                 temp_file_rve.write(subreval + "\n")
                             rkmer += len(rseq) - split_len + 1
-                            read_ids.append((j, fread_id_subs, rread_id_subs, len(fseq), len(rseq)))
+                            read_ids.append(
+                                (j, fread_id_subs, rread_id_subs, len(fseq), len(rseq))
+                            )
                     else:
                         for j, (fseq, feval, rseq, reval) in enumerate(local_list):
                             prefix_name = "@{0}_".format(j)
@@ -231,7 +274,7 @@ def batch_split(fwd_file: str, rve_file: str, temp_dir: str, batch_size: int, do
                             temp_file_fwd.write(fseq + "\n")
                             temp_file_fwd.write("+\n")
                             temp_file_fwd.write(feval + "\n")
-                            
+
                             temp_file_rve.write(prefix_name + "{0} /2\n".format(0))
                             temp_file_rve.write(rseq + "\n")
                             temp_file_rve.write("+\n")
@@ -243,7 +286,7 @@ def batch_split(fwd_file: str, rve_file: str, temp_dir: str, batch_size: int, do
                     sub_files.append((sub_fwd_filename, sub_rve_filename))
                     local_reads = 0
                     local_list = []
-                    batch_count += 1 
+                    batch_count += 1
         fwd.close()
         rve.close()
 
@@ -255,10 +298,15 @@ def batch_split(fwd_file: str, rve_file: str, temp_dir: str, batch_size: int, do
     print("total number of reverse reads kmer: ", rkmer)
     return read_summary, sub_files
 
+
 def minimap_alignment(fasta_file, sub_files, temp_dir):
     paf_files = []
     for i, (sub_fwd_filename, sub_rve_filename) in enumerate(sub_files):
-        print("minimap reads {0},{1} to graph..".format(sub_fwd_filename, sub_rve_filename))
+        print(
+            "minimap reads {0},{1} to graph..".format(
+                sub_fwd_filename, sub_rve_filename
+            )
+        )
         start = time.time()
         sub_fwd_paf = "{0}/temp_fwd_aln_{1}.paf".format(temp_dir, i)
         subprocess.check_call(
@@ -267,10 +315,8 @@ def minimap_alignment(fasta_file, sub_files, temp_dir):
             ),
             shell=True,
         )
-        # -B 40 -O 20,50 -E 30,10 -z 1,1 -k 27 -w 18 -s 256 
-        subprocess.check_call(
-            "rm {0}".format(sub_fwd_filename), shell=True
-        )
+        # -B 40 -O 20,50 -E 30,10 -z 1,1 -k 27 -w 18 -s 256
+        subprocess.check_call("rm {0}".format(sub_fwd_filename), shell=True)
 
         sub_rve_paf = "{0}/temp_rve_aln_{1}.paf".format(temp_dir, i)
         subprocess.check_call(
@@ -279,17 +325,18 @@ def minimap_alignment(fasta_file, sub_files, temp_dir):
             ),
             shell=True,
         )
-        subprocess.check_call(
-            "rm {0}".format(sub_rve_filename), shell=True
-        )
+        subprocess.check_call("rm {0}".format(sub_rve_filename), shell=True)
 
         paf_files.append((sub_fwd_paf, sub_rve_paf))
         elapsed = time.time() - start
         print("Time spent for minimap2: ", elapsed)
     return paf_files
 
+
 def main():
-    print("----------------------Paired-End Information Alignment----------------------")
+    print(
+        "----------------------Paired-End Information Alignment----------------------"
+    )
     parser = argparse.ArgumentParser(
         prog="pe_info",
         description="""Align Paired-End reads to nodes in graph to obtain strong links""",
@@ -300,7 +347,12 @@ def main():
     )
 
     parser.add_argument(
-        "-o", "--output_dir", dest="dir", type=str, required=True, help="output directory",
+        "-o",
+        "--output_dir",
+        dest="dir",
+        type=str,
+        required=True,
+        help="output directory",
     )
 
     parser.add_argument(
@@ -312,7 +364,12 @@ def main():
     )
 
     parser.add_argument(
-        "-k", "--kmer_size", dest="kmer_size", type=int, default=128, help="unique kmer size"
+        "-k",
+        "--kmer_size",
+        dest="kmer_size",
+        type=int,
+        default=128,
+        help="unique kmer size",
     )
 
     args = parser.parse_args()
@@ -342,7 +399,9 @@ def main():
 
     split_len = args.kmer_size + 1
     # split reads to several batches
-    read_summary, sub_files = batch_split(args.fwd, args.rve, args.dir, 40000, True, split_len)
+    read_summary, sub_files = batch_split(
+        args.fwd, args.rve, args.dir, 40000, True, split_len
+    )
     # minimap2 reads to fasta file
     paf_files = minimap_alignment(tmp_g2s_file, sub_files, args.dir)
 
@@ -351,7 +410,16 @@ def main():
     strand_mats = []
 
     for i in range(len(paf_files)):
-        (node_mat, strand_mat) = process_paf_file(index2id, index2reflen, len_index2id, read_summary[i], paf_files[i][0], paf_files[i][1], split_len, i)
+        (node_mat, strand_mat) = process_paf_file(
+            index2id,
+            index2reflen,
+            len_index2id,
+            read_summary[i],
+            paf_files[i][0],
+            paf_files[i][1],
+            split_len,
+            i,
+        )
         node_mats.append(node_mat)
         strand_mats.append(strand_mat)
 
@@ -366,8 +434,16 @@ def main():
         with open(out_file2, "w") as outfile2:
             for i in range(len_index2id):
                 for j in range(len_index2id):
-                    outfile.write("{0}:{1}:{2}\n".format(index2id[i], index2id[j], glb_node_mat[i][j]))
-                    outfile2.write("{0}:{1}:{2}\n".format(index2id[i], index2id[j], glb_strand_mat[i][j]))
+                    outfile.write(
+                        "{0}:{1}:{2}\n".format(
+                            index2id[i], index2id[j], glb_node_mat[i][j]
+                        )
+                    )
+                    outfile2.write(
+                        "{0}:{1}:{2}\n".format(
+                            index2id[i], index2id[j], glb_strand_mat[i][j]
+                        )
+                    )
             outfile2.close()
         outfile.close()
 

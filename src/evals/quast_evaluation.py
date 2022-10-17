@@ -40,7 +40,9 @@ def quast_eval(files, ref, o, quast, id=0):
 
     ref_file_list = sep_ref(ref, id)
 
-    command = "python2 {0} --unique-mapping --report-all-metrics -m 500 -t 8 ".format(quast)
+    command = "python2 {0} --unique-mapping --report-all-metrics -m 500 -t 8 ".format(
+        quast
+    )
     for fname in files:
         command += fname + " "
 
@@ -100,7 +102,7 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    if (args.idir == None and args.files == None):
+    if args.idir == None and args.files == None:
         print("Please provide correct query input")
         sys.exit(1)
 
@@ -114,6 +116,12 @@ if __name__ == "__main__":
     if args.files != None:
         files.extend(args.files)
     if args.idir != None:
-        files.extend([str(args.idir) + s for s in sorted(os.listdir(args.idir)) if s.endswith(".fasta") or s.endswith(".fa")])
+        files.extend(
+            [
+                str(args.idir) + s
+                for s in sorted(os.listdir(args.idir))
+                if s.endswith(".fasta") or s.endswith(".fa")
+            ]
+        )
 
     quast_eval(files, args.ref_file, args.output_dir, args.quast)

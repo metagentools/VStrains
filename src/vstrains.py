@@ -260,7 +260,9 @@ def main():
         "Result is stored in {0}/strain.fasta".format(os.path.abspath(args.output_dir))
     )
     logger.info(
-        "You can visualise the path stored in {0}/strain.paths via {0}/gfa/graph_L0.gfa".format(os.path.abspath(args.output_dir))
+        "You can visualise the path stored in {0}/strain.paths via {0}/gfa/graph_L0.gfa".format(
+            os.path.abspath(args.output_dir)
+        )
     )
     logger.info("Finished: {0}".format(date.today().strftime("%B %d, %Y")))
     logger.info("Elapsed time: {0}".format(elapsed))

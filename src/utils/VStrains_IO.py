@@ -544,9 +544,8 @@ def contig_dict_to_fasta(
             fasta.write(seq)
         fasta.close()
 
-def strain_dict_to_fasta(
-    strain_dict: dict, output_file
-):
+
+def strain_dict_to_fasta(strain_dict: dict, output_file):
     """
     Store strain dict into fastq file
     """
@@ -563,6 +562,7 @@ def strain_dict_to_fasta(
             fasta.write(contig_name)
             fasta.write(seq)
         fasta.close()
+
 
 def contig_dict_to_path(
     contig_dict: dict, output_file, id_mapping: dict = None, keep_original=False
@@ -603,29 +603,30 @@ def contig_dict_to_path(
             paths.write(path_ids)
         paths.close()
 
+
 def process_pe_info(node_ids, pe_info_file, st_info_file):
     pe_info = {}
     for u in node_ids:
         for v in node_ids:
-            pe_info[(min(u,v),max(u,v))] = 0
+            pe_info[(min(u, v), max(u, v))] = 0
     with open(pe_info_file, "r") as file:
         for line in file:
             if line == "\n":
                 break
-            [u,v,mark] = line[:-1].split(":")[:3]
+            [u, v, mark] = line[:-1].split(":")[:3]
             # bidirection
-            key = (min(u,v),max(u,v))
+            key = (min(u, v), max(u, v))
             if pe_info.get(key) != None:
                 pe_info[key] += int(mark)
         file.close()
-   
+
     with open(st_info_file, "r") as file:
         for line in file:
             if line == "\n":
                 break
-            [u,v,mark] = line[:-1].split(":")[:3]
+            [u, v, mark] = line[:-1].split(":")[:3]
             # bidirection
-            key = (min(u,v),max(u,v))
+            key = (min(u, v), max(u, v))
             if pe_info.get(key) != None:
                 pe_info[key] += int(mark)
         file.close()
@@ -634,8 +635,17 @@ def process_pe_info(node_ids, pe_info_file, st_info_file):
         dcpy_pe_info[(uid, wid)] = u
     return pe_info, dcpy_pe_info
 
-def store_reinit_graph(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict, logger: Logger, opt_filename):
+
+def store_reinit_graph(
+    graph: Graph,
+    simp_node_dict: dict,
+    simp_edge_dict: dict,
+    logger: Logger,
+    opt_filename,
+):
     graph_to_gfa(graph, simp_node_dict, simp_edge_dict, logger, opt_filename)
-    grapho, simp_node_dicto, simp_edge_dicto = flipped_gfa_to_graph(opt_filename, logger)
+    grapho, simp_node_dicto, simp_edge_dicto = flipped_gfa_to_graph(
+        opt_filename, logger
+    )
     assign_edge_flow(grapho, simp_node_dicto, simp_edge_dicto)
     return grapho, simp_node_dicto, simp_edge_dicto

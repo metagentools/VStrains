@@ -40,6 +40,7 @@ def assign_edge_flow(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict):
         )
     return
 
+
 def map_ref_to_graph(
     ref_file,
     simp_node_dict: dict,
@@ -122,9 +123,7 @@ def map_ref_to_contig(contig_dict: dict, logger: Logger, paf_file, store_mapping
         paf.close()
 
     if not store_mapping:
-        subprocess.check_call(
-            "rm {0}".format(paf_file), shell=True
-        )
+        subprocess.check_call("rm {0}".format(paf_file), shell=True)
     for sno, cnos in strain_dict.items():
         logger.debug("--------------------------------->")
         logger.debug(
@@ -169,11 +168,19 @@ def trim_contig_dict(
     logger.info("done")
     return contig_dict
 
+
 def is_non_trivial(graph, node):
-    us = [graph.vp.id[e.source()] for e in node.in_edges() if graph.ep.color[e] == "black"]
-    ws = [graph.vp.id[e.target()] for e in node.out_edges() if graph.ep.color[e] == "black"]
+    us = [
+        graph.vp.id[e.source()] for e in node.in_edges() if graph.ep.color[e] == "black"
+    ]
+    ws = [
+        graph.vp.id[e.target()]
+        for e in node.out_edges()
+        if graph.ep.color[e] == "black"
+    ]
     intersects = set(us).intersection(set(ws))
     return len(us) > max(len(intersects), 1) and len(ws) > max(len(intersects), 1)
+
 
 def get_non_trivial_branches(graph: Graph, simp_node_dict: dict):
     non_trivial_branches = {}
@@ -181,6 +188,7 @@ def get_non_trivial_branches(graph: Graph, simp_node_dict: dict):
         if is_non_trivial(graph, node):
             non_trivial_branches[no] = node
     return non_trivial_branches
+
 
 def increment_nt_branch_coverage(graph: Graph, simp_node_dict: dict, logger: Logger):
     nt_branches = get_non_trivial_branches(graph, simp_node_dict)
@@ -193,13 +201,22 @@ def increment_nt_branch_coverage(graph: Graph, simp_node_dict: dict, logger: Log
             sum_in_dp = sum(graph.vp.dp[n] for n in node.in_neighbors())
             sum_out_dp = sum(graph.vp.dp[n] for n in node.out_neighbors())
             graph.vp.dp[node] = max([prev_dp, sum_in_dp, sum_out_dp])
-            logger.debug("Simple NT Branch:{0}, cov: {1} -> {2}".format(no, prev_dp, graph.vp.dp[node]))
+            logger.debug(
+                "Simple NT Branch:{0}, cov: {1} -> {2}".format(
+                    no, prev_dp, graph.vp.dp[node]
+                )
+            )
 
         else:
             sum_in_flow = sum(graph.ep.flow[e] for e in node.in_edges())
             sum_out_flow = sum(graph.ep.flow[e] for e in node.out_edges())
             graph.vp.dp[node] = max([prev_dp, sum_in_flow, sum_out_flow])
-            logger.debug("Non-Simple NT Branch:{0}, cov: {1} -> {2}".format(no, prev_dp, graph.vp.dp[node]))
+            logger.debug(
+                "Non-Simple NT Branch:{0}, cov: {1} -> {2}".format(
+                    no, prev_dp, graph.vp.dp[node]
+                )
+            )
+
 
 def contig_resolve(contig_dict: dict):
     rid = ""
@@ -215,6 +232,7 @@ def contig_resolve(contig_dict: dict):
                 rcontig.append(rid)
         contig_dict[cno] = [rcontig, clen, ccov]
     return
+
 
 def contig_map_node(contig_dict: dict):
     node_to_contig_dict = {}
@@ -313,7 +331,9 @@ def contig_dict_remapping(
         else:
             rtn_set = set()
             for id in curr_set:
-                rtn_set = rtn_set.union(merge_id(id_mapping_r, id_mapping_r.get(id, []), id))
+                rtn_set = rtn_set.union(
+                    merge_id(id_mapping_r, id_mapping_r.get(id, []), id)
+                )
             return rtn_set
 
     logger.info("contig resolution..")
@@ -349,7 +369,9 @@ def contig_dict_remapping(
         else:
             contig_dict.pop(cno)
             logger.debug(
-                "multi mapping for the current contig {0}: whole contig is ambiguous mapping, keep the intersection reduced one only".format(cno)
+                "multi mapping for the current contig {0}: whole contig is ambiguous mapping, keep the intersection reduced one only".format(
+                    cno
+                )
             )
             final_path = reduce(lambda a, b: [i for i in a if i in b], paths)
             if len(final_path) > 0:
@@ -478,11 +500,13 @@ def simp_path_compactification(
                 pe_info[(min(id, nno), max(id, nno))] = 0
                 if nno != id:
                     for sub_id in contig:
-                        pe_info[(min(id, nno), max(id, nno))] += pe_info[(min(sub_id, nno), max(sub_id, nno))]
-            for (pu,pv) in list(pe_info.keys()):
+                        pe_info[(min(id, nno), max(id, nno))] += pe_info[
+                            (min(sub_id, nno), max(sub_id, nno))
+                        ]
+            for (pu, pv) in list(pe_info.keys()):
                 if pu in contig or pv in contig:
                     # out of date
-                    pe_info.pop((min(pu,pv),max(pu,pv)))
+                    pe_info.pop((min(pu, pv), max(pu, pv)))
 
     # recover all the in-out edges surrounding the contigs
     for [_, _, _, node, in_edges, out_edges] in contig_info:

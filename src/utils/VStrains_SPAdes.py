@@ -14,7 +14,7 @@ from utils.VStrains_IO import (
     contig_dict_to_fasta,
     spades_paths_parser,
     process_pe_info,
-    store_reinit_graph
+    store_reinit_graph,
 )
 from utils.VStrains_Decomposition import *
 from utils.VStrains_Extension import path_extension, best_matching
@@ -122,17 +122,36 @@ def run(args, logger):
     logger.info("graph kmer size: {0}".format(ksize))
 
     # obtain paired end information
-    script_path = "{0}/VStrains_Alignment.py".format(os.path.abspath(os.path.dirname(__file__)))
-    subprocess.check_call("python {0} -g {1} -o {2} -f {3} -r {4} -k {5}".
-        format(script_path, "{0}/gfa/s_graph_L1.gfa".format(TEMP_DIR), "{0}/aln".format(TEMP_DIR), args.fwd, args.rve, ksize), shell=True)
+    script_path = "{0}/VStrains_Alignment.py".format(
+        os.path.abspath(os.path.dirname(__file__))
+    )
+    subprocess.check_call(
+        "python {0} -g {1} -o {2} -f {3} -r {4} -k {5}".format(
+            script_path,
+            "{0}/gfa/s_graph_L1.gfa".format(TEMP_DIR),
+            "{0}/aln".format(TEMP_DIR),
+            args.fwd,
+            args.rve,
+            ksize,
+        ),
+        shell=True,
+    )
     logger.info("paired end information stored")
     pe_info_file = "{0}/aln/pe_info".format(TEMP_DIR)
     st_info_file = "{0}/aln/st_info".format(TEMP_DIR)
-    pe_info, dcpy_pe_info = process_pe_info(simp_node_dict1.keys(), pe_info_file, st_info_file)
+    pe_info, dcpy_pe_info = process_pe_info(
+        simp_node_dict1.keys(), pe_info_file, st_info_file
+    )
 
     edge_cleaning(graph1, simp_edge_dict1, contig_dict, pe_info, logger)
 
-    graph2, simp_node_dict2, simp_edge_dict2 = store_reinit_graph(graph1, simp_node_dict1, simp_edge_dict1, logger, "{0}/gfa/es_graph_L2.gfa".format(TEMP_DIR))
+    graph2, simp_node_dict2, simp_edge_dict2 = store_reinit_graph(
+        graph1,
+        simp_node_dict1,
+        simp_edge_dict1,
+        logger,
+        "{0}/gfa/es_graph_L2.gfa".format(TEMP_DIR),
+    )
 
     contig_dict_to_path(contig_dict, "{0}/tmp/pre_contigs.paths".format(TEMP_DIR))
     contig_dict_to_fasta(
@@ -164,8 +183,16 @@ def run(args, logger):
 
     # split the branches using link information
     graphf, simp_node_dictf, simp_edge_dictf = iter_graph_disentanglement(
-        graph2, simp_node_dict2, simp_edge_dict2,
-        contig_dict, pe_info, args.ref_file, logger, 0.05 * numpy.median([graph2.vp.dp[node] for node in graph2.vertices()]), TEMP_DIR)
+        graph2,
+        simp_node_dict2,
+        simp_edge_dict2,
+        contig_dict,
+        pe_info,
+        args.ref_file,
+        logger,
+        0.05 * numpy.median([graph2.vp.dp[node] for node in graph2.vertices()]),
+        TEMP_DIR,
+    )
 
     contig_dict_to_path(contig_dict, "{0}/tmp/post_contigs.paths".format(TEMP_DIR))
     contig_dict_to_fasta(
@@ -197,7 +224,9 @@ def run(args, logger):
     logger.info(">>>STAGE: contig path extension")
 
     # refine partial links using best match
-    full_link = best_matching(graphf, simp_node_dictf, simp_edge_dictf, contig_dict, pe_info, logger)
+    full_link = best_matching(
+        graphf, simp_node_dictf, simp_edge_dictf, contig_dict, pe_info, logger
+    )
 
     # update graph coverage on non-trivial branch, maximize
     increment_nt_branch_coverage(graphf, simp_node_dictf, logger)
@@ -212,15 +241,28 @@ def run(args, logger):
 
     # extend the graph
     p_delta = 0.05 * numpy.median([graphf.vp.dp[node] for node in graphf.vertices()])
-    strain_dict, usages = path_extension(graphf, simp_node_dictf, simp_edge_dictf, contig_dict, full_link, dcpy_pe_info, logger, p_delta, TEMP_DIR)
-    
-    
+    strain_dict, usages = path_extension(
+        graphf,
+        simp_node_dictf,
+        simp_edge_dictf,
+        contig_dict,
+        full_link,
+        dcpy_pe_info,
+        logger,
+        p_delta,
+        TEMP_DIR,
+    )
+
     logger.info(">>>STAGE: final process")
     contig_resolve(strain_dict)
-    graphl, simp_node_dictl, simp_edge_dictl = flipped_gfa_to_graph("{0}/gfa/es_graph_L2.gfa".format(TEMP_DIR), logger)
+    graphl, simp_node_dictl, simp_edge_dictl = flipped_gfa_to_graph(
+        "{0}/gfa/es_graph_L2.gfa".format(TEMP_DIR), logger
+    )
     trim_contig_dict(graphl, simp_node_dictl, strain_dict, logger)
     contig_dup_removed_s(strain_dict, logger)
-    contig_dict_to_path(strain_dict, "{0}/tmp/tmp_strain.paths".format(TEMP_DIR), None, False)
+    contig_dict_to_path(
+        strain_dict, "{0}/tmp/tmp_strain.paths".format(TEMP_DIR), None, False
+    )
 
     # recover repeat nodes back to contig
     strain_repeat_resol(

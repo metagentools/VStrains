@@ -349,6 +349,7 @@ def threshold_estimation(graph: Graph, logger: Logger, temp_dir):
     plt.savefig("{0}{1}".format(temp_dir, "/tmp/bar_plot.png"))
     return threshold
 
+
 def graph_simplification(
     graph: Graph,
     simp_node_dict: dict,

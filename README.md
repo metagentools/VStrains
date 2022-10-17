@@ -58,6 +58,7 @@ Manually install dependencies:
 And python modules:
 - [graph-tool](https://graph-tool.skewed.de)
 - [numpy](https://numpy.org)
+- [gfapy](https://github.com/ggonnella/gfapy)
 <!-- - [scikit-learn](https://scikit-learn.org/stable/install.html)
 - [pandas](https://pandas.pydata.org/docs/getting_started/install.html) -->
 

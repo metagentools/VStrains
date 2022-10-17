@@ -96,7 +96,7 @@ VStrains takes as input an assembly graph in Graphical Fragment Assembly (GFA) F
 
 ```bash
 # SPAdes assembler example, pair-end reads
-python spades.py -1 forward.fa -2 reverse.fa --careful -t 16 -o output_dir
+python spades.py -1 forward.fastq -2 reverse.fastq --careful -t 16 -o output_dir
 ```
 
 <a name="sec3.2"></a>

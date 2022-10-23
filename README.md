@@ -1,8 +1,5 @@
 # VStrains: De Novo Reconstruction of Viral Strains via Iterative Path Extraction From Assembly Graphs
 
-![GitHub](https://img.shields.io/github/license/metagentools/VStrains)
-[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
-
 Manual
 ===========
 
@@ -16,10 +13,10 @@ Table of Contents
 3. [Running VStrains](#sec3) </br>
    3.1. [Quick Usage](#sec3.1) </br>
    3.2. [Support SPAdes](#sec3.2) </br>
-   3.3. [Parameters](#sec3.4) </br>
-4. [Citation](#sec4) </br>
-5. [Feedback and bug reports](#sec5)</br>
-
+4. [Experiment](#sec4) </br>
+5. [Citation](#sec5) </br>
+6. [Feedback and bug reports](#sec6)</br>
+#   3.3. [Parameters](#sec3.4) </br>
 <a name="sec1"></a>
 # About VStrains
 
@@ -123,11 +120,23 @@ This sets the minimum node coverage for filtering the inaccurate nodes from init
 Since SPAdes normally output all the nodes from assembly graph as contigs, short or low coverage contig may lead to less accuracy and confidence. By default, single node contig with length less than 250bp or coverage less then `--mc` (defined above) is filtered out. Please use `-ml` flag to input the customized minimum contig length if needed. -->
 
 <a name="sec4"></a>
+# Experiment
+
+VStrains is evaluated on both simulated and real datasets under default settings, and the source of the datasets can be found in the links listed below:
+1. Simulated Dataset, can be found at [savage-benchmark](https://bitbucket.org/jbaaijens/savage-benchmarks/src/master/) (No preprocessing is required)
+   - 6 Poliovirus (20,000x)
+   - 10 HCV (20,000x)
+   - 15 ZIKV (20,000x)
+2. Real Dataset (please refer to [Supplementary Material](https://www.biorxiv.org/content/10.1101/2022.10.21.513181v2.supplementary-material) for preprocessing the real datasets)
+   - 5 HIV labmix (20,000x) [SRR961514](https://www.ncbi.nlm.nih.gov/sra/?term=SRR961514), reference genome sequences are available at [link](https://github.com/cbg-ethz/5-virus-mix/blob/master/data/REF.fasta)
+   - 2 SARS-COV-2 (4,000x) [SRR18009684](https://www.ncbi.nlm.nih.gov/sra/?term=SRR18009684), [SRR18009686](https://www.ncbi.nlm.nih.gov/sra/?term=SRR18009686), pre-processed reads and individually assemble ground-truth reference sequences can be found at [link](https://github.com/RunpengLuo/sarscov2-4000x)
+<a name="sec5"></a>
 # Citation
 
 Runpeng Luo and Yu Lin, VStrains: De Novo Reconstruction of Viral Strains via Iterative Path Extraction From Assembly Graphs (submited)
+preprint is available at [bioRxiv](https://www.biorxiv.org/content/10.1101/2022.10.21.513181v2).
 
-<a name="sec5"></a>
+<a name="sec6"></a>
 # Feedback and bug reports
 
 Thanks for using VStrains. Please feel free to provide any feedback or raise any concern via `Issues`.

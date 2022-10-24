@@ -16,7 +16,6 @@ Table of Contents
 4. [Experiment](#sec4) </br>
 5. [Citation](#sec5) </br>
 6. [Feedback and bug reports](#sec6)</br>
-#   3.3. [Parameters](#sec3.4) </br>
 <a name="sec1"></a>
 # About VStrains
 

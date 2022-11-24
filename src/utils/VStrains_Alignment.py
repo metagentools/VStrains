@@ -95,15 +95,15 @@ def process_paf_file(
     # print("Batch {0} finished alignment file parsing".format(tid))
     subprocess.check_call("rm {0}".format(fwd_paf_file), shell=True)
     subprocess.check_call("rm {0}".format(rve_paf_file), shell=True)
-    nonunique_counter = 0
+    # nonunique_counter = 0
 
     def retrieve_single_end_saturation(glb_index, conf_alns, conf_cords, rlen, ks):
         nodes = numpy.zeros(len_index2id, dtype=int)
         coords = [None for _ in range(len_index2id)]
         kindices = [None for _ in range(len_index2id)]
         for i, sub_aln_statuses in enumerate(conf_alns[glb_index]):
-            if len(sub_aln_statuses) > 1:
-                nonunique_counter += 1
+            # if len(sub_aln_statuses) > 1:
+            #     nonunique_counter += 1
             for j, sub_aln_status in enumerate(sub_aln_statuses):
                 nodes[sub_aln_status] += 1
                 if coords[sub_aln_status] == None:
@@ -161,7 +161,7 @@ def process_paf_file(
 
     elapsed = time.time() - start
     print("Batch {0} finished".format(tid))
-    print("Batch: {0} found non unique kmer count: {1}".format(tid, nonunique_counter))
+    # print("Batch: {0} found non unique kmer count: {1}".format(tid, nonunique_counter))
     print("Batch: {0} time spent for processing paf file: {1}".format(tid, elapsed))
     return node_mat, short_mat
 
@@ -210,13 +210,12 @@ def batch_split(
                 [_, rseq, _, reval] = [s[:-1] for s in rev_reads[i * 4 : (i + 1) * 4]]
                 if fseq.count("N") or rseq.count("N"):
                     n_reads += 1
-                    continue
-                if len(fseq) < split_len or len(rseq) < split_len:
+                elif len(fseq) < split_len or len(rseq) < split_len:
                     short_reads += 1
-                    continue
-                used_reads += 1
-                local_reads += 1
-                local_list.append((fseq, feval, rseq, reval))
+                else:
+                    used_reads += 1
+                    local_reads += 1
+                    local_list.append((fseq, feval, rseq, reval))
                 if local_reads == batch_size or (
                     local_reads > 0 and i == total_size - 1
                 ):

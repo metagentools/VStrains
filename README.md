@@ -48,7 +48,7 @@ conda create --name VStrains-env
 # activate conda environment
 conda activate VStrains-env
 
-conda install -c bioconda -c conda-forge python=3 graph-tool minimap2 numpy gfapy
+conda install -c bioconda -c conda-forge python=3 graph-tool minimap2 numpy gfapy matplotlib
 ```
 
 <a name="sec2.2"></a>
@@ -61,6 +61,7 @@ And python modules:
 - [graph-tool](https://graph-tool.skewed.de)
 - [numpy](https://numpy.org)
 - [gfapy](https://github.com/ggonnella/gfapy)
+- [matplotlib](https://matplotlib.org)
 
 <a name="sec3"></a>
 # Running VStrains

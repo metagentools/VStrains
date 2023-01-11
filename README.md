@@ -1,5 +1,8 @@
 # VStrains: De Novo Reconstruction of Viral Strains via Iterative Path Extraction From Assembly Graphs
 
+![GitHub](https://img.shields.io/github/license/metagentools/VStrains)
+[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
+
 Manual
 ===========
 
@@ -58,8 +61,6 @@ And python modules:
 - [graph-tool](https://graph-tool.skewed.de)
 - [numpy](https://numpy.org)
 - [gfapy](https://github.com/ggonnella/gfapy)
-<!-- - [scikit-learn](https://scikit-learn.org/stable/install.html)
-- [pandas](https://pandas.pydata.org/docs/getting_started/install.html) -->
 
 <a name="sec3"></a>
 # Running VStrains
@@ -126,14 +127,17 @@ VStrains is evaluated on both simulated and real datasets under default settings
    - 6 Poliovirus (20,000x)
    - 10 HCV (20,000x)
    - 15 ZIKV (20,000x)
-2. Real Dataset (please refer to [Supplementary Material](https://www.biorxiv.org/content/10.1101/2022.10.21.513181v2.supplementary-material) for preprocessing the real datasets)
+2. Real Dataset (please refer to [Supplementary Material](https://www.biorxiv.org/content/10.1101/2022.10.21.513181v3.supplementary-material) for preprocessing the real datasets)
    - 5 HIV labmix (20,000x) [SRR961514](https://www.ncbi.nlm.nih.gov/sra/?term=SRR961514), reference genome sequences are available at [link](https://github.com/cbg-ethz/5-virus-mix/blob/master/data/REF.fasta)
    - 2 SARS-COV-2 (4,000x) [SRR18009684](https://www.ncbi.nlm.nih.gov/sra/?term=SRR18009684), [SRR18009686](https://www.ncbi.nlm.nih.gov/sra/?term=SRR18009686), pre-processed reads and individually assemble ground-truth reference sequences can be found at [link](https://github.com/RunpengLuo/sarscov2-4000x)
+
 <a name="sec5"></a>
 # Citation
+VStrains has been accepted at [RECOMB 2023](http://recomb2023.bilkent.edu.tr/program.html) and preprint is available at [bioRxiv](https://www.biorxiv.org/content/10.1101/2022.10.21.513181v3).
 
-Runpeng Luo and Yu Lin, VStrains: De Novo Reconstruction of Viral Strains via Iterative Path Extraction From Assembly Graphs (submited)
-preprint is available at [bioRxiv](https://www.biorxiv.org/content/10.1101/2022.10.21.513181v2).
+If you use VStrains in your work, please cite the following publications.
+
+Runpeng Luo and Yu Lin, VStrains: De Novo Reconstruction of Viral Strains via Iterative Path Extraction From Assembly Graphs
 
 <a name="sec6"></a>
 # Feedback and bug reports

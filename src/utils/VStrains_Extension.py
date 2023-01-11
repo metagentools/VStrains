@@ -475,6 +475,20 @@ def reduce_id_simple(id_l: list):
                 ids.append(iid)
     return ids
 
+def reduce_Anode(id: str, sno2ids: dict):
+    ids = [id]
+    while any([iid.startswith("A") for iid in ids]):
+        len_ids = len(ids)
+        for i in range(len_ids):
+            if ids[i].startswith("A"):
+                id_v = ids.pop(i).split("*")[0]
+                j = i
+                for subid in sno2ids[id_v]:
+                    ids.insert(j, subid)
+                    j += 1
+                break
+    return ids
+                
 
 def path_extension(
     graph: Graph,
@@ -631,72 +645,20 @@ def path_extension(
                 graph, simp_node_dict, usages, full_link, logger, path, pcov, threshold
             )
         elif len(path_ins) != 0 and len(path_outs) == 0:
-            logger.debug("left connected, wait")
-            reduce_graph(
-                graph,
-                simp_node_dict,
-                usages,
-                full_link,
-                logger,
-                path[1:],
-                pcov,
-                threshold,
-            )
-            pnode = graph_add_vertex(
-                graph, simp_node_dict, pno, pcov, path_to_seq(graph, path[1:], pno)
-            )
-            graph_add_edge(
-                graph,
-                simp_edge_dict,
-                path[0],
-                pnode,
-                graph.ep.overlap[graph.edge(path[0], path[1])],
-                pcov,
-            )
-            usages[pno] = 0
-        elif len(path_ins) == 0 and len(path_outs) != 0:
-            logger.debug("right connected, wait")
-            reduce_graph(
-                graph,
-                simp_node_dict,
-                usages,
-                full_link,
-                logger,
-                path[:-1],
-                pcov,
-                threshold,
-            )
-            pnode = graph_add_vertex(
-                graph, simp_node_dict, pno, pcov, path_to_seq(graph, path[:-1], pno)
-            )
-            graph_add_edge(
-                graph,
-                simp_edge_dict,
-                pnode,
-                path[-1],
-                graph.ep.overlap[graph.edge(path[-2], path[-1])],
-                pcov,
-            )
-            usages[pno] = 0
-        else:
-            logger.debug("both connected, wait")
-            reduce_graph(
-                graph,
-                simp_node_dict,
-                usages,
-                full_link,
-                logger,
-                path[1:-1],
-                pcov,
-                threshold,
-            )
-            if len(path[1:-1]) > 0:
-                pnode = graph_add_vertex(
+            if len(path) > 1:
+                logger.debug("left connected, wait")
+                reduce_graph(
                     graph,
                     simp_node_dict,
-                    pno,
+                    usages,
+                    full_link,
+                    logger,
+                    path[1:],
                     pcov,
-                    path_to_seq(graph, path[1:-1], pno),
+                    threshold,
+                )
+                pnode = graph_add_vertex(
+                    graph, simp_node_dict, pno, pcov, path_to_seq(graph, path[1:], pno)
                 )
                 graph_add_edge(
                     graph,
@@ -705,6 +667,23 @@ def path_extension(
                     pnode,
                     graph.ep.overlap[graph.edge(path[0], path[1])],
                     pcov,
+                )
+                usages[pno] = 0
+        elif len(path_ins) == 0 and len(path_outs) != 0:
+            if len(path) > 1:
+                logger.debug("right connected, wait")
+                reduce_graph(
+                    graph,
+                    simp_node_dict,
+                    usages,
+                    full_link,
+                    logger,
+                    path[:-1],
+                    pcov,
+                    threshold,
+                )
+                pnode = graph_add_vertex(
+                    graph, simp_node_dict, pno, pcov, path_to_seq(graph, path[:-1], pno)
                 )
                 graph_add_edge(
                     graph,
@@ -715,6 +694,44 @@ def path_extension(
                     pcov,
                 )
                 usages[pno] = 0
+        else:
+            if len(path) > 1:
+                logger.debug("both connected, wait")
+                reduce_graph(
+                    graph,
+                    simp_node_dict,
+                    usages,
+                    full_link,
+                    logger,
+                    path[1:-1],
+                    pcov,
+                    threshold,
+                )
+                if len(path[1:-1]) > 0:
+                    pnode = graph_add_vertex(
+                        graph,
+                        simp_node_dict,
+                        pno,
+                        pcov,
+                        path_to_seq(graph, path[1:-1], pno),
+                    )
+                    graph_add_edge(
+                        graph,
+                        simp_edge_dict,
+                        path[0],
+                        pnode,
+                        graph.ep.overlap[graph.edge(path[0], path[1])],
+                        pcov,
+                    )
+                    graph_add_edge(
+                        graph,
+                        simp_edge_dict,
+                        pnode,
+                        path[-1],
+                        graph.ep.overlap[graph.edge(path[-2], path[-1])],
+                        pcov,
+                    )
+                    usages[pno] = 0
 
         graph, simp_node_dict, simp_edge_dict = store_reinit_graph(
             graph,
@@ -761,20 +778,25 @@ def path_extension(
             if node > node2:
                 continue
 
-            nid1s = (
-                reduce_id_simple([graph.vp.id[node]])
-                if graph.vp.id[node][0] != "A"
-                else reduce_id_simple(sno2ids[graph.vp.id[node].split("*")[0]])
-            )
-            nid2s = (
-                reduce_id_simple([graph.vp.id[node2]])
-                if graph.vp.id[node2][0] != "A"
-                else reduce_id_simple(sno2ids[graph.vp.id[node2].split("*")[0]])
-            )
+            nid1s = reduce_id_simple(reduce_Anode(graph.vp.id[node], sno2ids))
+            # nid1s = (
+            #     reduce_id_simple([graph.vp.id[node]])
+            #     if graph.vp.id[node][0] != "A"
+            #     else reduce_id_simple(sno2ids[graph.vp.id[node].split("*")[0]])
+            # )
+            nid2s = reduce_id_simple(reduce_Anode(graph.vp.id[node2], sno2ids))
+            # nid2s = (
+            #     reduce_id_simple([graph.vp.id[node2]])
+            #     if graph.vp.id[node2][0] != "A"
+            #     else reduce_id_simple(sno2ids[graph.vp.id[node2].split("*")[0]])
+            # )
             kpair = (
                 min(graph.vp.id[node], graph.vp.id[node2]),
                 max(graph.vp.id[node], graph.vp.id[node2]),
             )
+
+            logger.debug("nid1s: {0}, nid2s: {1}".format(nid1s, nid2s))
+            logger.debug("node1id: {0}, node2id: {1}".format(graph.vp.id[node], graph.vp.id[node2]))
             final_link_info[kpair] = 0
             for id1 in nid1s:
                 for id2 in nid2s:
@@ -859,4 +881,25 @@ def path_extension(
     for sno, [_, _, scov] in list(strain_dict.items()):
         if scov <= 2 * threshold:
             strain_dict.pop(sno)
+
+    # split zipped vertices
+    rid = ""
+    for cno in strain_dict.keys():
+        [contig, clen, ccov] = strain_dict[cno]
+        rcontig = []
+        for id in contig:
+            rcontig.extend(reduce_id_simple(reduce_Anode(id, sno2ids)))
+            # for iid in str(id).split("&"):
+            #     if iid.find("*") != -1:
+            #         rid = iid[: iid.find("*")]
+            #     else:
+            #         rid = iid
+                
+            #     if rid in sno2ids:
+            #         rcontig.extend(sno2ids[rid])
+            #     else:
+            #         rcontig.append(rid)
+        strain_dict[cno] = [rcontig, clen, ccov]
+
+
     return strain_dict, usages

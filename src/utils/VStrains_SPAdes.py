@@ -118,7 +118,7 @@ def run(args, logger):
             logger.debug("unreliable contig with low coverage: {0}".format(cno))
 
     # get graph kmer size
-    ksize = graph1.ep.overlap[list(graph1.edges())[0]]
+    ksize = graph1.ep.overlap[list(graph1.edges())[0]] if graph1.num_edges() > 0 else 0
     logger.info("graph kmer size: {0}".format(ksize))
 
     # obtain paired end information

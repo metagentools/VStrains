@@ -319,6 +319,9 @@ def tip_removal(
 
 def threshold_estimation(graph: Graph, logger: Logger, temp_dir):
     dps = [graph.vp.dp[node] for node in graph.vertices()]
+    # handle edge case, when the graph contains uniform coverage
+    if max(dps) == min(dps):
+        return 0.00
     regions, bins = numpy.histogram(
         dps, bins=int((max(dps) - min(dps)) // (0.05 * numpy.median(dps)))
     )

@@ -16,6 +16,7 @@ Table of Contents
 3. [Running VStrains](#sec3) </br>
    3.1. [Quick Usage](#sec3.1) </br>
    3.2. [Support SPAdes](#sec3.2) </br>
+   3.3. [Output](#sec3.3) </br>
 4. [Experiment](#sec4) </br>
 5. [Citation](#sec5) </br>
 6. [Feedback and bug reports](#sec6)</br>
@@ -109,6 +110,18 @@ For SPAdes, we recommend to use `--careful` option for more accurate assembly re
 python src/vstrains.py -a spades -g assembly_graph_after_simplification.gfa -p contigs.paths -o output_dir -fwd forward.fastq -rve reverse.fastq
 ```
 
+<a name="sec3.3"></a>
+## Output
+
+
+VStrains stores all output files in `<output_dir>` , which is set by the user.
+
+* `<output_dir>/aln/` directory contains paired-end (PE) linkage information, which is stored in `pe_info` and `st_info`.
+* `<output_dir>/gfa/` directory contains iteratively simplified assembly graphs, where `graph_L0.gfa` contains the assembly graph produced by SPAdes after Strandedness Canonization, `split_graph_final.gfa` contains the assembly graph after Graph Disentanglement, and `graph_S_final.gfa` contains the assembly graph after Contig-based Path Extraction, the rests are intermediate results. All the assembly graphs are in [GFA 1.0 format](https://github.com/GFA-spec/GFA-spec/blob/master/GFA1.md).
+* `<output_dir>/paf/` and `<output_dir>/tmp/` are temporary directories, feel free to ignore them.
+* `<output_dir>/strain.fasta` contains resulting strains in `.fasta`, the headers for each strain has the form `NODE_<strain name>_<sequence length>_<coverage>` which is compatiable to SPAdes contigs format.
+* `<output_dir>/strain.paths` contains paths in the assembly graph (input `GFA_FILE`) corresponding to `strain.fasta` using [Bandage](https://github.com/rrwick/Bandage) for further downstream analysis.
+* `<output_dir>/vstrains.log` contains the VStrains log.
 <!-- <a name="sec3.3"></a> -->
 <!-- ## Parameters -->
 

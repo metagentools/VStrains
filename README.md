@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="VStrains_logo.png" width="500" title="VStrains logo" alt="VStrains logo">
+</p>
+
 # VStrains: De Novo Reconstruction of Viral Strains via Iterative Path Extraction From Assembly Graphs
 
 ![GitHub](https://img.shields.io/github/license/metagentools/VStrains)
@@ -17,9 +21,10 @@ Table of Contents
    3.1. [Quick Usage](#sec3.1) </br>
    3.2. [Support SPAdes](#sec3.2) </br>
    3.3. [Output](#sec3.3) </br>
-4. [Experiment](#sec4) </br>
-5. [Citation](#sec5) </br>
-6. [Feedback and bug reports](#sec6)</br>
+4. [Stand-alone binaries](#sec4) </br>
+5. [Experiment](#sec4) </br>
+6. [Citation](#sec5) </br>
+7. [Feedback and bug reports](#sec6)</br>
 <a name="sec1"></a>
 # About VStrains
 
@@ -72,7 +77,7 @@ VStrains supports assembly results from [SPAdes](https://github.com/ablab/spades
 <a name="sec3.1"></a>
 ## Quick Usage
 
-```bash
+```
 usage: VStrains [-h] -a {spades} -g GFA_FILE [-p PATH_FILE] [-o OUTPUT_DIR] -fwd FWD -rve RVE
 
 Construct full-length viral strains under de novo approach from contigs and assembly graph, currently supports
@@ -134,6 +139,30 @@ This sets the minimum node coverage for filtering the inaccurate nodes from init
 Since SPAdes normally output all the nodes from assembly graph as contigs, short or low coverage contig may lead to less accuracy and confidence. By default, single node contig with length less than 250bp or coverage less then `--mc` (defined above) is filtered out. Please use `-ml` flag to input the customized minimum contig length if needed. -->
 
 <a name="sec4"></a>
+# Stand-alone binaries
+
+`src/evals/quast_evaluation.py` is a wrapper script for strain-level experimental result analysis using [MetaQUAST](https://github.com/ablab/quast).
+
+```
+usage: quast_evaluation.py [-h] -quast QUAST [-cs FILES [FILES ...]] [-d IDIR] -ref REF_FILE -o OUTPUT_DIR
+
+Use MetaQUAST to evaluate assembly result
+
+options:
+  -h, --help            show this help message and exit
+  -quast QUAST, --path_to_quast QUAST
+                        path to MetaQuast python script, version >= 5.2.0
+  -cs FILES [FILES ...], --contig_files FILES [FILES ...]
+                        contig files from different tools, separated by space
+  -d IDIR, --contig_dir IDIR
+                        contig files from different tools, stored in the directory, .fasta format
+  -ref REF_FILE, --ref_file REF_FILE
+                        ref file (single)
+  -o OUTPUT_DIR, --output_dir OUTPUT_DIR
+                        output directory
+```
+
+<a name="sec5"></a>
 # Experiment
 
 VStrains is evaluated on both simulated and real datasets under default settings, and the source of the datasets can be found in the links listed below:
@@ -145,7 +174,7 @@ VStrains is evaluated on both simulated and real datasets under default settings
    - 5 HIV labmix (20,000x) [SRR961514](https://www.ncbi.nlm.nih.gov/sra/?term=SRR961514), reference genome sequences are available at [link](https://github.com/cbg-ethz/5-virus-mix/blob/master/data/REF.fasta)
    - 2 SARS-COV-2 (4,000x) [SRR18009684](https://www.ncbi.nlm.nih.gov/sra/?term=SRR18009684), [SRR18009686](https://www.ncbi.nlm.nih.gov/sra/?term=SRR18009686), pre-processed reads and individually assemble ground-truth reference sequences can be found at [link](https://github.com/RunpengLuo/sarscov2-4000x)
 
-<a name="sec5"></a>
+<a name="sec6"></a>
 # Citation
 VStrains has been accepted at [RECOMB 2023](http://recomb2023.bilkent.edu.tr/program.html) and preprint is available at [bioRxiv](https://www.biorxiv.org/content/10.1101/2022.10.21.513181v3).
 
@@ -153,7 +182,7 @@ If you use VStrains in your work, please cite the following publications.
 
 Runpeng Luo and Yu Lin, VStrains: De Novo Reconstruction of Viral Strains via Iterative Path Extraction From Assembly Graphs
 
-<a name="sec6"></a>
+<a name="sec7"></a>
 # Feedback and bug reports
 
 Thanks for using VStrains. Please feel free to provide any feedback or raise any concern via `Issues`.

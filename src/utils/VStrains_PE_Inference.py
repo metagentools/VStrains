@@ -10,17 +10,21 @@ __author__ = "Runpeng Luo"
 __copyright__ = "Copyright 2022-2025, VStrains Project"
 __credits__ = ["Runpeng Luo", "Yu Lin"]
 __license__ = "MIT"
-__version__ = "1.0.0"
+__version__ = "1.0.1"
 __maintainer__ = "Runpeng Luo"
 __email__ = "John.Luo@anu.edu.au"
 __status__ = "Production"
 
 rev_dict = {"A": "T", "T": "A", "C": "G", "G": "C"}
 
+
 def reverse_seq(seq: str):
     return "".join(rev_dict[x] for x in reversed(seq))
 
-def single_end_read_mapping(seq: str, kmer_htable: dict, index2seqlen: list, split_len: int, len_index2id: int):
+
+def single_end_read_mapping(
+    seq: str, kmer_htable: dict, index2seqlen: list, split_len: int, len_index2id: int
+):
     nodes = numpy.zeros(len_index2id, dtype=int)
     coords = [sys.maxsize for _ in range(len_index2id)]
     kindices = [sys.maxsize for _ in range(len_index2id)]
@@ -30,12 +34,11 @@ def single_end_read_mapping(seq: str, kmer_htable: dict, index2seqlen: list, spl
         kmer = seq[i : i + split_len]
         if kmer in kmer_htable:
             # found a collide node
-            for (rid, rcord) in kmer_htable[kmer]:
+            for rid, rcord in kmer_htable[kmer]:
                 nodes[rid] += 1
                 coords[rid] = min(coords[rid], rcord)
                 kindices[rid] = min(kindices[rid], i)
 
-    
     saturates = []
     L = 0
     R = 0
@@ -45,11 +48,13 @@ def single_end_read_mapping(seq: str, kmer_htable: dict, index2seqlen: list, spl
         L = max(coords[i], coords[i] - kindices[i])
         R = min(coords[i] + index2seqlen[i] - 1, coords[i] - kindices[i] + rlen - 1)
         saturate = R - L - (split_len - 1) + 1
-        expected = (min(rlen, index2seqlen[i]) - split_len + 1) * (rlen - split_len) / rlen
+        expected = (
+            (min(rlen, index2seqlen[i]) - split_len + 1) * (rlen - split_len) / rlen
+        )
         if v >= max(min(saturate, expected), 1):
             # print(i,v,"passed")
             saturates.append(i)
-    return saturates     
+    return saturates
 
 
 def main():
@@ -101,12 +106,11 @@ def main():
 
     glb_start = time.time()
 
-
     # get gfa node informations
     index2id = []
     index2seq = []
     index2seqlen = []
-    
+
     with open(args.gfa, "r") as gfa:
         for Line in gfa:
             splited = (Line[:-1]).split("\t")
@@ -131,7 +135,7 @@ def main():
             else:
                 # unique
                 kmer_htable[kmer] = [(i, sub_i)]
-            
+
             if rev_kmer in kmer_htable:
                 # not unique
                 kmer_htable[rev_kmer].append((i, sub_i))
@@ -169,9 +173,13 @@ def main():
         else:
             used_reads += 1
             # valid read pair
-            lefts = single_end_read_mapping(fseq, kmer_htable, index2seqlen, split_len, len_index2id)
-            rights = single_end_read_mapping(rseq, kmer_htable, index2seqlen, split_len, len_index2id)
-            
+            lefts = single_end_read_mapping(
+                fseq, kmer_htable, index2seqlen, split_len, len_index2id
+            )
+            rights = single_end_read_mapping(
+                rseq, kmer_htable, index2seqlen, split_len, len_index2id
+            )
+
             k = 0
             for i in lefts:
                 for i2 in lefts[k:]:
@@ -188,8 +196,6 @@ def main():
                 for j in rights:
                     node_mat[i][j] += 1
 
-
-
     out_file = "{0}/pe_info".format(args.dir)
     out_file2 = "{0}/st_info".format(args.dir)
     subprocess.check_call("touch {0}; echo " " > {0}".format(out_file), shell=True)
@@ -199,9 +205,7 @@ def main():
             for i in range(len_index2id):
                 for j in range(len_index2id):
                     outfile.write(
-                        "{0}:{1}:{2}\n".format(
-                            index2id[i], index2id[j], node_mat[i][j]
-                        )
+                        "{0}:{1}:{2}\n".format(index2id[i], index2id[j], node_mat[i][j])
                     )
                     outfile2.write(
                         "{0}:{1}:{2}\n".format(

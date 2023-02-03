@@ -14,7 +14,7 @@ __author__ = "Runpeng Luo"
 __copyright__ = "Copyright 2022-2025, vsAware Project"
 __credits__ = ["Runpeng Luo", "Yu Lin"]
 __license__ = "MIT"
-__version__ = "1.0.0"
+__version__ = "1.0.1"
 __maintainer__ = "Runpeng Luo"
 __email__ = "John.Luo@anu.edu.au"
 __status__ = "Production"
@@ -25,7 +25,6 @@ def assign_edge_flow(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict):
     Assign the edge flow based on node weight and contig alignment.
     """
     for (u, v), e in simp_edge_dict.items():
-
         u_node = simp_node_dict[u]
         u_out_sum = numpy.sum([graph.vp.dp[n] for n in u_node.out_neighbors()])
 
@@ -503,14 +502,14 @@ def simp_path_compactification(
                         pe_info[(min(id, nno), max(id, nno))] += pe_info[
                             (min(sub_id, nno), max(sub_id, nno))
                         ]
-            for (pu, pv) in list(pe_info.keys()):
+            for pu, pv in list(pe_info.keys()):
                 if pu in contig or pv in contig:
                     # out of date
                     pe_info.pop((min(pu, pv), max(pu, pv)))
 
     # recover all the in-out edges surrounding the contigs
     for [_, _, _, node, in_edges, out_edges] in contig_info:
-        for (u, v, o) in in_edges:
+        for u, v, o in in_edges:
             if u in simp_node_dict and (u, graph.vp.id[node]) not in simp_edge_dict:
                 graph_add_edge(
                     graph,
@@ -533,7 +532,7 @@ def simp_path_compactification(
                         o,
                     )
 
-        for (u, v, o) in out_edges:
+        for u, v, o in out_edges:
             if v in simp_node_dict and (graph.vp.id[node], v) not in simp_edge_dict:
                 graph_add_edge(
                     graph,
@@ -672,7 +671,7 @@ def concat_overlap_contig(
         node_dict[cno] = node
     for cno, cno2s in contig_overlap_dict.items():
         u = node_dict[cno]
-        for (cno2, intersects) in cno2s:
+        for cno2, intersects in cno2s:
             v = node_dict[cno2]
             edge = overlap_graph.add_edge(u, v)
             concat_dict[(cno, cno2)] = intersects
@@ -1281,7 +1280,7 @@ def cyclic_to_dag(
                 remove_edge(prev_node, max_node)
             else:
                 remove_edge(max_node, next_node)
-    for (uid, vid, _) in removed_edges:
+    for uid, vid, _ in removed_edges:
         e = simp_edge_dict.pop((uid, vid))
         graph.remove_edge(e)
     logger.debug("done")

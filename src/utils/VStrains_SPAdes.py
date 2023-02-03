@@ -25,7 +25,7 @@ __author__ = "Runpeng Luo"
 __copyright__ = "Copyright 2022-2025, VStrains Project"
 __credits__ = ["Runpeng Luo", "Yu Lin"]
 __license__ = "MIT"
-__version__ = "1.0.0"
+__version__ = "1.0.1"
 __maintainer__ = "Runpeng Luo"
 __email__ = "John.Luo@anu.edu.au"
 __status__ = "Production"
@@ -122,7 +122,7 @@ def run(args, logger):
     logger.info("graph kmer size: {0}".format(ksize))
 
     # obtain paired end information
-    script_path = "{0}/VStrains_Alignment_Fast.py".format(
+    script_path = "{0}/VStrains_PE_Inference.py".format(
         os.path.abspath(os.path.dirname(__file__))
     )
     subprocess.check_call(

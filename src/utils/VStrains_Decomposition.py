@@ -8,7 +8,7 @@ __author__ = "Runpeng Luo"
 __copyright__ = "Copyright 2022-2025, VStrains Project"
 __credits__ = ["Runpeng Luo", "Yu Lin"]
 __license__ = "MIT"
-__version__ = "1.0.0"
+__version__ = "1.0.1"
 __maintainer__ = "Runpeng Luo"
 __email__ = "John.Luo@anu.edu.au"
 __status__ = "Production"
@@ -26,7 +26,7 @@ def link_split(
     """update split plan using paired end & single end information"""
     logger.debug("attempt to split via paired end information")
     sorted_sec_comb = sorted(sec_comb, key=lambda x: x[2], reverse=True)
-    for (uid, wid, pe) in sorted_sec_comb:
+    for uid, wid, pe in sorted_sec_comb:
         if pe <= 0:
             break
         logger.debug("-----SEC LINK {0} -> {1} PE: {2}".format(uid, wid, pe))
@@ -56,7 +56,7 @@ def cov_split(
         "align paired end/single end information first (if any) to isolated nodes"
     )
     sorted_sec_comb = sorted(sec_comb, key=lambda x: x[2], reverse=True)
-    for (uid, wid, pe) in sorted_sec_comb:
+    for uid, wid, pe in sorted_sec_comb:
         if pe <= 0:
             break
         if in_usage[uid] > 0 or out_usage[wid] > 0:
@@ -503,7 +503,7 @@ def balance_split(
         for (uid, wid), sub_id in link2subs.items():
             for nno in simp_node_dict.keys():
                 pe_info[(min(sub_id, nno), max(sub_id, nno))] = None
-        for (pu, pv) in list(pe_info.keys()):
+        for pu, pv in list(pe_info.keys()):
             if pu == no or pv == no:
                 # out of date
                 pe_info.pop((min(pu, pv), max(pu, pv)))
@@ -621,7 +621,7 @@ def trivial_split(
                         ] = None
                 trivial_split_count += 1
                 # update link information
-                for (pu, pv) in list(pe_info.keys()):
+                for pu, pv in list(pe_info.keys()):
                     if pu == ino or pv == ino:
                         # out of date
                         pe_info.pop((min(pu, pv), max(pu, pv)))
@@ -685,7 +685,7 @@ def trivial_split(
                         ] = None
                 trivial_split_count += 1
                 # update link information
-                for (pu, pv) in list(pe_info.keys()):
+                for pu, pv in list(pe_info.keys()):
                     if pu == ono or pv == ono:
                         # out of date
                         pe_info.pop((min(pu, pv), max(pu, pv)))
@@ -882,7 +882,7 @@ def edge_cleaning(
             un_assigned_edge
         )
     )
-    for (u, v) in assigned.keys():
+    for u, v in assigned.keys():
         if not assigned[(u, v)]:
             logger.debug(
                 "***cross un-assigned edge: {0} -> {1}, with paired end link {2}".format(
@@ -898,10 +898,10 @@ def edge_cleaning(
                 assigned[(u, v)] = True
             else:
                 logger.debug("support contig: None")
-    for (u, v) in assigned.keys():
+    for u, v in assigned.keys():
         if not assigned[(u, v)]:
             force_assign = True
-            for (w, z) in assigned.keys():
+            for w, z in assigned.keys():
                 if (u == w or v == z) and assigned[(w, z)]:
                     force_assign = False
                     break

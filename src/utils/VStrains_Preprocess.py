@@ -13,13 +13,16 @@ __author__ = "Runpeng Luo"
 __copyright__ = "Copyright 2022-2025, VStrains Project"
 __credits__ = ["Runpeng Luo", "Yu Lin"]
 __license__ = "MIT"
-__version__ = "1.0.0"
+__version__ = "1.0.1"
 __maintainer__ = "Runpeng Luo"
 __email__ = "John.Luo@anu.edu.au"
 __status__ = "Production"
 
 
 def reindexing(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict):
+    """
+    Reindex the nodes, with idx-node_id mappings
+    """
     idx_mapping = {}
     idx_node_dict = {}
     idx_edge_dict = {}
@@ -40,6 +43,96 @@ def reindexing(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict):
     return graph, idx_node_dict, idx_edge_dict, idx_mapping
 
 
+def threshold_estimation(graph: Graph, logger: Logger, temp_dir):
+    dps = [graph.vp.dp[node] for node in graph.vertices()]
+    # handle edge case, when the graph contains uniform coverage
+    if max(dps) == min(dps):
+        return 0.00
+    regions, bins = numpy.histogram(
+        dps, bins=int((max(dps) - min(dps)) // (0.05 * numpy.median(dps)))
+    )
+    pidx, _ = max(list(enumerate(regions)), key=lambda p: p[1])
+    ratio = 0.00
+    if pidx == 0:
+        ratio = 0.05
+        # global peak belongs to first filter region, find maximum peak range, bound by 25% Median
+        for i in range(0, 4):
+            if i >= len(regions):
+                logger.warning(
+                    "histogram is not properly set, reset cutoff to default (0.05*M)"
+                )
+                ratio = 0.05
+                break
+            if regions[i] > regions[i + 1]:
+                ratio += 0.05
+            else:
+                break
+    threshold = ratio * numpy.median(dps)
+    plt.figure(figsize=(128, 64))
+    for b in bins:
+        plt.axvline(b, color="blue")
+    plt.hist(x=dps, bins=len(dps))
+    plt.axvline(threshold, color="r")
+    plt.title("node coverage bar plot")
+    plt.xticks(numpy.arange(min(dps), max(dps) + 1, 50.0))
+    plt.savefig("{0}{1}".format(temp_dir, "/tmp/bar_plot.png"))
+    return threshold
+
+
+def graph_simplification(
+    graph: Graph,
+    simp_node_dict: dict,
+    simp_edge_dict: dict,
+    contig_dict: dict,
+    logger: Logger,
+    min_cov,
+):
+    """
+    Directly remove all the vertex with coverage less than minimum coverage and related edge
+
+    Node belongs to any contigs should not be removed
+    return:
+        removed_node_dict
+        removed_edge_dict
+    """
+    logger.info("graph simplification")
+    logger.debug(
+        "Total nodes: "
+        + str(len(simp_node_dict))
+        + " Total edges: "
+        + str(len(simp_edge_dict))
+    )
+    node_to_contig_dict = {}
+    edge_to_contig_dict = {}
+    if contig_dict != None:
+        node_to_contig_dict, edge_to_contig_dict = contig_map_node(contig_dict)
+    # iterate until no more node be removed from the graph
+    for id, node in list(simp_node_dict.items()):
+        if graph.vp.dp[node] <= min_cov:
+            if id in node_to_contig_dict:
+                continue
+
+            graph_remove_vertex(graph, simp_node_dict, id, printout=False)
+
+            for e in set(node.all_edges()):
+                uid = graph.vp.id[e.source()]
+                vid = graph.vp.id[e.target()]
+                if (uid, vid) in edge_to_contig_dict:
+                    continue
+                if (uid, vid) in simp_edge_dict:
+                    graph_remove_edge(graph, simp_edge_dict, uid, vid, printout=False)
+
+    logger.debug(
+        "Remain nodes: "
+        + str(len(simp_node_dict))
+        + " Total edges: "
+        + str(len(simp_edge_dict))
+    )
+    logger.info("done")
+    return
+
+
+# ------------------------------------LEGACY------------------------------------#
 def paths_from_src(graph: Graph, simp_node_dict: dict, self_node, src, maxlen):
     """
     retrieve all the path from src node to any node
@@ -315,92 +408,3 @@ def tip_removal(
             remove_tip(graph, simp_node_dict, tgt, cand_path)
             is_removed = False
     return is_removed
-
-
-def threshold_estimation(graph: Graph, logger: Logger, temp_dir):
-    dps = [graph.vp.dp[node] for node in graph.vertices()]
-    # handle edge case, when the graph contains uniform coverage
-    if max(dps) == min(dps):
-        return 0.00
-    regions, bins = numpy.histogram(
-        dps, bins=int((max(dps) - min(dps)) // (0.05 * numpy.median(dps)))
-    )
-    pidx, _ = max(list(enumerate(regions)), key=lambda p: p[1])
-    ratio = 0.00
-    if pidx == 0:
-        ratio = 0.05
-        # global peak belongs to first filter region, find maximum peak range, bound by 25% Median
-        for i in range(0, 4):
-            if i >= len(regions):
-                logger.warning(
-                    "histogram is not properly set, reset cutoff to default (0.05*M)"
-                )
-                ratio = 0.05
-                break
-            if regions[i] > regions[i + 1]:
-                ratio += 0.05
-            else:
-                break
-    threshold = ratio * numpy.median(dps)
-    plt.figure(figsize=(128, 64))
-    for b in bins:
-        plt.axvline(b, color="blue")
-    plt.hist(x=dps, bins=len(dps))
-    plt.axvline(threshold, color="r")
-    plt.title("node coverage bar plot")
-    plt.xticks(numpy.arange(min(dps), max(dps) + 1, 50.0))
-    plt.savefig("{0}{1}".format(temp_dir, "/tmp/bar_plot.png"))
-    return threshold
-
-
-def graph_simplification(
-    graph: Graph,
-    simp_node_dict: dict,
-    simp_edge_dict: dict,
-    contig_dict: dict,
-    logger: Logger,
-    min_cov,
-):
-    """
-    Directly remove all the vertex with coverage less than minimum coverage and related edge
-
-    Node belongs to any contigs should not be removed
-    return:
-        removed_node_dict
-        removed_edge_dict
-    """
-    logger.info("graph simplification")
-    logger.debug(
-        "Total nodes: "
-        + str(len(simp_node_dict))
-        + " Total edges: "
-        + str(len(simp_edge_dict))
-    )
-    node_to_contig_dict = {}
-    edge_to_contig_dict = {}
-    if contig_dict != None:
-        node_to_contig_dict, edge_to_contig_dict = contig_map_node(contig_dict)
-    # iterate until no more node be removed from the graph
-    for id, node in list(simp_node_dict.items()):
-        if graph.vp.dp[node] <= min_cov:
-            if id in node_to_contig_dict:
-                continue
-
-            graph_remove_vertex(graph, simp_node_dict, id, printout=False)
-
-            for e in set(node.all_edges()):
-                uid = graph.vp.id[e.source()]
-                vid = graph.vp.id[e.target()]
-                if (uid, vid) in edge_to_contig_dict:
-                    continue
-                if (uid, vid) in simp_edge_dict:
-                    graph_remove_edge(graph, simp_edge_dict, uid, vid, printout=False)
-
-    logger.debug(
-        "Remain nodes: "
-        + str(len(simp_node_dict))
-        + " Total edges: "
-        + str(len(simp_edge_dict))
-    )
-    logger.info("done")
-    return

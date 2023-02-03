@@ -11,7 +11,7 @@ __author__ = "Runpeng Luo"
 __copyright__ = "Copyright 2022-2025, VStrains Project"
 __credits__ = ["Runpeng Luo", "Yu Lin"]
 __license__ = "MIT"
-__version__ = "1.0.0"
+__version__ = "1.0.1"
 __maintainer__ = "Runpeng Luo"
 __email__ = "John.Luo@anu.edu.au"
 __status__ = "Production"
@@ -108,7 +108,7 @@ def best_matching(
             "align paired end/single end information first (if any) to isolated nodes"
         )
         sorted_sec_comb = sorted(sec_comb, key=lambda x: x[2], reverse=True)
-        for (uid, wid, pe) in sorted_sec_comb:
+        for uid, wid, pe in sorted_sec_comb:
             if pe > 0:
                 logger.debug(
                     "-----SEC LINK {0} -> {1} PE: {2}-----".format(uid, wid, pe)
@@ -456,7 +456,7 @@ def reduce_graph(
             usages.pop(graph.vp.id[node])
     logger.debug(list_to_string(del_nodes_ids, "invalid nodes"))
     for links in full_link.values():
-        for (uid, wid) in list(links.keys()):
+        for uid, wid in list(links.keys()):
             if (
                 graph.vp.color[simp_node_dict[uid]] != "black"
                 or graph.vp.color[simp_node_dict[wid]] != "black"
@@ -475,6 +475,7 @@ def reduce_id_simple(id_l: list):
                 ids.append(iid)
     return ids
 
+
 def reduce_Anode(id: str, sno2ids: dict):
     ids = [id]
     while any([iid.startswith("A") for iid in ids]):
@@ -488,7 +489,7 @@ def reduce_Anode(id: str, sno2ids: dict):
                     j += 1
                 break
     return ids
-                
+
 
 def path_extension(
     graph: Graph,
@@ -796,7 +797,11 @@ def path_extension(
             )
 
             logger.debug("nid1s: {0}, nid2s: {1}".format(nid1s, nid2s))
-            logger.debug("node1id: {0}, node2id: {1}".format(graph.vp.id[node], graph.vp.id[node2]))
+            logger.debug(
+                "node1id: {0}, node2id: {1}".format(
+                    graph.vp.id[node], graph.vp.id[node2]
+                )
+            )
             final_link_info[kpair] = 0
             for id1 in nid1s:
                 for id2 in nid2s:
@@ -825,7 +830,7 @@ def path_extension(
                     (uid, wid, final_link_info[(min(uid, wid), max(uid, wid))])
                 )
         sorted_comb = sorted(combs, key=lambda x: x[2], reverse=True)
-        for (uid, wid, lf) in sorted_comb:
+        for uid, wid, lf in sorted_comb:
             logger.debug("---------------------")
             if lf > 0 and in_usage[uid] == 0 and out_usage[wid] == 0:
                 logger.debug(
@@ -894,12 +899,11 @@ def path_extension(
             #         rid = iid[: iid.find("*")]
             #     else:
             #         rid = iid
-                
+
             #     if rid in sno2ids:
             #         rcontig.extend(sno2ids[rid])
             #     else:
             #         rcontig.append(rid)
         strain_dict[cno] = [rcontig, clen, ccov]
-
 
     return strain_dict, usages

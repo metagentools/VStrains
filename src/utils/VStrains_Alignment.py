@@ -10,7 +10,7 @@ __author__ = "Runpeng Luo"
 __copyright__ = "Copyright 2022-2025, VStrains Project"
 __credits__ = ["Runpeng Luo", "Yu Lin"]
 __license__ = "MIT"
-__version__ = "1.0.0"
+__version__ = "1.0.1"
 __maintainer__ = "Runpeng Luo"
 __email__ = "John.Luo@anu.edu.au"
 __status__ = "Production"
@@ -131,7 +131,7 @@ def process_paf_file(
                 saturates.append(i)
         return saturates
 
-    for (glb_id, fwdlen, revlen) in index2read:
+    for glb_id, fwdlen, revlen in index2read:
         glb_index = read2index[glb_id]
         lefts = retrieve_single_end_saturation(
             glb_index, conf_alns_f, conf_cords_f, fwdlen, split_len

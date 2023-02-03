@@ -14,17 +14,19 @@ Table of Contents
 -----------------
 
 1. [About VStrains](#sec1) </br>
-2. [Installation](#sec2) </br>
-   2.1. [Quick Install](#sec2.1) </br>
-   2.1. [Manual Install](#sec2.2) </br>
-3. [Running VStrains](#sec3) </br>
-   3.1. [Quick Usage](#sec3.1) </br>
-   3.2. [Support SPAdes](#sec3.2) </br>
-   3.3. [Output](#sec3.3) </br>
-4. [Stand-alone binaries](#sec4) </br>
-5. [Experiment](#sec4) </br>
-6. [Citation](#sec5) </br>
-7. [Feedback and bug reports](#sec6)</br>
+2. [Updates](#sec2) </br>
+3. [Installation](#sec3) </br>
+   3.1. [Quick Install](#sec3.1) </br>
+   3.1. [Manual Install](#sec3.2) </br>
+4. [Running VStrains](#sec4) </br>
+   4.1. [Quick Usage](#sec4.1) </br>
+   4.2. [Support SPAdes](#sec4.2) </br>
+   4.3. [Output](#sec4.3) </br>
+5. [Stand-alone binaries](#sec5) </br>
+6. [Experiment](#sec6) </br>
+7. [Citation](#sec7) </br>
+8. [Feedback and bug reports](#sec8)</br>
+
 <a name="sec1"></a>
 # About VStrains
 
@@ -33,11 +35,19 @@ VStrains is a de novo approach for reconstructing strains from viral quasispecie
 <!-- Please refer to our [paper](NULL) and [supplementary Material](NULL) for details methodology. -->
 
 <a name="sec2"></a>
+# Updates
+
+## VStrains 1.0.1 Release (03 Feb 2023)
+* Replace the PE link inference module `VStrains_Alignment.py` with `VStrains_PE_Inference.py`
+   
+   `VStrains_PE_Inference.py` implements a hash table approach that produce efficient perfect match lookup, the new module leads to consistent evaluation results and substantially decrease the runtime and memory usage against previous alignment approach.
+
+<a name="sec3"></a>
 # Installation
 
 VStrains requires a 64-bit Linux system or Mac OS and python (supported versions are python3: 3.2 and higher), 
 
-<a name="sec2.1"></a>
+<a name="sec3.1"></a>
 ## Quick Install (**recommended**)
 
 Install [(mini)conda](https://conda.io/miniconda.html) as a light-weighted package management tool. Run the following commands to initialize and setup the conda environment for VStrains
@@ -57,7 +67,7 @@ conda activate VStrains-env
 conda install -c bioconda -c conda-forge python=3 graph-tool minimap2 numpy gfapy matplotlib
 ```
 
-<a name="sec2.2"></a>
+<a name="sec3.2"></a>
 ## Manual Install
 
 Manually install dependencies: 
@@ -69,12 +79,12 @@ And python modules:
 - [gfapy](https://github.com/ggonnella/gfapy)
 - [matplotlib](https://matplotlib.org)
 
-<a name="sec3"></a>
+<a name="sec4"></a>
 # Running VStrains
 
 VStrains supports assembly results from [SPAdes](https://github.com/ablab/spades) (includes metaSPAdes, metaviralSPAdes, etc).
 
-<a name="sec3.1"></a>
+<a name="sec4.1"></a>
 ## Quick Usage
 
 ```
@@ -106,7 +116,7 @@ VStrains takes as input an assembly graph in Graphical Fragment Assembly (GFA) F
 python spades.py -1 forward.fastq -2 reverse.fastq --careful -t 16 -o output_dir
 ```
 
-<a name="sec3.2"></a>
+<a name="sec4.2"></a>
 ## Support SPAdes
 
 For SPAdes, we recommend to use `--careful` option for more accurate assembly results. Please use `assembly_graph_after_simplification.gfa` and `contigs.paths` as input, and set `-a` flag to `spades`. Example usage as below:
@@ -115,7 +125,7 @@ For SPAdes, we recommend to use `--careful` option for more accurate assembly re
 python src/vstrains.py -a spades -g assembly_graph_after_simplification.gfa -p contigs.paths -o output_dir -fwd forward.fastq -rve reverse.fastq
 ```
 
-<a name="sec3.3"></a>
+<a name="sec4.3"></a>
 ## Output
 
 
@@ -138,7 +148,7 @@ This sets the minimum node coverage for filtering the inaccurate nodes from init
 
 Since SPAdes normally output all the nodes from assembly graph as contigs, short or low coverage contig may lead to less accuracy and confidence. By default, single node contig with length less than 250bp or coverage less then `--mc` (defined above) is filtered out. Please use `-ml` flag to input the customized minimum contig length if needed. -->
 
-<a name="sec4"></a>
+<a name="sec5"></a>
 # Stand-alone binaries
 
 `src/evals/quast_evaluation.py` is a wrapper script for strain-level experimental result analysis using [MetaQUAST](https://github.com/ablab/quast).
@@ -162,7 +172,7 @@ options:
                         output directory
 ```
 
-<a name="sec5"></a>
+<a name="sec6"></a>
 # Experiment
 
 VStrains is evaluated on both simulated and real datasets under default settings, and the source of the datasets can be found in the links listed below:
@@ -171,10 +181,10 @@ VStrains is evaluated on both simulated and real datasets under default settings
    - 10 HCV (20,000x)
    - 15 ZIKV (20,000x)
 2. Real Dataset (please refer to [Supplementary Material](https://www.biorxiv.org/content/10.1101/2022.10.21.513181v3.supplementary-material) for preprocessing the real datasets)
-   - 5 HIV labmix (20,000x) [SRR961514](https://www.ncbi.nlm.nih.gov/sra/?term=SRR961514), reference genome sequences are available at [link](https://github.com/cbg-ethz/5-virus-mix/blob/master/data/REF.fasta)
-   - 2 SARS-COV-2 (4,000x) [SRR18009684](https://www.ncbi.nlm.nih.gov/sra/?term=SRR18009684), [SRR18009686](https://www.ncbi.nlm.nih.gov/sra/?term=SRR18009686), pre-processed reads and individually assemble ground-truth reference sequences can be found at [link](https://github.com/RunpengLuo/sarscov2-4000x)
+   - 5 HIV labmix (20,000x) [SRR961514](https://www.ncbi.nlm.nih.gov/sra/?term=SRR961514), reference genome sequences are available at [5 HIV References](https://github.com/cbg-ethz/5-virus-mix/blob/master/data/REF.fasta)
+   - 2 SARS-COV-2 (4,000x) [SRR18009684](https://www.ncbi.nlm.nih.gov/sra/?term=SRR18009684), [SRR18009686](https://www.ncbi.nlm.nih.gov/sra/?term=SRR18009686), pre-processed reads and individually assemble ground-truth reference sequences can be found at [2 SARS-COV-2 Dataset](https://github.com/RunpengLuo/sarscov2-4000x)
 
-<a name="sec6"></a>
+<a name="sec7"></a>
 # Citation
 VStrains has been accepted at [RECOMB 2023](http://recomb2023.bilkent.edu.tr/program.html) and preprint is available at [bioRxiv](https://www.biorxiv.org/content/10.1101/2022.10.21.513181v3).
 
@@ -182,7 +192,7 @@ If you use VStrains in your work, please cite the following publications.
 
 Runpeng Luo and Yu Lin, VStrains: De Novo Reconstruction of Viral Strains via Iterative Path Extraction From Assembly Graphs
 
-<a name="sec7"></a>
+<a name="sec8"></a>
 # Feedback and bug reports
 
-Thanks for using VStrains. Please feel free to provide any feedback or raise any concern via `Issues`.
+Thanks for using VStrains. If any bugs be experienced during execution, please re-run the program with additional `-d` flag and provide the `vstains.log` together with user cases via `Issues`

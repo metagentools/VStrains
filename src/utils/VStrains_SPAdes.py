@@ -122,7 +122,7 @@ def run(args, logger):
     logger.info("graph kmer size: {0}".format(ksize))
 
     # obtain paired end information
-    script_path = "{0}/VStrains_Alignment.py".format(
+    script_path = "{0}/VStrains_Alignment_Fast.py".format(
         os.path.abspath(os.path.dirname(__file__))
     )
     subprocess.check_call(

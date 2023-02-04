@@ -10,15 +10,6 @@ import sys
 import numpy
 from functools import reduce
 
-__author__ = "Runpeng Luo"
-__copyright__ = "Copyright 2022-2025, vsAware Project"
-__credits__ = ["Runpeng Luo", "Yu Lin"]
-__license__ = "MIT"
-__version__ = "1.0.1"
-__maintainer__ = "Runpeng Luo"
-__email__ = "John.Luo@anu.edu.au"
-__status__ = "Production"
-
 
 def assign_edge_flow(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict):
     """

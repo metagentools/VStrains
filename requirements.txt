@@ -1,0 +1,5 @@
+graph-tool
+minimap2
+numpy
+gfapy
+matplotlib

@@ -1,0 +1,51 @@
+{% set name = "VStrains" %}
+{% set version = "1.1.0" %}
+
+package:
+  name: "{{ name|lower }}"
+  version: "{{ version }}"
+
+source:
+  url: https://github.com/metagentools/{{ name }}/releases/download/v{{ version }}/{{ name }}-{{ version }}.tar.gz
+  sha256: 79a77435dd0f648fe55bb5930ef8fdd874d4aec990850ab20dd8b067d8df5ec0
+
+build:
+  number: 0
+  noarch: python
+  script:
+    - "{{ PYTHON }} -m pip install . -vv"
+
+requirements:
+  host:
+    - pip>=22.3.1
+    - python=3
+    - graph-tool>=2.45
+    - minimap2>=2.24
+    - numpy>=1.23.5
+    - gfapy>=1.2.3
+    - matplotlib>=3.6.2
+  run:
+    - python=3
+    - graph-tool>=2.45
+    - minimap2>=2.24
+    - numpy>=1.23.5
+    - gfapy>=1.2.3
+    - matplotlib>=3.6.2
+
+test:
+  commands:
+    - vstrains -h
+
+about:
+  home: "https://github.com/metagentools/MetaCoAG"
+  license: MIT
+  license_file: LICENSE
+  summary: "VStrains: De Novo Reconstruction of Viral Strains via Iterative Path Extraction From Assembly Graphs"
+  doc_url: "https://github.com/metagentools/VStrains/blob/master/README.md"
+  dev_url: "https://github.com/metagentools/VStrains"
+
+extra:
+  recipe-maintainers:
+    - JohnLuo
+  # identifiers:
+  #   - doi:10.1101/2022.10.21.513181v3

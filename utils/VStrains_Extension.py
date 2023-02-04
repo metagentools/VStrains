@@ -7,16 +7,6 @@ from utils.VStrains_Decomposition import get_non_trivial_branches, global_trivia
 from utils.VStrains_IO import store_reinit_graph
 
 
-__author__ = "Runpeng Luo"
-__copyright__ = "Copyright 2022-2025, VStrains Project"
-__credits__ = ["Runpeng Luo", "Yu Lin"]
-__license__ = "MIT"
-__version__ = "1.0.1"
-__maintainer__ = "Runpeng Luo"
-__email__ = "John.Luo@anu.edu.au"
-__status__ = "Production"
-
-
 def best_matching(
     graph: Graph,
     simp_node_dict: dict,

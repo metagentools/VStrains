@@ -4,16 +4,6 @@ import matplotlib.pyplot as plt
 import numpy
 
 
-__author__ = "Runpeng Luo"
-__copyright__ = "Copyright 2022-2025, VStrains Project"
-__credits__ = ["Runpeng Luo", "Yu Lin"]
-__license__ = "MIT"
-__version__ = "1.0.1"
-__maintainer__ = "Runpeng Luo"
-__email__ = "John.Luo@anu.edu.au"
-__status__ = "Production"
-
-
 def link_split(
     sec_comb: list,
     kept_link: dict,

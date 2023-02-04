@@ -1,0 +1,16 @@
+include README.md
+include requirements.txt
+include LICENSE
+include VStrains_logo.png
+include environment.yml
+include setup.py
+
+include vstrains
+
+
+recursive-include recipe/*
+recursive-include utils/*
+recursive-include evals/*
+
+global-exclude utils/__pycache__*.pyc
+global-exclude evals/__pycache__*.pyc

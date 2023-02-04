@@ -21,15 +21,6 @@ from utils.VStrains_Extension import path_extension, best_matching
 import os
 import sys
 
-__author__ = "Runpeng Luo"
-__copyright__ = "Copyright 2022-2025, VStrains Project"
-__credits__ = ["Runpeng Luo", "Yu Lin"]
-__license__ = "MIT"
-__version__ = "1.0.1"
-__maintainer__ = "Runpeng Luo"
-__email__ = "John.Luo@anu.edu.au"
-__status__ = "Production"
-
 
 def run(args, logger):
     TEMP_DIR = args.output_dir

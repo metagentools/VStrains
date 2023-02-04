@@ -37,15 +37,17 @@ VStrains is a de novo approach for reconstructing strains from viral quasispecie
 <a name="sec2"></a>
 # Updates
 
-## VStrains 1.0.1 Release (03 Feb 2023)
+## VStrains 1.1.0 Release (03 Feb 2023)
 * Replace the PE link inference module `VStrains_Alignment.py` with `VStrains_PE_Inference.py`
    
    `VStrains_PE_Inference.py` implements a hash table approach that produce efficient perfect match lookup, the new module leads to consistent evaluation results and substantially decrease the runtime and memory usage against previous alignment approach.
 
+<!-- * support direct install for Conda -->
+
 <a name="sec3"></a>
 # Installation
 
-VStrains requires a 64-bit Linux system or Mac OS and python (supported versions are python3: 3.2 and higher), 
+VStrains requires a 64-bit Linux system or Mac OS and python (supported versions are python3: 3.2 and higher).
 
 <a name="sec3.1"></a>
 ## Quick Install (**recommended**)
@@ -151,7 +153,7 @@ Since SPAdes normally output all the nodes from assembly graph as contigs, short
 <a name="sec5"></a>
 # Stand-alone binaries
 
-`src/evals/quast_evaluation.py` is a wrapper script for strain-level experimental result analysis using [MetaQUAST](https://github.com/ablab/quast).
+`evals/quast_evaluation.py` is a wrapper script for strain-level experimental result analysis using [MetaQUAST](https://github.com/ablab/quast).
 
 ```
 usage: quast_evaluation.py [-h] -quast QUAST [-cs FILES [FILES ...]] [-d IDIR] -ref REF_FILE -o OUTPUT_DIR

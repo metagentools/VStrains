@@ -1,0 +1,12 @@
+name: vstrains
+channels:
+  - defaults
+  - bioconda
+  - conda-forge
+dependencies:
+  - python=3
+  - graph-tool>=2.45
+  - minimap2>=2.24
+  - numpy>=1.23.5
+  - gfapy>=1.2.3
+  - matplotlib>=3.6.2

@@ -16,8 +16,9 @@ Table of Contents
 1. [About VStrains](#sec1) </br>
 2. [Updates](#sec2) </br>
 3. [Installation](#sec3) </br>
-   3.1. [Quick Install](#sec3.1) </br>
-   3.1. [Manual Install](#sec3.2) </br>
+   3.1. [Option 1. Quick Install](#sec3.1) </br>
+   3.2. [Option 2. Manual Install](#sec3.2) </br>
+   3.3. [Download & Install VStrains](#sec3.3) </br>
 4. [Running VStrains](#sec4) </br>
    4.1. [Quick Usage](#sec4.1) </br>
    4.2. [Support SPAdes](#sec4.2) </br>
@@ -50,7 +51,7 @@ VStrains is a de novo approach for reconstructing strains from viral quasispecie
 VStrains requires a 64-bit Linux system or Mac OS and python (supported versions are python3: 3.2 and higher).
 
 <a name="sec3.1"></a>
-## Quick Install (**recommended**)
+## Option 1. Quick Install (**recommended**)
 
 Install [(mini)conda](https://conda.io/miniconda.html) as a light-weighted package management tool. Run the following commands to initialize and setup the conda environment for VStrains
 
@@ -70,7 +71,7 @@ conda install -c bioconda -c conda-forge python=3 graph-tool minimap2 numpy gfap
 ```
 
 <a name="sec3.2"></a>
-## Manual Install
+## Option 2. Manual Install
 
 Manually install dependencies: 
 - [minimap2](https://github.com/lh3/minimap2)  
@@ -81,10 +82,31 @@ And python modules:
 - [gfapy](https://github.com/ggonnella/gfapy)
 - [matplotlib](https://matplotlib.org)
 
+<a name="sec3.3"></a>
+## Download & Install VStrains
+
+After successfully setup the environment and dependencies, clone the VStrains into your desirable place.
+
+```bash
+git clone https://github.com/metagentools/VStrains.git
+```
+
+Install the VStrains via `Pip`
+
+```bash
+cd VStrains; pip install .
+```
+
+Run the following commands to ensure VStrains is correctly setup & installed.
+
+```bash
+vstrains -h
+```
+
 <a name="sec4"></a>
 # Running VStrains
 
-VStrains supports assembly results from [SPAdes](https://github.com/ablab/spades) (includes metaSPAdes, metaviralSPAdes, etc).
+VStrains supports assembly results from [SPAdes](https://github.com/ablab/spades) (includes metaSPAdes, metaviralSPAdes, etc) and may supports other graph-based assemblers in the future.
 
 <a name="sec4.1"></a>
 ## Quick Usage
@@ -111,27 +133,29 @@ optional arguments:
                         paired-end sequencing reads, reverse strand (.fastq format)
 ```
 
-VStrains takes as input an assembly graph in Graphical Fragment Assembly (GFA) Format and associated contig information. Both inputs can be found in the output directory after running SPAdes assembler. Please also provide the raw reads in paired-end format (e.g., forward.fastq, reverse.fastq) together as inputs. Do not modify any contig/node name from the SPAdes assembly results for consistency. Please refer to [SPAdes](https://github.com/ablab/spades) for further guideline. Example usage as below:
+VStrains takes as input an assembly graph in Graphical Fragment Assembly (GFA) Format and associated contig information, together with the raw reads in paired-end format (e.g., forward.fastq, reverse.fastq).
+
+<a name="sec4.2"></a>
+## Support SPAdes
+
+When running SPAdes, we recommend to use `--careful` option for more accurate assembly results. Do not modify any contig/node name from the SPAdes assembly results for consistency. Please refer to [SPAdes](https://github.com/ablab/spades) for further guideline. Example usage as below:
 
 ```bash
 # SPAdes assembler example, pair-end reads
 python spades.py -1 forward.fastq -2 reverse.fastq --careful -t 16 -o output_dir
 ```
 
-<a name="sec4.2"></a>
-## Support SPAdes
-
-For SPAdes, we recommend to use `--careful` option for more accurate assembly results. Please use `assembly_graph_after_simplification.gfa` and `contigs.paths` as input, and set `-a` flag to `spades`. Example usage as below:
+Both assembly graph (`assembly_graph_after_simplification.gfa`) and contig information (`contigs.paths`) can be found in the output directory after running SPAdes assembler. Please use them together with raw reads as inputs for VStrains, and set `-a` flag to `spades`. Example usage as below:
 
 ```bash
-python src/vstrains.py -a spades -g assembly_graph_after_simplification.gfa -p contigs.paths -o output_dir -fwd forward.fastq -rve reverse.fastq
+vstrains -a spades -g assembly_graph_after_simplification.gfa -p contigs.paths -o output_dir -fwd forward.fastq -rve reverse.fastq
 ```
 
 <a name="sec4.3"></a>
 ## Output
 
 
-VStrains stores all output files in `<output_dir>` , which is set by the user.
+VStrains stores all output files in `<output_dir>`, which is set by the user.
 
 * `<output_dir>/aln/` directory contains paired-end (PE) linkage information, which is stored in `pe_info` and `st_info`.
 * `<output_dir>/gfa/` directory contains iteratively simplified assembly graphs, where `graph_L0.gfa` contains the assembly graph produced by SPAdes after Strandedness Canonization, `split_graph_final.gfa` contains the assembly graph after Graph Disentanglement, and `graph_S_final.gfa` contains the assembly graph after Contig-based Path Extraction, the rests are intermediate results. All the assembly graphs are in [GFA 1.0 format](https://github.com/GFA-spec/GFA-spec/blob/master/GFA1.md).

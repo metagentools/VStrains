@@ -38,8 +38,8 @@ setup(
         "Operating System :: OS Independent",
     ],
     install_requires=[
-        # "graph-tool",
-        "minimap2",
+        # "graph-tool", # not distributed via Pip
+        # "minimap2", # not distributed via Pip
         "numpy",
         "gfapy",
         "matplotlib",

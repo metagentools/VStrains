@@ -111,6 +111,9 @@ def run(args, logger):
     # get graph kmer size
     ksize = graph1.ep.overlap[list(graph1.edges())[0]] if graph1.num_edges() > 0 else 0
     logger.info("graph kmer size: {0}".format(ksize))
+    if ksize <= 0:
+        logger.error("invalid kmer-size, the graph does not contain any edges, exit..")
+        sys.exit(1)
 
     # obtain paired end information
     script_path = "{0}/VStrains_PE_Inference.py".format(

@@ -106,7 +106,7 @@ vstrains -h
 <a name="sec4"></a>
 # Running VStrains
 
-VStrains supports assembly results from [SPAdes](https://github.com/ablab/spades) (includes metaSPAdes, metaviralSPAdes, etc) and may supports other graph-based assemblers in the future.
+VStrains supports assembly results from [SPAdes](https://github.com/ablab/spades) (includes metaSPAdes and metaviralSPAdes) and may supports other graph-based assemblers in the future.
 
 <a name="sec4.1"></a>
 ## Quick Usage
@@ -212,7 +212,7 @@ VStrains is evaluated on both simulated and real datasets under default settings
 
 <a name="sec7"></a>
 # Citation
-VStrains has been accepted at [RECOMB 2023](http://recomb2023.bilkent.edu.tr/program.html) and preprint is available at [bioRxiv](https://www.biorxiv.org/content/10.1101/2022.10.21.513181v3).
+VStrains has been accepted at [RECOMB 2023](http://recomb2023.bilkent.edu.tr/program.html) and manuscript is publicly available at [here](https://link.springer.com/chapter/10.1007/978-3-031-29119-7_1).
 
 If you use VStrains in your work, please cite the following publications.
 

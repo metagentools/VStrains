@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import os
 from logging import Logger
 import subprocess
 from graph_tool.all import Graph
@@ -7,7 +8,7 @@ from graph_tool.all import Graph
 import numpy
 import matplotlib.pyplot as plt
 
-from utils.VStrains_Utilities import *
+from vstrains.VStrains_Utilities import *
 
 
 def reindexing(graph: Graph, simp_node_dict: dict, simp_edge_dict: dict):
@@ -272,11 +273,6 @@ def tip_removal(
         ref_loc = "{0}/ref.fa".format(temp_dir)
         query_loc = "{0}/query.fa".format(temp_dir)
         overlap_loc = "{0}/overlap.paf".format(temp_dir)
-        subprocess.check_call(
-            "touch {0}; echo > {0}; touch {1}; echo > {1}".format(ref_loc, query_loc),
-            shell=True,
-        )
-
         id_path_dict = {}
         for id, path in list(enumerate(to_paths)):
             id_path_dict[id] = path
@@ -314,9 +310,9 @@ def tip_removal(
             overlap_file.close()
 
         # remove temp file
-        subprocess.check_call(
-            "rm {0}; rm {1}; rm {2}".format(ref_loc, query_loc, overlap_loc), shell=True
-        )
+        os.remove(ref_loc)
+        os.remove(query_loc)
+        os.remove(overlap_loc)
 
         id_evalscore_sum = []
         for id, scores in id_evalscore.items():

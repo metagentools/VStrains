@@ -9,13 +9,12 @@ import logging
 import time
 from datetime import date
 
-from utils import VStrains_SPAdes
+from vstrains import VStrains_SPAdes, __version__
 
 __author__ = "Runpeng Luo"
 __copyright__ = "Copyright 2022-2025, VStrains Project"
 __credits__ = ["Runpeng Luo", "Yu Lin"]
 __license__ = "MIT"
-__version__ = "1.1.0"
 __maintainer__ = "Runpeng Luo"
 __email__ = "John.Luo@anu.edu.au"
 __status__ = "Production"
@@ -32,7 +31,7 @@ def run(args, logger):
 def main():
     parser = argparse.ArgumentParser(
         prog="VStrains",
-        description="""Construct full-length viral strains under de novo approach 
+        description="""Construct full-length viral strains under de novo approach
         from contigs and assembly graph, currently supports SPAdes""",
     )
 
@@ -191,7 +190,7 @@ def main():
         sys.exit(1)
 
     if os.path.exists(args.output_dir + "/vstrains.log"):
-        os.remove(args.output + "/vstrains.log")
+        os.remove(args.output_dir + "/vstrains.log")
 
     # Setup logger
     # -----------------------

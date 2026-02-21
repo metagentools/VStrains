@@ -1,5 +1,5 @@
 {% set name = "VStrains" %}
-{% set version = "1.1.0" %}
+{% set version = "1.2.0" %}
 
 package:
   name: "{{ name|lower }}"
@@ -37,7 +37,7 @@ test:
     - vstrains -h
 
 about:
-  home: "https://github.com/metagentools/MetaCoAG"
+  home: "https://github.com/metagentools/VStrains"
   license: MIT
   license_file: LICENSE
   summary: "VStrains: De Novo Reconstruction of Viral Strains via Iterative Path Extraction From Assembly Graphs"

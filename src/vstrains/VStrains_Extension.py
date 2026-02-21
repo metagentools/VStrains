@@ -2,9 +2,9 @@
 
 
 from graph_tool.all import Graph
-from utils.VStrains_Utilities import *
-from utils.VStrains_Decomposition import get_non_trivial_branches, global_trivial_split
-from utils.VStrains_IO import store_reinit_graph
+from vstrains.VStrains_Utilities import *
+from vstrains.VStrains_Decomposition import get_non_trivial_branches, global_trivial_split
+from vstrains.VStrains_IO import store_reinit_graph
 
 
 def best_matching(

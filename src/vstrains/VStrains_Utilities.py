@@ -4,6 +4,7 @@ from logging import Logger
 from graph_tool.all import Graph
 from graph_tool.draw import graph_draw
 from graph_tool.topology import all_circuits
+import os
 import subprocess
 import sys
 
@@ -55,10 +56,11 @@ def map_ref_to_graph(
             fasta.close()
         gfa.close()
 
-    subprocess.check_call(
-        "minimap2 {0} {1} -c > {2}".format(ref_file, fasta_file, output_file),
-        shell=True,
-    )
+    with open(output_file, "w") as outf:
+        subprocess.check_call(
+            ["minimap2", ref_file, fasta_file, "-c"],
+            stdout=outf,
+        )
 
     strain_dict = {}
     with open(output_file, "r") as paf:
@@ -79,9 +81,8 @@ def map_ref_to_graph(
         paf.close()
 
     if not store_mapping:
-        subprocess.check_call(
-            "rm {0}; rm {1}".format(output_file, fasta_file), shell=True
-        )
+        os.remove(output_file)
+        os.remove(fasta_file)
 
     logger.debug("strain dict mapping")
     for seg_no, strains in strain_dict.items():
@@ -113,7 +114,7 @@ def map_ref_to_contig(contig_dict: dict, logger: Logger, paf_file, store_mapping
         paf.close()
 
     if not store_mapping:
-        subprocess.check_call("rm {0}".format(paf_file), shell=True)
+        os.remove(paf_file)
     for sno, cnos in strain_dict.items():
         logger.debug("--------------------------------->")
         logger.debug(
@@ -137,10 +138,11 @@ def map_ref_to_contig(contig_dict: dict, logger: Logger, paf_file, store_mapping
 
 
 def minimap_api(ref_file, fasta_file, output_file):
-    subprocess.check_call(
-        "minimap2 {0} {1} -c > {2}".format(ref_file, fasta_file, output_file),
-        shell=True,
-    )
+    with open(output_file, "w") as outf:
+        subprocess.check_call(
+            ["minimap2", ref_file, fasta_file, "-c"],
+            stdout=outf,
+        )
     return
 
 

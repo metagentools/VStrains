@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "vstrains"
+version = "1.2.0"
+description = "VStrains: De Novo Reconstruction of Viral Strains via Iterative Path Extraction From Assembly Graphs"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3"
+authors = [
+    { name = "Runpeng Luo", email = "runpengluo@gmail.com" },
+    { name = "Yu Lin" },
+]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Programming Language :: Python :: 3",
+    "Natural Language :: English",
+    "Topic :: Scientific/Engineering :: Bio-Informatics",
+    "Operating System :: OS Independent",
+]
+dependencies = [
+    "numpy",
+    "gfapy",
+    "matplotlib",
+]
+
+[project.urls]
+Homepage = "https://github.com/metagentools/VStrains"
+
+[project.scripts]
+vstrains = "vstrains.__main__:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["vstrains*"]

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 import argparse
 import os
+import shutil
 import time
-import subprocess
 import numpy
 import sys
 
@@ -48,52 +48,17 @@ def single_end_read_mapping(
     return saturates
 
 
-def main():
+def run_pe_inference(gfa_path, output_dir, fwd_path, rve_path, kmer_size=128):
+    """Run paired-end inference: map PE reads to graph nodes and output linkage info."""
     print(
         "----------------------Paired-End Information Alignment----------------------"
     )
-    parser = argparse.ArgumentParser(
-        prog="pe_info",
-        description="""Align Paired-End reads to nodes in graph to obtain strong links""",
-    )
-
-    parser.add_argument(
-        "-g", "--gfa,", dest="gfa", type=str, required=True, help="graph, .gfa format"
-    )
-
-    parser.add_argument(
-        "-o",
-        "--output_dir",
-        dest="dir",
-        type=str,
-        required=True,
-        help="output directory",
-    )
-
-    parser.add_argument(
-        "-f", "--forward", dest="fwd", required=True, help="forward read, .fastq"
-    )
-
-    parser.add_argument(
-        "-r", "--reverse", dest="rve", required=True, help="reverse read, .fastq"
-    )
-
-    parser.add_argument(
-        "-k",
-        "--kmer_size",
-        dest="kmer_size",
-        type=int,
-        default=128,
-        help="unique kmer size",
-    )
-
-    args = parser.parse_args()
 
     # initialize output directory
-    if args.dir[-1] == "/":
-        args.dir = args.dir[:-1]
-    subprocess.check_call("rm -rf {0}".format(args.dir), shell=True)
-    os.makedirs(args.dir, exist_ok=True)
+    if output_dir.endswith("/"):
+        output_dir = output_dir[:-1]
+    shutil.rmtree(output_dir, ignore_errors=True)
+    os.makedirs(output_dir, exist_ok=True)
 
     glb_start = time.time()
 
@@ -102,16 +67,15 @@ def main():
     index2seq = []
     index2seqlen = []
 
-    with open(args.gfa, "r") as gfa:
+    with open(gfa_path, "r") as gfa:
         for Line in gfa:
             splited = (Line[:-1]).split("\t")
             if splited[0] == "S":
                 index2id.append(splited[1])
                 index2seq.append(splited[2])
                 index2seqlen.append(len(splited[2]))
-        gfa.close()
 
-    split_len = args.kmer_size + 1
+    split_len = kmer_size + 1
 
     # construct hash table for gfa nodes with chunck kmer
     kmer_htable = {}
@@ -144,8 +108,8 @@ def main():
     used_reads = 0
 
     print("Start aligning reads to gfa nodes")
-    fwd_fd = open(args.fwd, "r")
-    rve_fd = open(args.rve, "r")
+    fwd_fd = open(fwd_path, "r")
+    rve_fd = open(rve_path, "r")
     fwd_reads = fwd_fd.readlines()
     rve_reads = rve_fd.readlines()
     fwd_fd.close()
@@ -187,10 +151,8 @@ def main():
                 for j in rights:
                     node_mat[i][j] += 1
 
-    out_file = "{0}/pe_info".format(args.dir)
-    out_file2 = "{0}/st_info".format(args.dir)
-    subprocess.check_call("touch {0}; echo " " > {0}".format(out_file), shell=True)
-    subprocess.check_call("touch {0}; echo " " > {0}".format(out_file2), shell=True)
+    out_file = "{0}/pe_info".format(output_dir)
+    out_file2 = "{0}/st_info".format(output_dir)
     with open(out_file, "w") as outfile:
         with open(out_file2, "w") as outfile2:
             for i in range(len_index2id):
@@ -203,12 +165,50 @@ def main():
                             index2id[i], index2id[j], short_mat[i][j]
                         )
                     )
-            outfile2.close()
-        outfile.close()
 
     glb_elapsed = time.time() - glb_start
     print("Global time elapsed: ", glb_elapsed)
     print("result stored in: ", out_file)
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        prog="pe_info",
+        description="""Align Paired-End reads to nodes in graph to obtain strong links""",
+    )
+
+    parser.add_argument(
+        "-g", "--gfa,", dest="gfa", type=str, required=True, help="graph, .gfa format"
+    )
+
+    parser.add_argument(
+        "-o",
+        "--output_dir",
+        dest="dir",
+        type=str,
+        required=True,
+        help="output directory",
+    )
+
+    parser.add_argument(
+        "-f", "--forward", dest="fwd", required=True, help="forward read, .fastq"
+    )
+
+    parser.add_argument(
+        "-r", "--reverse", dest="rve", required=True, help="reverse read, .fastq"
+    )
+
+    parser.add_argument(
+        "-k",
+        "--kmer_size",
+        dest="kmer_size",
+        type=int,
+        default=128,
+        help="unique kmer size",
+    )
+
+    args = parser.parse_args()
+    run_pe_inference(args.gfa, args.dir, args.fwd, args.rve, args.kmer_size)
 
 
 if __name__ == "__main__":

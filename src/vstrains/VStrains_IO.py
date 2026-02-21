@@ -7,7 +7,7 @@ import subprocess
 import sys
 import re
 
-from utils.VStrains_Utilities import *
+from vstrains.VStrains_Utilities import *
 
 
 def init_graph():
@@ -340,8 +340,6 @@ def graph_to_gfa(
     """
     store the swapped graph in simplifed_graph.
     """
-    subprocess.check_call("touch {0}; echo > {0}".format(filename), shell=True)
-
     with open(filename, "w") as gfa:
         for v in simp_node_dict.values():
             if graph.vp.color[v] == "black":
@@ -521,8 +519,6 @@ def contig_dict_to_fasta(
     """
     Store contig dict into fastq file
     """
-    subprocess.check_call("touch {0}; echo > {0}".format(output_file), shell=True)
-
     with open(output_file, "w") as fasta:
         for cno, (contig, clen, ccov) in sorted(
             contig_dict.items(), key=lambda x: x[1][1], reverse=True
@@ -540,8 +536,6 @@ def strain_dict_to_fasta(strain_dict: dict, output_file):
     """
     Store strain dict into fastq file
     """
-    subprocess.check_call("touch {0}; echo > {0}".format(output_file), shell=True)
-
     with open(output_file, "w") as fasta:
         for cno, (sseq, clen, ccov) in sorted(
             strain_dict.items(), key=lambda x: x[1][1], reverse=True
@@ -561,7 +555,6 @@ def contig_dict_to_path(
     """
     Store contig dict into paths file
     """
-    subprocess.check_call("touch {0}; echo > {0}".format(output_file), shell=True)
     rev_id_mapping = {}
     if id_mapping != None:
         for id, map in id_mapping.items():

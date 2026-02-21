@@ -1,5 +1,7 @@
-from utils.VStrains_Utilities import *
-from utils.VStrains_IO import store_reinit_graph
+import os
+
+from vstrains.VStrains_Utilities import *
+from vstrains.VStrains_IO import store_reinit_graph
 import matplotlib.pyplot as plt
 import numpy
 
@@ -1045,13 +1047,11 @@ def iter_graph_disentanglement(
 def best_aln_score(graph: Graph, ori, strain, ref_file, temp_dir):
     fname = "{0}/temp_{1}.fa".format(temp_dir, ori)
     pafname = "{0}/temp_{1}_aln.paf".format(temp_dir, ori)
-    subprocess.check_call('echo "" > {0}'.format(fname), shell=True)
     with open(fname, "w") as f:
         f.write(">{0}\n".format(ori))
         f.write("{0}\n".format(path_to_seq(graph, strain, "")))
-        f.close()
     minimap_api(ref_file, fname, pafname)
-    subprocess.check_call("rm {0}".format(fname), shell=True)
+    os.remove(fname)
     best_aln = []
     with open(pafname, "r") as paf:
         for line in paf.readlines():
@@ -1066,6 +1066,5 @@ def best_aln_score(graph: Graph, ori, strain, ref_file, temp_dir):
                     int(splited[10]) - int(splited[9]),
                 ]
             )
-        paf.close()
-    subprocess.check_call("rm {0}".format(pafname), shell=True)
+    os.remove(pafname)
     return best_aln

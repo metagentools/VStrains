@@ -53,11 +53,20 @@ src/tmp/*
 *.gfa
 *.csv
 *.paf
-*.pyc
 *.sh
 # pycache #
 ###########
-*/__pycache__/*
+__pycache__/
+*/__pycache__/
 *.cpython*
-src/__pycache__/*
+*.pyc
+
+# Build & packaging cache #
+############################
+build/
+dist/
+*.egg-info/
+*.egg
+.eggs/
+
 legacy/

@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 
-from utils.VStrains_Utilities import *
-from utils.VStrains_Preprocess import (
+from vstrains.VStrains_Utilities import *
+from vstrains.VStrains_Preprocess import (
     graph_simplification,
     reindexing,
     threshold_estimation,
 )
-from utils.VStrains_IO import (
+from vstrains.VStrains_IO import (
     graph_to_gfa,
     flipped_gfa_to_graph,
     gfa_to_graph,
@@ -16,8 +16,9 @@ from utils.VStrains_IO import (
     process_pe_info,
     store_reinit_graph,
 )
-from utils.VStrains_Decomposition import *
-from utils.VStrains_Extension import path_extension, best_matching
+from vstrains.VStrains_Decomposition import *
+from vstrains.VStrains_Extension import path_extension, best_matching
+from vstrains.VStrains_PE_Inference import run_pe_inference
 import os
 import sys
 
@@ -116,19 +117,12 @@ def run(args, logger):
         sys.exit(1)
 
     # obtain paired end information
-    script_path = "{0}/VStrains_PE_Inference.py".format(
-        os.path.abspath(os.path.dirname(__file__))
-    )
-    subprocess.check_call(
-        "python {0} -g {1} -o {2} -f {3} -r {4} -k {5}".format(
-            script_path,
-            "{0}/gfa/s_graph_L1.gfa".format(TEMP_DIR),
-            "{0}/aln".format(TEMP_DIR),
-            args.fwd,
-            args.rve,
-            ksize,
-        ),
-        shell=True,
+    run_pe_inference(
+        gfa_path="{0}/gfa/s_graph_L1.gfa".format(TEMP_DIR),
+        output_dir="{0}/aln".format(TEMP_DIR),
+        fwd_path=args.fwd,
+        rve_path=args.rve,
+        kmer_size=ksize,
     )
     logger.info("paired end information stored")
     pe_info_file = "{0}/aln/pe_info".format(TEMP_DIR)

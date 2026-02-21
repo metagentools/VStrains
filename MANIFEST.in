@@ -3,14 +3,11 @@ include requirements.txt
 include LICENSE
 include VStrains_logo.png
 include environment.yml
-include setup.py
-
-include vstrains
-
+include pyproject.toml
 
 recursive-include recipe/*
-recursive-include utils/*
+recursive-include src/vstrains/*
 recursive-include evals/*
 
-global-exclude utils/__pycache__*.pyc
+global-exclude src/vstrains/__pycache__*.pyc
 global-exclude evals/__pycache__*.pyc

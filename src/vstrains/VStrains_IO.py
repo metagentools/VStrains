@@ -448,14 +448,14 @@ def spades_paths_parser(
             path = contigs_file.readline()
 
             while name != "" and path != "":
-                (cno, clen, ccov) = re.search(
+                cno, clen, ccov = re.search(
                     "%s(.*)%s(.*)%s(.*)" % ("NODE_", "_length_", "_cov_"), name.strip()
                 ).group(1, 2, 3)
                 subpaths, total_nodes = get_paths(contigs_file, path)
 
                 name_r = contigs_file.readline()
                 path_r = contigs_file.readline()
-                (cno_r, clen_r, ccov_r) = re.search(
+                cno_r, clen_r, ccov_r = re.search(
                     "%s(.*)%s(.*)%s(.*)%s" % ("NODE_", "_length_", "_cov_", "'"),
                     name_r.strip(),
                 ).group(1, 2, 3)
@@ -469,7 +469,7 @@ def spades_paths_parser(
                 path = contigs_file.readline()
 
                 # pick one direction only
-                (segments, total_n) = max(
+                segments, total_n = max(
                     [(subpaths, total_nodes), (subpaths_r, total_nodes_r)],
                     key=lambda t: t[1],
                 )

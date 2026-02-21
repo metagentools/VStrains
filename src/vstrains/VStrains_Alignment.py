@@ -400,7 +400,7 @@ def main():
     strand_mats = []
 
     for i in range(len(paf_files)):
-        (node_mat, strand_mat) = process_paf_file(
+        node_mat, strand_mat = process_paf_file(
             index2id,
             index2reflen,
             len_index2id,

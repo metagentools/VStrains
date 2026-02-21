@@ -824,7 +824,7 @@ def strain_repeat_resol(
         repeat_dec = dict.fromkeys(subids, 1)
         # cnos: all related contig id for current strain
         for cno in cnos:
-            (_, repeat_dict) = contig_info[cno]
+            _, repeat_dict = contig_info[cno]
             for no, rpc in repeat_dict.items():
                 repeat_dec[no] = max(repeat_dec[no], rpc)
         strain_r = []

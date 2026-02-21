@@ -3,7 +3,10 @@
 
 from graph_tool.all import Graph
 from vstrains.VStrains_Utilities import *
-from vstrains.VStrains_Decomposition import get_non_trivial_branches, global_trivial_split
+from vstrains.VStrains_Decomposition import (
+    get_non_trivial_branches,
+    global_trivial_split,
+)
 from vstrains.VStrains_IO import store_reinit_graph
 
 
@@ -551,7 +554,7 @@ def path_extension(
                 usages[new_no] = u
         ############################
         # get longest contig
-        (longest_cno, [contig, clen, ccov]) = max(
+        longest_cno, [contig, clen, ccov] = max(
             contig_dict.items(), key=lambda tp: tp[1][1]
         )
         contig_dict.pop(longest_cno)
